@@ -44,7 +44,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/writefont.git
+git clone https://github.com/nousresearch/writefont.git
 cd writefont
 
 # 创建虚拟环境
@@ -297,7 +297,7 @@ WriteFont is an open-source AI font generation tool. Users only need to photogra
 ### Quick Start
 
 ```bash
-git clone https://github.com/your-username/writefont.git
+git clone https://github.com/nousresearch/writefont.git
 cd writefont
 python -m venv venv
 source venv/bin/activate
