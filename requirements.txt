@@ -1,22 +1,22 @@
-# Core dependencies
-torch>=2.0.0
-torchvision>=0.15.0
-opencv-python>=4.8.0
-Pillow>=10.0.0
+# 手迹造字 WriteFont - Python 依赖
+
+# 核心计算
 numpy>=1.24.0
 scipy>=1.10.0
-scikit-learn>=1.3.0
+Pillow>=10.0.0
+opencv-python-headless>=4.8.0
 
-# OCR
-paddlepaddle>=2.5.0
-paddleocr>=2.7.0
+# OCR 文字识别（轻量方案）
+pytesseract>=0.3.10
 
-# Font generation
+# 字体生成
 fonttools>=4.40.0
+brotli>=1.0.9
 
 # Web UI
 gradio>=4.0.0
 
-# Utilities
+# 工具
 pyyaml>=6.0
 tqdm>=4.65.0
+requests>=2.28.0
