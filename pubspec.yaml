@@ -1,0 +1,48 @@
+name: writefont
+description: 手迹造字 - 拍照生成手写字体的工具
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI
+  google_fonts: ^6.1.0
+  
+  # Image picking
+  image_picker: ^1.0.7
+  
+  # Image processing
+  image: ^4.1.7
+  
+  # Path and file operations
+  path_provider: ^2.1.2
+  path: ^1.9.0
+  
+  # Permissions
+  permission_handler: ^11.3.0
+  
+  # Share files
+  share_plus: ^7.2.2
+  
+  # State management
+  provider: ^6.1.2
+  
+  # UUID for unique filenames
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/
