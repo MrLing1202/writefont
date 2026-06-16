@@ -11,8 +11,6 @@ from typing import Tuple, Union
 
 import cv2
 import numpy as np
-import torch
-import torch.nn.functional as F
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +203,8 @@ def ndarray_to_tensor(image: np.ndarray, normalise: bool = True) -> torch.Tensor
     Tensor
         Shape ``(C, H, W)`` or ``(1, H, W)`` for grayscale.
     """
+    import torch
+
     arr = image.astype(np.float32)
     if normalise:
         arr = arr / 127.5 - 1.0  # [0,255] → [-1,1]

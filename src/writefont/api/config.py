@@ -100,18 +100,24 @@ class APIConfigManager:
         Args:
             name: Provider identifier (e.g. ``"mimo"``, ``"openai"``, ``"custom"``).
             base_url: API endpoint base URL.
-            api_key: **Plain-text** API key; will be masked before storage.
+            api_key: **Plain-text** API key; will be stored with restricted file permissions.
             model: Default model name (optional).
             enabled: Whether the provider is active.
         """
         cfg = self._read()
         cfg["providers"][name] = {
             "base_url": base_url,
-            "api_key": _mask_key(api_key),
+            "api_key": api_key,
             "model": model,
             "enabled": enabled,
         }
         self._write(cfg)
+        # 限制配置文件权限，仅当前用户可读写
+        try:
+            import os
+            os.chmod(str(self._path), 0o600)
+        except OSError:
+            pass
 
     def load_providers(self) -> dict[str, dict[str, Any]]:
         """

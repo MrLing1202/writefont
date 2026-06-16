@@ -57,7 +57,8 @@ def main() -> None:
     # generate 命令
     gen_parser = subparsers.add_parser("generate", help="字体生成")
     gen_parser.add_argument("--style", required=True, help="风格向量路径")
-    gen_parser.add_argument("--output", "-o", required=True, help="输出字体路径")
+    gen_parser.add_argument("--output", "-o", required=True, help="输出目录")
+    gen_parser.add_argument("--charset", default="common_3500", help="字符集 (默认: common_3500)")
 
     args = parser.parse_args()
 
@@ -78,9 +79,9 @@ def main() -> None:
             output_path=args.output,
             charset=args.charset,
         )
-        print(f"✅ 字体已生成: {result['font_path']}")
-        print(f"   字符数: {result['char_count']}")
-        print(f"   格式: {', '.join(result['formats'])}")
+        print(f"✅ 字体已生成: {result.font_path}")
+        print(f"   字符数: {result.char_count}")
+        print(f"   格式: {', '.join(result.formats)}")
 
     elif args.command == "preprocess":
         result = pipeline.preprocess(args.input, args.output)
@@ -98,7 +99,7 @@ def main() -> None:
         print(f"   特征维度: {result['feature_dim']}")
 
     elif args.command == "generate":
-        result = pipeline.generate_font(args.style, args.output)
+        result = pipeline.generate_font(args.style, args.output, charset=args.charset)
         print(f"✅ 字体生成完成: {result['font_path']}")
         print(f"   字符数: {result['char_count']}")
 

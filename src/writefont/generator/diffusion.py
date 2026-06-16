@@ -98,7 +98,7 @@ class UNetNoisePredictor(nn.Module):
     def __init__(
         self,
         img_channels: int = 1,
-        style_dim: int = 128,
+        style_dim: int = 200,
         char_dim: int = 256,
         base_channels: int = 64,
         channel_mults: Tuple[int, ...] = (1, 2, 4, 8),
@@ -267,7 +267,7 @@ class ConditionalDiffusionModel(nn.Module):
         self,
         img_size: int = 64,
         img_channels: int = 1,
-        style_dim: int = 128,
+        style_dim: int = 200,
         char_vocab_size: int = 8000,
         char_emb_dim: int = 256,
         num_diffusion_steps: int = 1000,

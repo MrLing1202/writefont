@@ -6,8 +6,6 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-import torch
-import torch.nn.functional as F
 
 
 class GlyphRenderer:
@@ -94,8 +92,10 @@ class GlyphRenderer:
     # internal helpers
     # ------------------------------------------------------------------
 
-    def _to_grayscale(self, image: torch.Tensor | np.ndarray) -> np.ndarray:
+    def _to_grayscale(self, image):
         """Convert input to a single-channel uint8 numpy array in [0, 255]."""
+        import torch
+
         if isinstance(image, torch.Tensor):
             img = image.detach().cpu().float()
             if img.dim() == 3:

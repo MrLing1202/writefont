@@ -3,11 +3,13 @@
 
 # 图像预处理
 preprocessing:
-  target_size: 128          # 归一化目标尺寸
-  binarization_threshold: 128  # 二值化阈值
-  denoise_strength: 3       # 去噪强度
-  min_char_size: 20         # 最小字符尺寸（像素）
-  max_char_size: 200        # 最大字符尺寸（像素）
+  target_size: [128, 128]   # 归一化目标尺寸 (宽, 高)
+  blur_kernel: [3, 3]       # 高斯模糊核大小
+  median_kernel: 3           # 中值滤波核大小
+  block_size: 25             # 自适应二值化块大小
+  c_offset: 10               # 自适应二值化偏移常数
+  min_char_area: 50          # 最小字符面积（像素²）
+  max_char_area_ratio: 0.5   # 最大字符面积占比
 
 # OCR识别
 ocr:

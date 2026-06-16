@@ -170,6 +170,10 @@ class StyleTransformer:
 
         img_array = np.array(image)
 
+        # 确保输入是灰度图（处理 RGBA 或 RGB 输入）
+        if img_array.ndim == 3:
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+
         # 倾斜变换
         slant = self.params.get("slant_angle", 0.0)
         if abs(slant) > 0.1:
@@ -595,8 +599,7 @@ class WriteFontPipeline:
             base_url = api_cfg.get("base_url", "https://api.openai.com/v1")
             model = api_cfg.get("vision_model") or api_cfg.get("model", "gpt-4o")
 
-            import urllib.request
-            import urllib.error
+            import httpx
 
             url = f"{base_url.rstrip('/')}/chat/completions"
             payload = {
@@ -618,18 +621,14 @@ class WriteFontPipeline:
                 "max_tokens": 2000,
             }
 
-            data = json.dumps(payload).encode()
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
-                },
-            )
-
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                result = json.loads(resp.read().decode())
+            with httpx.Client(timeout=60) as client:
+                resp = client.post(
+                    url,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                resp.raise_for_status()
+                result = resp.json()
                 return result["choices"][0]["message"]["content"]
 
         except Exception as e:
@@ -657,7 +656,7 @@ class WriteFontPipeline:
             base_url = api_cfg.get("base_url", "https://api.openai.com/v1")
             model = api_cfg.get("chat_model") or api_cfg.get("model", "gpt-4o")
 
-            import urllib.request
+            import httpx
 
             url = f"{base_url.rstrip('/')}/chat/completions"
             payload = {
@@ -666,18 +665,14 @@ class WriteFontPipeline:
                 "max_tokens": 2000,
             }
 
-            data = json.dumps(payload).encode()
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}",
-                },
-            )
-
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                result = json.loads(resp.read().decode())
+            with httpx.Client(timeout=60) as client:
+                resp = client.post(
+                    url,
+                    json=payload,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                resp.raise_for_status()
+                result = resp.json()
                 return result["choices"][0]["message"]["content"]
 
         except Exception as e:

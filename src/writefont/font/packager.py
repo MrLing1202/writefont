@@ -219,8 +219,9 @@ class FontPackager:
         path = Path(path)
         format = format.lower().lstrip(".")
 
-        is_ttf = format in ("ttf", "woff", "woff2")
-        builder = FontBuilder(self.units_per_em, isTTF=is_ttf)
+        # 始终使用 TrueType 轮廓（TTGlyphPen 生成二次 Bézier 曲线）
+        # OTF + TrueType 轮廓也是合法的 OpenType 格式
+        builder = FontBuilder(self.units_per_em, isTTF=True)
         builder.setupGlyphOrder([".notdef"] + [chr(u) for u in sorted(self._glyphs)])
 
         # Character map
@@ -235,10 +236,7 @@ class FontPackager:
             glyph_set[name] = glyph
             char_adv_metrics[name] = self._metrics[u]
 
-        if is_ttf:
-            builder.setupGlyf(glyph_set)
-        else:
-            builder.setupCFF(charNames=list(glyph_set.keys()), charStringsDict=glyph_set, widths=None)
+        builder.setupGlyf(glyph_set)
 
         # Metrics
         hmtx = {k: v for k, v in char_adv_metrics.items()}
