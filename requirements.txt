@@ -7,6 +7,10 @@ writefont-core>=0.2.0
 # Web UI
 gradio>=4.0.0
 
+# REST API 服务器
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
 # 工具
 pyyaml>=6.0
 tqdm>=4.65.0
