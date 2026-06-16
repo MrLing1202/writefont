@@ -10,7 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     license="MIT",
     python_requires=">=3.10",
-    author="WriteFont Contributors",
+    author="WriteFont",
     keywords=["font", "handwriting", "ai", "chinese", "generation"],
     classifiers=[
         "Development Status :: 3 - Alpha",

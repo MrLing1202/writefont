@@ -6,7 +6,7 @@
 """
 
 __version__ = "0.2.0"
-__author__ = "WriteFont Contributors"
+__author__ = "WriteFont"
 
 try:
     from writefont.pipeline import WriteFontPipeline, EngineMode, PipelineResult
