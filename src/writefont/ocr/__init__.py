@@ -17,18 +17,28 @@
     print(result.text, result.chars)
 """
 
-from writefont.ocr.preprocessor import (
-    BBox,
-    CharRegion,
-    ImagePreprocessor,
-)
-from writefont.ocr.recognizer import (
-    CRNNEngine,
-    OCRResult,
-    OCREngine,
-    PaddleOCREngine,
-    RecognizedChar,
-)
+try:
+    from writefont.ocr.preprocessor import (
+        BBox,
+        CharRegion,
+        ImagePreprocessor,
+    )
+    from writefont.ocr.recognizer import (
+        CRNNEngine,
+        OCRResult,
+        OCREngine,
+        PaddleOCREngine,
+        RecognizedChar,
+    )
+except ImportError:
+    BBox = None  # type: ignore[assignment,misc]
+    CharRegion = None  # type: ignore[assignment,misc]
+    ImagePreprocessor = None  # type: ignore[assignment,misc]
+    CRNNEngine = None  # type: ignore[assignment,misc]
+    OCRResult = None  # type: ignore[assignment,misc]
+    OCREngine = None  # type: ignore[assignment,misc]
+    PaddleOCREngine = None  # type: ignore[assignment,misc]
+    RecognizedChar = None  # type: ignore[assignment,misc]
 
 __all__ = [
     "BBox",

@@ -8,7 +8,12 @@
 __version__ = "0.2.0"
 __author__ = "WriteFont Contributors"
 
-from writefont.pipeline import WriteFontPipeline, EngineMode, PipelineResult
+try:
+    from writefont.pipeline import WriteFontPipeline, EngineMode, PipelineResult
+except ImportError:
+    WriteFontPipeline = None  # type: ignore[assignment,misc]
+    EngineMode = None  # type: ignore[assignment,misc]
+    PipelineResult = None  # type: ignore[assignment,misc]
 
 __all__ = [
     "WriteFontPipeline",
