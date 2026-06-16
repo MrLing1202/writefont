@@ -54,16 +54,41 @@
 git clone https://github.com/MrLing1202/writefont.git
 cd writefont
 
-# 2. 安装依赖
+# 2. 安装核心引擎（私有包，需要 GitHub 访问权限）
+pip install git+https://github.com/MrLing1202/writefont-core.git
+
+# 3. 安装 UI 依赖
 pip install -r requirements.txt
 
-# 3. 一键启动
+# 4. 一键启动
 python start.py
 ```
 
 浏览器自动打开 `http://localhost:7860`，上传手写照片即可开始。
 
 > 💡 首次启动会自动检测环境并安装所需组件，无需手动配置。
+> ⚠️ `writefont-core` 是私有仓库，安装需要 GitHub 访问权限。
+
+## 📁 项目结构
+
+```
+writefont/          ← 本仓库（公开，MIT）
+├── src/writefont/
+│   ├── __main__.py     # CLI 入口
+│   ├── api/            # API 配置与 Provider 管理
+│   └── frontend/       # Gradio Web 前端
+├── configs/            # 默认配置文件
+└── tests/
+
+writefont-core/     ← 私有仓库（核心引擎）
+├── src/writefont_core/
+│   ├── pipeline.py     # 主流程管道
+│   ├── ocr/            # OCR 识别与预处理
+│   ├── style/          # 风格提取与迁移
+│   ├── generator/      # 扩散模型与渲染器
+│   ├── font/           # 字体打包与矢量化
+│   └── utils/          # 通用工具
+```
 
 ## 📚 使用指南
 
@@ -106,15 +131,11 @@ python start.py
 
 ## 📄 开源协议
 
-本项目基于 **[AGPL-3.0](LICENSE)** 开源。
+本项目 UI 层基于 **[MIT](LICENSE)** 开源。
 
-这意味着：
-- ✅ 可以自由使用、修改、分发
-- ✅ 可以用于个人和商业项目
-- ⚠️ **修改后的代码必须以相同协议开源**
-- ❌ **不允许闭源商用或私有化部署**
+核心引擎 (`writefont-core`) 为私有组件，采用独立许可协议。
 
-> 如果你需要商业授权，请联系作者。
+> 如果你需要商业授权或核心引擎访问，请联系作者。
 
 ---
 
