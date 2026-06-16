@@ -1,0 +1,26 @@
+# Flutter
+.dart_tool/
+.packages
+build/
+.pub/
+
+# Node (从 main 分支遗留)
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Secrets
+*.key
+*.pem
+*config*.json
