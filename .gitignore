@@ -1,21 +1,17 @@
-# Python
+# Dependencies
+node_modules/
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-*.egg
-dist/
-build/
-eggs/
-*.whl
-.eggs/
+*.pyc
+*.pyo
 
-# Virtual environments
-venv/
-.venv/
-ENV/
-env/
+# Build outputs
+dist/
+src-tauri/target/
+*.dmg
+*.msi
+*.exe
+*.deb
+*.AppImage
 
 # IDE
 .vscode/
@@ -24,39 +20,16 @@ env/
 *.swo
 *~
 
-# Jupyter
-.ipynb_checkpoints/
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
-outputs/
-*.ttf
-*.otf
-*.woff
-*.woff2
-*.log
-wandb/
-
-# Environment
+# Env
 .env
-*.env
+.env.local
+.env.*.local
 
-# Security - 永远不要提交密钥和配置
-*.key
-*.pem
-*config*.json
-!configs/*.yaml
-api_config.json
-writefont_config.json
-!.gitignore
-.env.*
-.venv*/
-node_modules/
-models/*.pth
-models/*.pt
-models/*.onnx
-*.sqlite
-*.db
+# Python
+.venv/
+venv/
+*.egg-info/

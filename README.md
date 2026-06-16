@@ -1,310 +1,249 @@
-# 手迹造字 (WriteFont)
+# 手迹造字 WriteFont 桌面客户端
 
-<div align="center">
+> 📝 拍照生成手写字体 — 支持 macOS、Windows、Linux
 
-**一个本地部署的AI应用，让用户通过手写50个汉字即可生成完整个人字体库**
+基于 [Tauri](https://tauri.app/) 构建的桌面客户端，调用 Python 核心引擎进行字体生成。
 
-[English](#english) | [中文](#中文)
+## 功能特性
 
-</div>
+- 🖼️ **拖拽上传** — 拖拽或点击上传手写汉字图片
+- ⚙️ **参数调节** — 笔画粗细、墨迹浓度、平滑度、字间距、基线偏移
+- 👁️ **实时预览** — 多尺寸、多文本实时预览字体效果
+- 📦 **导出 TTF** — 一键导出标准 TrueType 字体文件
+- 🎨 **水墨风格** — 精美的宣纸水墨 UI 主题
+- 🖥️ **跨平台** — 支持 macOS (.app)、Windows (.exe)、Linux
 
----
+## 技术栈
 
-## 中文
+| 层级 | 技术 |
+|------|------|
+| 前端 | React 18 + TypeScript + Vite + Tailwind CSS |
+| 后端 | Rust (Tauri 1.5) |
+| 引擎 | Python 3 (Pillow, fonttools) |
+| 样式 | Framer Motion + Lucide Icons |
 
-### 项目简介
+## 快速开始
 
-手迹造字（WriteFont）是一个开源的AI字体生成工具。用户只需拍照上传50个左右的手写汉字，系统会自动：
+### 环境要求
 
-1. OCR识别并提取手写汉字
-2. 分析并提取个人笔迹风格特征（200+维特征向量）
-3. 基于风格向量生成完整GB2312字符集（6,763字）
-4. 导出为TTF/OTF/WOFF格式字体文件
+- **Node.js** >= 18
+- **Rust** >= 1.70 (安装: https://rustup.rs)
+- **Python** >= 3.8
+- **系统依赖** (macOS): Xcode Command Line Tools
+- **系统依赖** (Linux): `sudo apt install libwebkit2gtk-4.0-dev build-essential libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
 
-**所有AI推理在本地完成，无需联网，保护用户隐私。**
-
-### 核心特性
-
-- 🔍 **高精度OCR**：基于PaddleOCR，手写汉字识别准确率99%+
-- 🎨 **风格提取**：自编码器提取200+维笔迹特征（笔锋、力度、连笔、结构）
-- 🤖 **AI生成**：基于扩散模型的字形生成，保持风格一致性
-- 📦 **字体打包**：支持TTF/OTF/WOFF格式，可直接安装使用
-- 💻 **本地部署**：完全离线运行，数据不离开用户设备
-- 🖥️ **Web界面**：基于Gradio的友好操作界面
-
-### 快速开始
-
-#### 环境要求
-
-- Python 3.10+
-- CUDA 11.8+（推荐，CPU也可运行但较慢）
-- 8GB+ RAM（推荐16GB）
-
-#### 安装
+### 安装依赖
 
 ```bash
-# 克隆项目
-git clone https://github.com/MrLing1202/writefont.git
-cd writefont
+# 1. 安装前端依赖
+npm install
 
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或 venv\Scripts\activate  # Windows
+# 2. 安装 Python 依赖
+pip install Pillow fonttools
 
-# 安装依赖
-pip install -e .
-
-# 安装PaddleOCR（可选，用于高精度OCR）
-pip install paddlepaddle paddleocr
+# 3. Cargo 依赖会自动安装
 ```
 
-#### 使用方法
-
-**方式一：Web界面（推荐）**
+### 开发模式
 
 ```bash
-writefont-ui
-# 或
-python -m writefont.frontend.app
+# 启动开发服务器（带热重载）
+npm run tauri:dev
 ```
 
-打开浏览器访问 `http://localhost:7860`
-
-**方式二：命令行**
+### 构建发布版
 
 ```bash
-# 图像预处理
-writefont preprocess --input photo.jpg --output processed/
-
-# OCR识别
-writefont ocr --input processed/ --output recognized.json
-
-# 风格提取
-writefont style --input recognized.json --output style_vector.pt
-
-# 字体生成
-writefont generate --style style_vector.pt --output font.ttf
-
-# 一键完成
-writefont run --input photo.jpg --output my_font.ttf
+npm run tauri:build
 ```
 
-**方式三：Python API**
+构建产物位置：
+
+| 平台 | 输出路径 |
+|------|---------|
+| macOS | `src-tauri/target/release/bundle/dmg/WriteFont_1.0.0_aarch64.dmg` |
+| macOS (app) | `src-tauri/target/release/bundle/macos/WriteFont.app` |
+| Windows | `src-tauri/target/release/bundle/msi/WriteFont_1.0.0_x64_en-US.msi` |
+| Windows (exe) | `src-tauri/target/release/bundle/nsis/WriteFont_1.0.0_x64-setup.exe` |
+| Linux (deb) | `src-tauri/target/release/bundle/deb/writefont-desktop_1.0.0_amd64.deb` |
+| Linux (AppImage) | `src-tauri/target/release/bundle/appimage/writefont-desktop_1.0.0_amd64.AppImage` |
+
+## 构建指南
+
+### macOS 构建 .app
+
+```bash
+# 确保已安装 Xcode Command Line Tools
+xcode-select --install
+
+# 安装 Rust 目标（Apple Silicon）
+rustup target add aarch64-apple-darwin
+
+# 构建
+npm run tauri:build
+
+# 输出: src-tauri/target/release/bundle/macos/WriteFont.app
+# DMG:  src-tauri/target/release/bundle/dmg/WriteFont_*.dmg
+```
+
+**代码签名（可选）：**
+
+```bash
+# 设置环境变量
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_CERTIFICATE="path/to/certificate.p12"
+export APPLE_CERTIFICATE_PASSWORD="password"
+
+npm run tauri:build
+```
+
+### Windows 构建 .exe
+
+```bash
+# 前置条件:
+# 1. 安装 Visual Studio Build Tools (C++ 工作负载)
+# 2. 安装 WebView2 (Windows 10+ 通常已预装)
+# 3. 安装 Rust: rustup-init.exe
+
+# 构建
+npm run tauri:build
+
+# 输出:
+# MSI:  src-tauri/target/release/bundle/msi/WriteFont_*.msi
+# EXE:  src-tauri/target/release/bundle/nsis/WriteFont_*-setup.exe
+```
+
+**交叉编译（macOS → Windows）：**
+
+```bash
+# 安装 Windows 目标
+rustup target add x86_64-pc-windows-msvc
+
+# 需要 Windows SDK 和交叉编译工具链
+# 推荐在 GitHub Actions 或 Windows 虚拟机中构建
+```
+
+### Linux 构建
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.0-dev \
+  build-essential \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev
+
+npm run tauri:build
+
+# 输出:
+# .deb:       src-tauri/target/release/bundle/deb/*.deb
+# AppImage:   src-tauri/target/release/bundle/appimage/*.AppImage
+```
+
+## Python 引擎集成
+
+桌面客户端通过 Tauri 的 Command 机制调用本地 Python 引擎：
+
+1. **开发模式**：直接调用项目根目录的 `src/writefont/` Python 模块
+2. **发布模式**：使用打包后的 Python 脚本或 sidecar
+
+### Python 依赖
+
+```bash
+pip install Pillow fonttools numpy
+```
+
+### 引擎接口
 
 ```python
-from writefont import WriteFontPipeline
+# src/writefont/core.py
+def process_character(image_data, char, stroke_width, smoothness, ink_density):
+    """处理单个字符图片"""
+    pass
 
-pipeline = WriteFontPipeline()
-result = pipeline.run(
-    input_path="photo.jpg",
-    output_path="my_font.ttf",
-    charset="gb2312"
-)
-print(f"字体已生成: {result.font_path}")
+# src/writefont/font_generator.py
+def generate_ttf(characters, params, font_name, author, output_dir):
+    """生成 TTF 字体文件"""
+    pass
 ```
 
-### 技术原理
-
-#### 1. 图像预处理
+## 项目结构
 
 ```
-原始照片 → 透视矫正 → 去噪 → 二值化 → 字符分割 → 归一化
+writefont-desktop/
+├── src/                    # React 前端源码
+│   ├── components/         # UI 组件
+│   │   ├── TitleBar.tsx    # 自定义标题栏
+│   │   ├── StepIndicator.tsx # 步骤指示器
+│   │   ├── UploadPanel.tsx # 上传面板
+│   │   ├── AdjustPanel.tsx # 参数调整面板
+│   │   ├── PreviewPanel.tsx # 预览面板
+│   │   └── ExportPanel.tsx # 导出面板
+│   ├── hooks/              # 自定义 Hooks
+│   │   ├── useWriteFont.ts # 字体生成 API
+│   │   └── useAppState.ts  # 应用状态管理
+│   ├── types/              # TypeScript 类型
+│   ├── styles/             # 全局样式
+│   ├── App.tsx             # 根组件
+│   └── main.tsx            # 入口文件
+├── src-tauri/              # Tauri 后端 (Rust)
+│   ├── src/
+│   │   └── main.rs         # Rust 主程序
+│   ├── Cargo.toml          # Rust 依赖
+│   ├── tauri.conf.json     # Tauri 配置
+│   └── icons/              # 应用图标
+├── package.json
+├── vite.config.ts
+├── tailwind.config.js
+└── README.md
 ```
 
-- 使用OpenCV进行透视矫正（检测纸张边缘）
-- 自适应阈值二值化处理
-- 连通域分析进行字符分割
-- 归一化到统一尺寸（64x64或128x128）
+## UI 主题
 
-#### 2. OCR识别
+采用中国传统水墨风格设计：
 
-```
-分割后的字符图像 → CRNN/PaddleOCR → 文字标签
-```
+- **宣纸底色** `#fdf9f3` — 模拟宣纸质感
+- **墨色系** `#2e211c` ~ `#a88666` — 从浓墨到淡墨
+- **米字格背景** — 书法练习格辅助线
+- **毛笔字体** — 使用马善政毛笔行书
+- **印章元素** — 红色篆刻风格装饰
 
-- 主要方案：PaddleOCR（预训练模型，开箱即用）
-- 备选方案：自训练CRNN模型（针对手写汉字优化）
-- 支持置信度过滤和人工校正
+## 常见问题
 
-#### 3. 风格提取
-
-```
-50个样本字符 → 卷积编码器 → 200维风格向量
-```
-
-- 使用变分自编码器（VAE）架构
-- 编码器提取笔迹风格特征
-- 特征维度：笔锋粗细、起笔收笔、连笔习惯、结构比例、墨迹浓淡
-- 解码器用于验证风格重建质量
-
-#### 4. 字体生成
-
-```
-风格向量 + 目标字符编码 → 扩散模型 → 字形图像
-```
-
-- 基于条件扩散模型（Conditional Diffusion Model）
-- 风格向量作为条件输入
-- 字符编码（Unicode/GB2312）控制生成内容
-- 生成64x64字形图像，可超分辨率到更高分辨率
-
-#### 5. 字体打包
-
-```
-字形图像 → 轮廓提取 → 矢量化 → FontTools → TTF/OTF
-```
-
-- 使用Potrace或自实现的轮廓追踪算法
-- FontTools进行字体文件组装
-- 自动生成字距调整（kerning）表
-- 支持TTF、OTF、WOFF、WOFF2格式
-
-### 项目结构
-
-```
-writefont/
-├── README.md                    # 项目说明
-├── LICENSE                      # MIT License
-├── setup.py                     # 安装配置
-├── pyproject.toml               # 项目元数据
-├── requirements.txt             # 依赖列表
-├── configs/
-│   └── default.yaml             # 默认配置
-├── src/
-│   └── writefont/
-│       ├── __init__.py          # 包入口
-│       ├── pipeline.py          # 主流程管道
-│       ├── ocr/
-│       │   ├── __init__.py
-│       │   ├── recognizer.py    # OCR识别器
-│       │   └── preprocessor.py  # 图像预处理
-│       ├── style/
-│       │   ├── __init__.py
-│       │   ├── extractor.py     # 风格提取器
-│       │   ├── model.py         # VAE模型
-│       │   └── features.py      # 特征定义
-│       ├── generator/
-│       │   ├── __init__.py
-│       │   ├── diffusion.py     # 扩散模型
-│       │   └── renderer.py      # 字形渲染
-│       ├── font/
-│       │   ├── __init__.py
-│       │   ├── packager.py      # 字体打包
-│       │   └── vectorizer.py    # 矢量化
-│       ├── utils/
-│       │   ├── __init__.py
-│       │   ├── charset.py       # 字符集工具
-│       │   └── image.py         # 图像工具
-│       └── frontend/
-│           ├── __init__.py
-│           └── app.py           # Gradio界面
-├── tests/
-│   ├── __init__.py
-│   ├── test_preprocessor.py
-│   ├── test_ocr.py
-│   ├── test_style.py
-│   ├── test_generator.py
-│   └── test_font.py
-├── docs/
-│   ├── architecture.md          # 架构文档
-│   ├── training.md              # 训练指南
-│   └── api.md                   # API文档
-└── examples/
-    └── sample_input/            # 示例输入
-```
-
-### 配置说明
-
-编辑 `configs/default.yaml` 自定义参数：
-
-```yaml
-# 预处理
-preprocessing:
-  target_size: 128
-  binarization_threshold: 128
-  denoise_strength: 3
-
-# OCR
-ocr:
-  engine: paddleocr  # paddleocr / crnn
-  confidence_threshold: 0.8
-  language: ch
-
-# 风格提取
-style:
-  feature_dim: 200
-  model_path: models/style_vae.pth
-
-# 字体生成
-generator:
-  model_type: diffusion  # diffusion / gan
-  num_inference_steps: 50
-  guidance_scale: 7.5
-
-# 输出
-output:
-  formats: [ttf, otf, woff]
-  resolution: 256
-```
-
-### 常见问题
-
-**Q: 需要多少手写样本？**
-A: 建议50个汉字，覆盖基本笔画和结构。最少30个，最多100个。
-
-**Q: 支持哪些语言？**
-A: 目前仅支持简体中文（GB2312字符集），未来计划支持繁体中文和日文。
-
-**Q: 生成一个字体需要多长时间？**
-A: GPU约10-30分钟，CPU约2-6小时（6763字）。
-
-**Q: 字体质量如何？**
-A: 常用字（约3000字）质量较高，生僻字可能略有瑕疵。建议人工校对后使用。
-
-### 贡献指南
-
-欢迎贡献！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解详情。
-
-### 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE)。
-
----
-
-## English
-
-### Introduction
-
-WriteFont is an open-source AI font generation tool. Users only need to photograph and upload about 50 handwritten Chinese characters, and the system will automatically:
-
-1. OCR recognize and extract handwritten characters
-2. Analyze and extract personal handwriting style features (200+ dimensional feature vector)
-3. Generate complete GB2312 character set (6,763 characters) based on style vector
-4. Export as TTF/OTF/WOFF format font files
-
-**All AI inference is completed locally, no internet required, protecting user privacy.**
-
-### Key Features
-
-- 🔍 **High-precision OCR**: Based on PaddleOCR, 99%+ accuracy for handwritten Chinese characters
-- 🎨 **Style Extraction**: Autoencoder extracts 200+ dimensional handwriting features
-- 🤖 **AI Generation**: Diffusion model-based glyph generation with style consistency
-- 📦 **Font Packaging**: Supports TTF/OTF/WOFF formats, directly installable
-- 💻 **Local Deployment**: Fully offline, data never leaves user device
-- 🖥️ **Web Interface**: Friendly Gradio-based UI
-
-### Quick Start
+### Python 找不到？
 
 ```bash
-git clone https://github.com/MrLing1202/writefont.git
-cd writefont
-python -m venv venv
-source venv/bin/activate
-pip install -e .
-writefont-ui
+# 检查 Python 路径
+which python3
+
+# 确保在 PATH 中
+echo $PATH
+
+# 或在 tauri.conf.json 中配置绝对路径
 ```
 
-### License
+### 构建失败？
 
-MIT License. See [LICENSE](LICENSE) for details.
+```bash
+# 清理缓存
+rm -rf src-tauri/target
+rm -rf node_modules
+npm install
+npm run tauri:build
+```
+
+### Windows 上 WebView2 缺失？
+
+Windows 10 1803+ 通常已预装。如果缺失，从 [Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) 下载安装。
+
+## License
+
+MIT License
+
+## 致谢
+
+- [Tauri](https://tauri.app/) — 跨平台桌面框架
+- [手迹造字](https://github.com/MrLing1202/writefont) — Python 核心引擎
+- [Tailwind CSS](https://tailwindcss.com/) — UI 样式框架

@@ -1,0 +1,171 @@
+@import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink-primary: #2e211c;
+  --ink-secondary: #574237;
+  --paper-bg: #fdf9f3;
+  --xuan-bg: #1a1a1a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--paper-bg);
+  color: var(--ink-primary);
+  font-family: 'Noto Serif SC', 'Source Han Serif SC', STSong, serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdbba5;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a88666;
+}
+
+/* Ink brush animation */
+@keyframes inkDrop {
+  0% {
+    transform: scale(0);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-ink-drop {
+  animation: inkDrop 0.6s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Xuan paper grid background */
+.xuan-paper {
+  background-color: #fdf9f3;
+  background-image:
+    linear-gradient(rgba(200, 180, 160, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 180, 160, 0.15) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* Ink wash gradient */
+.ink-wash {
+  background: linear-gradient(135deg, #2e211c 0%, #574237 30%, #815f4b 60%, #a88666 100%);
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(253, 249, 243, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(200, 180, 160, 0.3);
+}
+
+/* Range slider custom styles */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: linear-gradient(to right, #cdbba5, #574237);
+  border-radius: 2px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #574237;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: transform 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* Button ink effect */
+.btn-ink {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.btn-ink::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.btn-ink:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* Seal stamp effect */
+.seal-stamp {
+  border: 2px solid #c23a2b;
+  color: #c23a2b;
+  padding: 4px 8px;
+  font-family: 'Ma Shan Zheng', cursive;
+  transform: rotate(-5deg);
+  position: relative;
+}
+
+.seal-stamp::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 40%, transparent 60%, rgba(194, 58, 43, 0.1) 100%);
+}
