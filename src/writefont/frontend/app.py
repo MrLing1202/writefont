@@ -849,56 +849,130 @@ def create_app() -> gr.Blocks:
             with gr.Tab("⚙️ 设置", id="tab_settings"):
                 gr.HTML('<div class="ink-section-title">⚙️ API 服务配置</div>')
 
-                api_providers = [
-                    ("MiMo (小米)", "mimo", "https://api.mimo.ai/v1"),
-                    ("OpenAI", "openai", "https://api.openai.com/v1"),
-                    ("通义千问", "qwen", "https://dashscope.aliyuncs.com/api/v1"),
-                    ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
-                    ("自定义", "custom", ""),
-                ]
-
-                api_components: Dict[str, Dict[str, Any]] = {}
-
-                for display_name, key, default_url in api_providers:
+                # ----------------------------------------------------------
+                # 🆓 免费方案区域（醒目展示，默认展开）
+                # ----------------------------------------------------------
+                with gr.Accordion("🆓 免费方案 — 装好即用", open=True):
+                    # --- 智谱AI ---
+                    gr.Markdown(
+                        "**🏆 智谱AI（推荐）** — 永久免费 GLM-4V-Flash 视觉模型，注册即用 → [open.bigmodel.cn](https://open.bigmodel.cn)",
+                        elem_classes=["ink-text"],
+                    )
                     with gr.Row():
-                        gr.Markdown(
-                            f"**{display_name}**",
-                            elem_classes=["ink-text"],
-                        )
-                        api_key = gr.Textbox(
-                            label=f"{display_name} API Key",
-                            placeholder="sk-...",
+                        zhipu_api_key = gr.Textbox(
+                            label="智谱AI API Key",
+                            placeholder="注册后粘贴API Key，格式: xxxxxx.xxx",
                             type="password",
-                            scale=2,
+                            scale=3,
                         )
-                        base_url = gr.Textbox(
-                            label="Base URL",
-                            value=default_url,
-                            scale=2,
-                        )
-                        model_name = gr.Textbox(
-                            label="模型",
-                            placeholder="model-name",
-                            scale=1,
-                        )
-                        test_btn = gr.Button(
-                            "🔌 测试",
+                        zhipu_register_btn = gr.Button(
+                            "🔗 注册获取",
                             elem_classes=["btn-secondary"],
                             scale=0,
                         )
-                        enabled = gr.Checkbox(
-                            label="启用",
-                            value=False,
+                        zhipu_test_btn = gr.Button(
+                            "🔌 测试连接",
+                            elem_classes=["btn-secondary"],
                             scale=0,
                         )
-                    api_components[key] = {
-                        "api_key": api_key,
-                        "base_url": base_url,
-                        "model": model_name,
-                        "enabled": enabled,
-                        "test_btn": test_btn,
-                    }
 
+                    gr.Markdown("---")
+
+                    # --- Ollama ---
+                    gr.Markdown(
+                        "**🦙 Ollama（本地）** — 完全本地运行，无需联网 → [ollama.com](https://ollama.com) 下载安装",
+                        elem_classes=["ink-text"],
+                    )
+                    with gr.Row():
+                        ollama_model = gr.Textbox(
+                            label="模型名",
+                            value="llama3.2-vision",
+                            placeholder="llama3.2-vision",
+                            scale=3,
+                        )
+                        ollama_test_btn = gr.Button(
+                            "🔌 测试连接",
+                            elem_classes=["btn-secondary"],
+                            scale=0,
+                        )
+
+                    gr.Markdown("---")
+
+                    # --- 硅基流动 ---
+                    gr.Markdown(
+                        "**☁️ 硅基流动** — 国内直连，免费tier → [siliconflow.cn](https://siliconflow.cn)",
+                        elem_classes=["ink-text"],
+                    )
+                    with gr.Row():
+                        siliconflow_api_key = gr.Textbox(
+                            label="硅基流动 API Key",
+                            placeholder="sk-...",
+                            type="password",
+                            scale=3,
+                        )
+                        siliconflow_test_btn = gr.Button(
+                            "🔌 测试连接",
+                            elem_classes=["btn-secondary"],
+                            scale=0,
+                        )
+
+                # ----------------------------------------------------------
+                # 💰 付费方案区域（折叠，默认关闭）
+                # ----------------------------------------------------------
+                with gr.Accordion("💰 更多服务商（需要付费）", open=False):
+                    api_providers = [
+                        ("MiMo (小米)", "mimo", "https://api.mimo.ai/v1"),
+                        ("OpenAI", "openai", "https://api.openai.com/v1"),
+                        ("通义千问", "qwen", "https://dashscope.aliyuncs.com/api/v1"),
+                        ("DeepSeek", "deepseek", "https://api.deepseek.com/v1"),
+                        ("自定义", "custom", ""),
+                    ]
+
+                    api_components: Dict[str, Dict[str, Any]] = {}
+
+                    for display_name, key, default_url in api_providers:
+                        with gr.Row():
+                            gr.Markdown(
+                                f"**{display_name}**",
+                                elem_classes=["ink-text"],
+                            )
+                            api_key = gr.Textbox(
+                                label=f"{display_name} API Key",
+                                placeholder="sk-...",
+                                type="password",
+                                scale=2,
+                            )
+                            base_url = gr.Textbox(
+                                label="Base URL",
+                                value=default_url,
+                                scale=2,
+                            )
+                            model_name = gr.Textbox(
+                                label="模型",
+                                placeholder="model-name",
+                                scale=1,
+                            )
+                            test_btn = gr.Button(
+                                "🔌 测试",
+                                elem_classes=["btn-secondary"],
+                                scale=0,
+                            )
+                            enabled = gr.Checkbox(
+                                label="启用",
+                                value=False,
+                                scale=0,
+                            )
+                        api_components[key] = {
+                            "api_key": api_key,
+                            "base_url": base_url,
+                            "model": model_name,
+                            "enabled": enabled,
+                            "test_btn": test_btn,
+                        }
+
+                # ----------------------------------------------------------
+                # 全局操作按钮
+                # ----------------------------------------------------------
                 with gr.Row():
                     save_config_btn = gr.Button(
                         "💾 保存配置",
@@ -914,6 +988,9 @@ def create_app() -> gr.Blocks:
                     elem_classes=["ink-text"],
                 )
 
+                # ----------------------------------------------------------
+                # ℹ️ 系统信息
+                # ----------------------------------------------------------
                 gr.HTML('<div class="ink-section-title">ℹ️ 系统信息</div>')
                 sys_info_btn = gr.Button(
                     "🔄 刷新系统信息",
@@ -961,6 +1038,14 @@ def create_app() -> gr.Blocks:
             fn=WriteFontApp.get_system_info,
             inputs=[],
             outputs=[sys_info_display],
+        )
+
+        # Tab 5: 智谱AI 注册按钮（打开新窗口）
+        zhipu_register_btn.click(
+            fn=None,
+            inputs=[],
+            outputs=[],
+            js="() => { window.open('https://open.bigmodel.cn', '_blank'); return []; }",
         )
 
         # 保存配置 & 测试连接（占位逻辑）

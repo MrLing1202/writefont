@@ -16,8 +16,11 @@ from .providers import (
     CustomProvider,
     DeepSeekProvider,
     MiMoProvider,
+    OllamaProvider,
     OpenAIProvider,
     QwenProvider,
+    SiliconFlowProvider,
+    ZhipuAIProvider,
 )
 
 _CONFIG_DIR = Path.home() / ".writefont"
@@ -29,6 +32,9 @@ _PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
     "qwen": QwenProvider,
     "deepseek": DeepSeekProvider,
     "custom": CustomProvider,
+    "zhipuai": ZhipuAIProvider,
+    "siliconflow": SiliconFlowProvider,
+    "ollama": OllamaProvider,
 }
 
 
@@ -159,7 +165,7 @@ class APIConfigManager:
 
         Returns:
             List of dicts with keys ``name``, ``configured`` (bool),
-            ``enabled`` (bool).
+            ``enabled`` (bool), ``free`` (bool), ``description`` (str).
         """
         providers = self.load_providers()
         result: list[dict[str, Any]] = []
@@ -171,6 +177,40 @@ class APIConfigManager:
                     "enabled": entry.get("enabled", True),
                 }
             )
+
+        # 免费Provider — 即使用户没配置也要显示
+        free_providers = {
+            "zhipuai": {
+                "name": "智谱AI (免费)",
+                "configured": False,
+                "free": True,
+                "description": "永久免费，注册即用",
+            },
+            "siliconflow": {
+                "name": "硅基流动 (免费)",
+                "configured": False,
+                "free": True,
+                "description": "国内直连，免费tier",
+            },
+            "ollama": {
+                "name": "Ollama (本地)",
+                "configured": False,
+                "free": True,
+                "description": "完全本地，无需联网",
+            },
+        }
+
+        existing_names = {r["name"] for r in result}
+        for name, info in free_providers.items():
+            if name not in existing_names:
+                result.append(info)
+            else:
+                # 已配置的免费provider也标记free
+                for r in result:
+                    if r["name"] == name:
+                        r.setdefault("free", True)
+                        r.setdefault("description", info["description"])
+
         return result
 
     def delete_provider(self, name: str) -> None:

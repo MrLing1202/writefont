@@ -28,9 +28,13 @@ class BaseProvider(ABC):
     default_model: str
     api_key: str
 
+    default_base_url: str = ""
+
     def __init__(self, api_key: str, base_url: str = "", default_model: str = "") -> None:
         self.api_key = api_key
-        if base_url:
+        if hasattr(self, "default_base_url") and self.default_base_url:
+            self.base_url = base_url or self.default_base_url
+        elif base_url:
             self.base_url = base_url
         if default_model:
             self.default_model = default_model
@@ -252,6 +256,96 @@ class CustomProvider(BaseProvider):
         if not base_url:
             raise ValueError("CustomProvider requires a base_url")
         super().__init__(api_key=api_key, base_url=base_url, default_model=model)
+
+    def chat_completion(self, messages: list[dict[str, Any]], model: str = "") -> str:
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+        }
+        return self._post_chat(payload)
+
+    def vision_completion(
+        self, image_path_or_b64: str, prompt: str, model: str = ""
+    ) -> str:
+        messages = self._build_image_content(image_path_or_b64, prompt)
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+        }
+        return self._post_chat(payload)
+
+
+class ZhipuAIProvider(BaseProvider):
+    """智谱AI (ZhipuAI) API provider — 永久免费视觉模型。
+
+    GLM-4-Flash 永久免费，无需信用卡，注册即用，支持图片理解。
+    """
+
+    default_base_url = "https://open.bigmodel.cn/api/paas/v4"
+    default_model = "glm-4v-flash"
+
+    def __init__(self, api_key: str, model: str = "", base_url: str = "") -> None:
+        super().__init__(api_key=api_key, base_url=base_url, default_model=model or self.default_model)
+
+    def chat_completion(self, messages: list[dict[str, Any]], model: str = "") -> str:
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+        }
+        return self._post_chat(payload)
+
+    def vision_completion(
+        self, image_path_or_b64: str, prompt: str, model: str = ""
+    ) -> str:
+        messages = self._build_image_content(image_path_or_b64, prompt)
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+        }
+        return self._post_chat(payload)
+
+
+class SiliconFlowProvider(BaseProvider):
+    """硅基流动 (SiliconFlow) API provider — 免费tier视觉模型。
+
+    国内直连，免费tier支持视觉模型。
+    """
+
+    default_base_url = "https://api.siliconflow.cn/v1"
+    default_model = "Qwen/Qwen2.5-VL-72B-Instruct"
+
+    def __init__(self, api_key: str, model: str = "", base_url: str = "") -> None:
+        super().__init__(api_key=api_key, base_url=base_url, default_model=model or self.default_model)
+
+    def chat_completion(self, messages: list[dict[str, Any]], model: str = "") -> str:
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+        }
+        return self._post_chat(payload)
+
+    def vision_completion(
+        self, image_path_or_b64: str, prompt: str, model: str = ""
+    ) -> str:
+        messages = self._build_image_content(image_path_or_b64, prompt)
+        payload = {
+            "model": model or self.default_model,
+            "messages": messages,
+        }
+        return self._post_chat(payload)
+
+
+class OllamaProvider(BaseProvider):
+    """Ollama local provider — 完全免费，无需API key，无需联网。
+
+    默认连接 http://localhost:11434/v1，使用 llama3.2-vision 视觉模型。
+    """
+
+    default_base_url = "http://localhost:11434/v1"
+    default_model = "llama3.2-vision"
+
+    def __init__(self, api_key: str = "ollama", model: str = "", base_url: str = "") -> None:
+        super().__init__(api_key=api_key or "ollama", base_url=base_url, default_model=model or self.default_model)
 
     def chat_completion(self, messages: list[dict[str, Any]], model: str = "") -> str:
         payload = {

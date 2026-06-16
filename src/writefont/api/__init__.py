@@ -10,8 +10,11 @@ from .providers import (
     CustomProvider,
     DeepSeekProvider,
     MiMoProvider,
+    OllamaProvider,
     OpenAIProvider,
     QwenProvider,
+    SiliconFlowProvider,
+    ZhipuAIProvider,
 )
 
 __all__ = [
@@ -20,6 +23,9 @@ __all__ = [
     "CustomProvider",
     "DeepSeekProvider",
     "MiMoProvider",
+    "OllamaProvider",
     "OpenAIProvider",
     "QwenProvider",
+    "SiliconFlowProvider",
+    "ZhipuAIProvider",
 ]

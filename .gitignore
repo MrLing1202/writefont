@@ -43,3 +43,20 @@ wandb/
 # Environment
 .env
 *.env
+
+# Security - 永远不要提交密钥和配置
+*.key
+*.pem
+*config*.json
+!configs/*.yaml
+api_config.json
+writefont_config.json
+!.gitignore
+.env.*
+.venv*/
+node_modules/
+models/*.pth
+models/*.pt
+models/*.onnx
+*.sqlite
+*.db
