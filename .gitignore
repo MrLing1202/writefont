@@ -60,3 +60,10 @@ models/*.pt
 models/*.onnx
 *.sqlite
 *.db
+node_modules/
+dist/
+build/
+.dart_tool/
+__pycache__/
+*.pyc
+.DS_Store
