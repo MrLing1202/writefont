@@ -4,3 +4,9 @@ build/
 .dart_tool/
 .packages
 *.lock
+
+# Flutter build
+build/
+.dart_tool/
+*.apk
+*.aab
