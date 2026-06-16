@@ -56,7 +56,7 @@ setup(
     entry_points={
         "console_scripts": [
             "writefont=writefont.__main__:main",
-            "writefont-ui=writefont.ui.app:main",
+            "writefont-ui=writefont.frontend.app:main",
         ],
     },
 )

@@ -2,68 +2,55 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 *.egg-info/
-*.egg
 dist/
 build/
-eggs/
-*.whl
+*.egg
 .eggs/
+*.whl
 
 # Virtual environments
-venv/
 .venv/
-ENV/
+venv/
 env/
+ENV/
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
-
-# Jupyter
-.ipynb_checkpoints/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
-outputs/
+# Node.js (if any frontend build)
+node_modules/
+package-lock.json
+
+# Secrets
+*.key
+*.pem
+*.p12
+.env
+.env.local
+
+# Model files (large, don't commit)
+models/*.pth
+models/*.pt
+models/*.onnx
+models/*.bin
+
+# Output
+output/
 *.ttf
 *.otf
 *.woff
 *.woff2
+
+# Temp
+/tmp/
+*.tmp
 *.log
-wandb/
-
-# Environment
-.env
-*.env
-
-# Security - 永远不要提交密钥和配置
-*.key
-*.pem
-*config*.json
-!configs/*.yaml
-api_config.json
-writefont_config.json
-!.gitignore
-.env.*
-.venv*/
-node_modules/
-models/*.pth
-models/*.pt
-models/*.onnx
-*.sqlite
-*.db
-node_modules/
-dist/
-build/
-.dart_tool/
-__pycache__/
-*.pyc
-.DS_Store

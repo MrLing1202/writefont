@@ -12,37 +12,54 @@ preprocessing:
 # OCR识别
 ocr:
   engine: paddleocr         # paddleocr / crnn
-  confidence_threshold: 0.8 # 置信度过滤阈值
+  min_confidence: 0.7       # 置信度过滤阈值
   language: ch              # 语言
-  use_gpu: true             # 是否使用GPU
 
 # 风格提取
 style:
   feature_dim: 200          # 风格向量维度
-  model_path: models/style_vae.pth  # 预训练模型路径
-  batch_size: 32            # 批处理大小
-  num_samples: 50           # 建议样本数量
+  latent_dim: 200           # 潜在空间维度
+  model_path: null          # 预训练模型路径，null 表示随机初始化
+  device: auto              # auto / cpu / cuda
+  image_size: 128           # 输入图像尺寸
 
 # 字体生成
 generator:
   model_type: diffusion     # diffusion / gan
-  model_path: models/diffusion_glyph.pth
+  model_path: null          # 预训练模型路径
+  img_size: 64              # 生成图像尺寸
+  img_channels: 1
+  style_dim: 200
+  char_vocab_size: 8000
+  char_emb_dim: 256
+  num_diffusion_steps: 1000
   num_inference_steps: 50   # 扩散推理步数
-  guidance_scale: 7.5       # 引导强度
-  image_size: 64            # 生成图像尺寸
+
+# 字形渲染
+renderer:
+  target_size: [128, 128]
+  threshold_method: otsu    # otsu / adaptive
+
+# 矢量化
+vectorizer:
+  simplify_epsilon: 1.0
+  upsample: 2
 
 # 字体打包
+packager:
+  font_name: "MyHandwriting"
+  family_name: "My Handwriting"
+  style_name: "Regular"
+  units_per_em: 1000
+  ascent: 800
+  descent: -200
+  img_size: 128
+
+# 输出
 output:
   formats:                  # 输出格式
     - ttf
-    - otf
-    - woff
-  resolution: 256           # 输出分辨率
   font_name: "MyHandwriting"
-  font_family: "My Handwriting"
-  em_size: 1000             # EM square 大小
-  ascent: 800
-  descent: -200
 
 # Gradio界面
 frontend:

@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from fontTools.fontBuilder import FontBuilder
-from fontTools.pens.t2Pen import T2Pen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
@@ -151,8 +150,11 @@ class FontPackager:
 
         # Compute LSB if not provided
         if left_side_bearing is None:
-            bounds = glyph.getBounds(self._get_fake_glyph_set())
-            left_side_bearing = int(bounds[0]) if bounds else 0
+            coords = glyph.coordinates
+            if len(coords) > 0:
+                left_side_bearing = int(min(c[0] for c in coords))
+            else:
+                left_side_bearing = 0
 
         self._metrics[unicode_val] = (advance_width, left_side_bearing)
 
@@ -253,7 +255,7 @@ class FontPackager:
         )
 
         # OS/2
-        builder.setupOs2(
+        builder.setupOS2(
             sTypoAscender=self.ascent,
             sTypoDescender=self.descent,
             sTypoLineGap=0,
@@ -316,10 +318,6 @@ class FontPackager:
         pen.closePath()
         self._notdef_glyph = pen.glyph()
         return self._notdef_glyph
-
-    def _get_fake_glyph_set(self) -> dict:
-        """Minimal glyph set for bounding-box queries."""
-        return {".notdef": self._get_notdef_glyph()}
 
     def _add_kern_table(self, font: TTFont) -> None:
         """Attach a ``kern`` table with the stored kerning pairs."""

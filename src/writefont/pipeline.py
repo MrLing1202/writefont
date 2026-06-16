@@ -1191,6 +1191,7 @@ class WriteFontPipeline:
             return {"glyphs": {}, "count": 0}
 
         try:
+            import cv2
             import numpy as np
 
             glyphs: Dict[int, Any] = {}
@@ -1203,15 +1204,17 @@ class WriteFontPipeline:
                 except ValueError:
                     continue
 
-                # 读取图像
+                # 读取图像并转为灰度
                 try:
-                    img = np.array(
-                        __import__("PIL.Image", fromlist=["Image"])
-                        .open(str(path))
-                        .convert("L")
-                    )
+                    from PIL import Image as PILImage
+                    pil_img = PILImage.open(str(path)).convert("L")
+                    img = np.array(pil_img)
                 except Exception:
                     continue
+
+                # 二值化（确保输入是二值图像）
+                if img.max() > 1:
+                    _, img = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY)
 
                 # 矢量化
                 contours = self.vectorizer.vectorize(img)
@@ -1387,8 +1390,10 @@ class WriteFontPipeline:
             chars_to_generate = self._get_charset_chars(charset)
 
             if use_demo:
+                # Demo 模式只生成少量字符用于预览
+                demo_chars = chars_to_generate[:50]
                 glyph_paths = self.demo_provider.demo_generate_glyphs(
-                    chars_to_generate,
+                    demo_chars,
                     Path(tempfile.mkdtemp(prefix="writefont_demo_")),
                 )
             else:
@@ -1433,6 +1438,211 @@ class WriteFontPipeline:
             f"生成 {result.char_count} 个字形"
         )
         return result
+
+    # ------------------------------------------------------------------
+    #  高层封装方法 (供前端 app.py 和 __main__.py 调用)
+    # ------------------------------------------------------------------
+
+    def preprocess(
+        self, input_path: str, output_dir: str
+    ) -> Dict[str, Any]:
+        """对输入图片进行预处理并保存结果。
+
+        Args:
+            input_path: 输入图片路径。
+            output_dir: 输出目录。
+
+        Returns:
+            包含 output_dir 和 char_count 的结果字典。
+        """
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if self.preprocessor is not None:
+                regions = self.preprocessor.preprocess_pipeline(
+                    input_path,
+                    do_perspective=True,
+                    do_denoise=True,
+                    do_binarize=True,
+                    do_segment=True,
+                    do_normalize=True,
+                )
+                # 保存分割后的字符图片
+                for i, region in enumerate(regions):
+                    from PIL import Image as PILImage
+                    char_path = output_path / f"char_{i:04d}.png"
+                    PILImage.fromarray(region.image).save(str(char_path))
+
+                return {
+                    "output_dir": str(output_path),
+                    "char_count": len(regions),
+                }
+            else:
+                # 预处理器不可用时，简单复制原图
+                import shutil
+                dst = output_path / Path(input_path).name
+                shutil.copy2(input_path, str(dst))
+                return {"output_dir": str(output_path), "char_count": 0}
+        except Exception as e:
+            logger.warning(f"预处理失败: {e}")
+            return {"output_dir": str(output_path), "char_count": 0}
+
+    def recognize(
+        self, input_path: str, output_path: str
+    ) -> Dict[str, Any]:
+        """对图片或目录进行 OCR 识别并保存结果。
+
+        Args:
+            input_path: 输入图片路径或目录。
+            output_path: 输出 JSON 文件路径。
+
+        Returns:
+            包含 total, avg_confidence, output_path 的结果字典。
+        """
+        input_p = Path(input_path)
+        output_p = Path(output_path)
+        output_p.parent.mkdir(parents=True, exist_ok=True)
+
+        all_results: List[Dict[str, Any]] = []
+
+        try:
+            if input_p.is_dir():
+                # 批量识别目录中的图片
+                for img_file in sorted(input_p.glob("*.png")):
+                    chars = self.ocr_step(str(img_file))
+                    all_results.extend(chars)
+            else:
+                all_results = self.ocr_step(str(input_p))
+
+            avg_conf = (
+                sum(c.get("confidence", 0) for c in all_results)
+                / max(len(all_results), 1)
+            )
+
+            # 保存结果
+            result_data = {
+                "characters": [
+                    {
+                        "char": c.get("char", ""),
+                        "confidence": c.get("confidence", 0),
+                        "position": c.get("bbox", []),
+                    }
+                    for c in all_results
+                ],
+                "total": len(all_results),
+                "avg_confidence": avg_conf,
+            }
+            import json as json_mod
+            with open(str(output_p), "w", encoding="utf-8") as f:
+                json_mod.dump(result_data, f, ensure_ascii=False, indent=2)
+
+            return {
+                "total": len(all_results),
+                "avg_confidence": avg_conf,
+                "output_path": str(output_p),
+            }
+        except Exception as e:
+            logger.warning(f"识别失败: {e}")
+            return {"total": 0, "avg_confidence": 0.0, "output_path": str(output_p)}
+
+    def extract_style(
+        self, input_path: str, output_path: str
+    ) -> Dict[str, Any]:
+        """从 OCR 结果中提取风格向量并保存。
+
+        Args:
+            input_path: OCR 结果 JSON 路径。
+            output_path: 输出风格向量文件路径。
+
+        Returns:
+            包含 feature_dim 和 output_path 的结果字典。
+        """
+        output_p = Path(output_path)
+        output_p.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # 读取 OCR 结果
+            import json as json_mod
+            with open(input_path, "r", encoding="utf-8") as f:
+                ocr_data = json_mod.load(f)
+
+            characters_data = ocr_data.get("characters", [])
+            style_result = self.style_step(characters_data)
+            style_vector = style_result.get("style_vector") or [0.0] * 200
+
+            # 保存
+            save_data = {
+                "style_vector": style_vector,
+                "feature_dim": len(style_vector),
+                "source": style_result.get("source", "unknown"),
+            }
+            with open(str(output_p), "w", encoding="utf-8") as f:
+                json_mod.dump(save_data, f, ensure_ascii=False, indent=2)
+
+            return {
+                "feature_dim": len(style_vector),
+                "output_path": str(output_p),
+            }
+        except Exception as e:
+            logger.warning(f"风格提取失败: {e}")
+            return {"feature_dim": 0, "output_path": str(output_p)}
+
+    def generate_font(
+        self,
+        style_path: str,
+        output_dir: str,
+        charset: str = "common_3500",
+    ) -> Dict[str, Any]:
+        """生成字体文件。
+
+        Args:
+            style_path: 风格向量文件路径。
+            output_dir: 输出目录。
+            charset: 字符集名称。
+
+        Returns:
+            包含 font_path, char_count, output_dir 的结果字典。
+        """
+        output_p = Path(output_dir)
+        output_p.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # 读取风格向量
+            import json as json_mod
+            with open(style_path, "r", encoding="utf-8") as f:
+                style_data = json_mod.load(f)
+            style_vector = style_data.get("style_vector", [0.0] * 200)
+
+            # 获取字符集
+            chars = self._get_charset_chars(charset)
+
+            # 生成字形
+            glyph_paths = self.generate_step(style_vector, chars)
+
+            # 矢量化
+            vectorized = self.vectorize_step(glyph_paths)
+
+            # 打包字体
+            font_output = output_p / "MyHandwriting.ttf"
+            package_result = self.package_step(
+                vectorized, str(font_output)
+            )
+
+            return {
+                "font_path": package_result.get("font_path"),
+                "char_count": package_result.get("char_count", 0),
+                "formats": package_result.get("formats", []),
+                "output_dir": str(output_p),
+            }
+        except Exception as e:
+            logger.warning(f"字体生成失败: {e}")
+            return {
+                "font_path": None,
+                "char_count": 0,
+                "formats": [],
+                "output_dir": str(output_p),
+            }
 
     # ------------------------------------------------------------------
     #  辅助方法
