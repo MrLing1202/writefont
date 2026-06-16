@@ -1,18 +1,8 @@
 # 手迹造字 WriteFont - Python 依赖
 # git clone 后 pip install -r requirements.txt 即可
 
-# 核心计算
-numpy>=1.24.0
-scipy>=1.10.0
-Pillow>=10.0.0
-opencv-python-headless>=4.8.0
-
-# OCR 文字识别（轻量方案，无需 GPU）
-pytesseract>=0.3.10
-
-# 字体生成
-fonttools>=4.40.0
-brotli>=1.0.9
+# 核心引擎（私有包）
+writefont-core>=0.2.0
 
 # Web UI
 gradio>=4.0.0

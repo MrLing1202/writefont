@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 try:
-    from writefont.pipeline import WriteFontPipeline
+    from writefont_core.pipeline import WriteFontPipeline
 except ImportError:
     WriteFontPipeline = None  # type: ignore[assignment,misc]
 

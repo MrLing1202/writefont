@@ -67,7 +67,7 @@ def main() -> None:
         sys.exit(0)
 
     # 延迟导入，避免CLI帮助信息加载过慢
-    from writefont.pipeline import WriteFontPipeline
+    from writefont_core.pipeline import WriteFontPipeline
 
     pipeline = WriteFontPipeline(
         config_path=args.config if hasattr(args, "config") else None
