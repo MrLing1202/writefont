@@ -27,8 +27,8 @@ class TtfBuilder {
     // Build all tables
     _buildHead();
     _buildMaxp();
-    _buildLoca();
     _buildGlyf();
+    _buildLoca();
     _buildHhea();
     _buildHmtx();
     _buildCmap();
@@ -97,14 +97,14 @@ class TtfBuilder {
 
     // Fix head checksum adjustment
     final headOffset = tableInfos.firstWhere((i) => i.tag == 'head').offset;
-    data.setInt32(headOffset + 8, 0); // Clear checksumAdjustment
+    data.setUint32(headOffset + 8, 0); // Clear checksumAdjustment
     int fileChecksum = 0;
     for (int i = 0; i < totalSize; i += 4) {
       if (i + 4 <= totalSize) {
         fileChecksum = (fileChecksum + data.getUint32(i)) & 0xFFFFFFFF;
       }
     }
-    data.setInt32(headOffset + 8, (0xB1B0AFBA - fileChecksum) & 0xFFFFFFFF);
+    data.setUint32(headOffset + 8, (0xB1B0AFBA - fileChecksum) & 0xFFFFFFFF);
 
     return data.buffer.asUint8List();
   }
@@ -125,9 +125,8 @@ class TtfBuilder {
   // --- head table ---
   void _buildHead() {
     final w = _Writer();
-    w.writeInt16(1);           // majorVersion
-    w.writeInt16(0);           // minorVersion
-    w.writeInt16(1);           // fontRevision
+    w.writeUint32(0x00010000); // version (Fixed 16.16)
+    w.writeUint32(0x00010000); // fontRevision (Fixed 16.16)
     w.writeUint32(0);          // checksumAdjustment (filled later)
     w.writeUint32(0x5F0F3CF5); // magicNumber
     w.writeUint16(0x000B);     // flags
@@ -135,9 +134,13 @@ class TtfBuilder {
     w.writeInt64(0);           // created
     w.writeInt64(0);           // modified
 
-    // Bounding box
-    int xMin = 0, yMin = 0, xMax = 0, yMax = 0;
-    for (final g in glyphs) {
+    // Bounding box — initialize from first glyph's coordinates
+    int xMin = glyphs.isNotEmpty ? glyphs.first.xMin : 0;
+    int yMin = glyphs.isNotEmpty ? glyphs.first.yMin : 0;
+    int xMax = glyphs.isNotEmpty ? glyphs.first.xMax : 0;
+    int yMax = glyphs.isNotEmpty ? glyphs.first.yMax : 0;
+    for (int i = 1; i < glyphs.length; i++) {
+      final g = glyphs[i];
       if (g.xMin < xMin) xMin = g.xMin;
       if (g.yMin < yMin) yMin = g.yMin;
       if (g.xMax > xMax) xMax = g.xMax;
@@ -161,7 +164,7 @@ class TtfBuilder {
   void _buildMaxp() {
     final w = _Writer();
     w.writeUint32(0x00010000); // version
-    w.writeUint16(glyphs.length); // numGlyphs
+    w.writeUint32(glyphs.length); // numGlyphs
     w.writeUint16(0); // maxPoints (filled below)
     w.writeUint16(0); // maxContours
     w.writeUint16(0); // maxCompositePoints
@@ -300,8 +303,7 @@ class TtfBuilder {
     final hheaBytes = w.toBytes();
     // We need to set it properly, let's redo
     final w2 = _Writer();
-    w2.writeInt16(1);
-    w2.writeInt16(0);
+    w2.writeUint32(0x00010000); // version (Fixed 16.16)
     w2.writeInt16(unitsPerEm * 8 ~/ 10);
     w2.writeInt16(-unitsPerEm ~/ 5);
     w2.writeInt16(0);
@@ -355,48 +357,9 @@ class TtfBuilder {
     searchRange *= 2;
     final rangeShift = segCountX2 - searchRange;
 
-    final subtable = _Writer();
-    subtable.writeUint16(4); // format
-    final lengthPos = subtable.offset;
-    subtable.writeUint16(0); // length (fill later)
-    subtable.writeUint16(0); // language
-
-    subtable.writeUint16(segCountX2);
-    subtable.writeUint16(searchRange);
-    subtable.writeUint16(entrySelector);
-    subtable.writeUint16(rangeShift);
-
-    // endCode
-    for (final e in entries) {
-      subtable.writeUint16(e.charCode);
-    }
-    subtable.writeUint16(0xFFFF);
-
-    // reservedPad
-    subtable.writeUint16(0);
-
-    // startCode
-    subtable.writeUint16(0); // .notdef at start
-    for (final e in entries) {
-      subtable.writeUint16(e.charCode);
-    }
-
-    // idDelta
-    subtable.writeInt16(1); // .notdef maps to glyph 1? No, use idRangeOffset
-    for (final e in entries) {
-      subtable.writeInt16(0); // Will use idRangeOffset
-    }
-
-    // idRangeOffset
-    // For .notdef segment: idDelta=1 means glyph index = charCode + 1, but we want 0
-    // Let me use a simpler approach with glyphIdArray
-    
-    // Actually, let me redo this more carefully with the standard approach
-    // For simplicity, use direct glyph indices via idRangeOffset
-
-    // Let me rewrite the subtable properly
     final sub2 = _Writer();
     sub2.writeUint16(4); // format
+    final lengthPos = sub2.offset;
     sub2.writeUint16(0); // length (fill later)
     sub2.writeUint16(0); // language
 
@@ -415,19 +378,16 @@ class TtfBuilder {
     sub2.writeUint16(0);
 
     // startCode
-    sub2.writeUint16(0xFFFF); // Start with just the terminator range for .notdef
     for (final e in entries) {
       sub2.writeUint16(e.charCode);
     }
+    sub2.writeUint16(0xFFFF); // terminator sentinel at end
 
-    // idDelta - use delta encoding
-    // For the terminator: idDelta = 1
-    sub2.writeInt16(1);
+    // idDelta
     for (final e in entries) {
-      // glyphIndex = (charCode + idDelta) % 65536
-      // glyphIndex = e.glyphIndex, so idDelta = e.glyphIndex - e.charCode
       sub2.writeInt16(e.glyphIndex - e.charCode);
     }
+    sub2.writeInt16(1); // terminator: (0xFFFF + 1) % 65536 = 0 (.notdef)
 
     // idRangeOffset - all zeros since we use idDelta
     for (int i = 0; i <= entries.length; i++) {
