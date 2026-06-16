@@ -115,7 +115,7 @@ class ImageProcessor {
           if (contour.length > 4) {
             // Scale to font units (0-1000) with Y-axis flipped
             final scaled = _scaleContour(contour, binary.width, binary.height, params.strokeWidth);
-            final simplified = _simplifyContour(scaled, (params.smoothness * 3 + 1).toInt());
+            final simplified = _simplifyContour(scaled, params.smoothness * 3 + 1);
             if (simplified.length >= 3) {
               allContours.add(Contour(simplified));
             }
