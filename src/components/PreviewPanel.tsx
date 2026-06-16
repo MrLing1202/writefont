@@ -3,9 +3,10 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 import { generateFont } from "../hooks/useWriteFont";
 import toast from "react-hot-toast";
+import type { AppState, CharacterImage } from "../types";
 
 interface Props {
-  state: any;
+  state: AppState;
 }
 
 const PREVIEW_TEXTS = [
@@ -240,7 +241,7 @@ export default function PreviewPanel({ state }: Props) {
                         letterSpacing: `${params.spacing * 0.3}px`,
                       }}
                     >
-                      {characters.map((c: any) => c.char).join(" ")}
+                      {characters.map((c: CharacterImage) => c.char).join(" ")}
                     </p>
                   </div>
                 </div>

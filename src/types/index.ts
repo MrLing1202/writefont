@@ -39,6 +39,30 @@ export const DEFAULT_PARAMS: FontParams = {
   style: "regular",
 };
 
+export interface AppState {
+  step: AppStep;
+  setStep: (step: AppStep) => void;
+  params: FontParams;
+  setParams: React.Dispatch<React.SetStateAction<FontParams>>;
+  characters: CharacterImage[];
+  setCharacters: React.Dispatch<React.SetStateAction<CharacterImage[]>>;
+  addCharacter: (char: CharacterImage) => void;
+  removeCharacter: (char: string) => void;
+  clearCharacters: () => void;
+  fontName: string;
+  setFontName: (name: string) => void;
+  fontAuthor: string;
+  setFontAuthor: (author: string) => void;
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  progress: number;
+  setProgress: (v: number) => void;
+  generatedTtfPath: string | null;
+  setGeneratedTtfPath: (v: string | null) => void;
+  previewImages: string[];
+  setPreviewImages: (v: string[]) => void;
+}
+
 export const SAMPLE_CHARS = [
   "永",
   "东",

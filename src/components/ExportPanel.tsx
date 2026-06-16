@@ -11,9 +11,10 @@ import {
 } from "lucide-react";
 import { exportTtf } from "../hooks/useWriteFont";
 import toast from "react-hot-toast";
+import type { AppState, CharacterImage } from "../types";
 
 interface Props {
-  state: any;
+  state: AppState;
 }
 
 export default function ExportPanel({ state }: Props) {
@@ -101,7 +102,7 @@ export default function ExportPanel({ state }: Props) {
           <div className="bg-white rounded-xl p-5 border border-ink-100 shadow-sm">
             <h3 className="text-sm font-medium text-ink-600 mb-3">字符集预览</h3>
             <div className="flex flex-wrap gap-2">
-              {characters.map((char: any) => (
+              {characters.map((char: CharacterImage) => (
                 <div
                   key={char.char}
                   className="w-10 h-10 bg-paper-50 rounded-lg border border-ink-100 flex items-center justify-center text-lg font-brush"

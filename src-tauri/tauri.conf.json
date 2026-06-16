@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost"
     }
   },
   "bundle": {
@@ -59,7 +59,11 @@
     "dialog": {},
     "fs": {
       "scope": {
-        "allow": ["**"],
+        "allow": [
+          "$TEMP/**",
+          "$DOWNLOAD/**",
+          "$DOCUMENT/**"
+        ],
         "deny": []
       }
     },
@@ -69,12 +73,12 @@
         {
           "name": "python3",
           "cmd": "python3",
-          "args": true
+          "args": false
         },
         {
           "name": "python",
           "cmd": "python",
-          "args": true
+          "args": false
         }
       ]
     }

@@ -9,10 +9,10 @@ import {
   AlignVerticalSpaceAround,
   Palette,
 } from "lucide-react";
-import type { FontParams } from "../types";
+import type { FontParams, AppState, CharacterImage } from "../types";
 
 interface Props {
-  state: any;
+  state: AppState;
 }
 
 export default function AdjustPanel({ state }: Props) {
@@ -197,7 +197,7 @@ export default function AdjustPanel({ state }: Props) {
                   }}
                 >
                   {characters.length > 0
-                    ? characters.map((c: any) => c.char).join("")
+                    ? characters.map((c: { char: string }) => c.char).join("")
                     : "永东国风华龙凤书法墨笔纸砚春夏秋冬山水云天地人和"}
                 </p>
               </div>
@@ -224,7 +224,7 @@ export default function AdjustPanel({ state }: Props) {
             <div className="bg-white rounded-xl p-5 border border-ink-100 shadow-sm">
               <h3 className="text-sm font-medium text-ink-600 mb-3">字符预览</h3>
               <div className="flex gap-3 overflow-x-auto pb-2">
-                {characters.slice(0, 8).map((char: any) => (
+                {characters.slice(0, 8).map((char: CharacterImage) => (
                   <div
                     key={char.char}
                     className="shrink-0 w-16 h-16 bg-paper-50 rounded-lg border border-ink-100 flex items-center justify-center"

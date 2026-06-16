@@ -1,14 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, X, ImagePlus, ArrowRight, Sparkles, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { processImage } from "../hooks/useWriteFont";
 import { SAMPLE_CHARS } from "../types";
-import type { CharacterImage } from "../types";
+import type { CharacterImage, AppState } from "../types";
 
 interface Props {
-  state: any;
+  state: AppState;
 }
 
 export default function UploadPanel({ state }: Props) {
@@ -89,6 +89,17 @@ export default function UploadPanel({ state }: Props) {
 
   const canProceed = characters.length >= 10;
 
+  // M-3: Memoize and revoke object URLs to prevent memory leaks
+  const pendingFileUrls = useMemo(
+    () => pendingFiles.map((f) => URL.createObjectURL(f)),
+    [pendingFiles]
+  );
+  useEffect(() => {
+    return () => {
+      pendingFileUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [pendingFileUrls]);
+
   return (
     <div className="h-full flex flex-col p-6 gap-6">
       {/* Header */}
@@ -144,7 +155,7 @@ export default function UploadPanel({ state }: Props) {
                     className="flex items-center gap-3 bg-white rounded-lg p-2 border border-ink-50"
                   >
                     <img
-                      src={URL.createObjectURL(file)}
+                      src={pendingFileUrls[idx]}
                       alt={file.name}
                       className="w-10 h-10 object-cover rounded"
                     />
