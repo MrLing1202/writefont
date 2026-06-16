@@ -1,0 +1,22 @@
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# OCR
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0
+
+# Font generation
+fonttools>=4.40.0
+
+# Web UI
+gradio>=4.0.0
+
+# Utilities
+pyyaml>=6.0
+tqdm>=4.65.0
