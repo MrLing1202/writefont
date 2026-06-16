@@ -1,0 +1,52 @@
+# WriteFont 默认配置
+# 手迹造字默认配置文件
+
+# 图像预处理
+preprocessing:
+  target_size: 128          # 归一化目标尺寸
+  binarization_threshold: 128  # 二值化阈值
+  denoise_strength: 3       # 去噪强度
+  min_char_size: 20         # 最小字符尺寸（像素）
+  max_char_size: 200        # 最大字符尺寸（像素）
+
+# OCR识别
+ocr:
+  engine: paddleocr         # paddleocr / crnn
+  confidence_threshold: 0.8 # 置信度过滤阈值
+  language: ch              # 语言
+  use_gpu: true             # 是否使用GPU
+
+# 风格提取
+style:
+  feature_dim: 200          # 风格向量维度
+  model_path: models/style_vae.pth  # 预训练模型路径
+  batch_size: 32            # 批处理大小
+  num_samples: 50           # 建议样本数量
+
+# 字体生成
+generator:
+  model_type: diffusion     # diffusion / gan
+  model_path: models/diffusion_glyph.pth
+  num_inference_steps: 50   # 扩散推理步数
+  guidance_scale: 7.5       # 引导强度
+  image_size: 64            # 生成图像尺寸
+
+# 字体打包
+output:
+  formats:                  # 输出格式
+    - ttf
+    - otf
+    - woff
+  resolution: 256           # 输出分辨率
+  font_name: "MyHandwriting"
+  font_family: "My Handwriting"
+  em_size: 1000             # EM square 大小
+  ascent: 800
+  descent: -200
+
+# Gradio界面
+frontend:
+  server_name: "127.0.0.1"
+  server_port: 7860
+  share: false
+  max_file_size: 20         # 最大上传文件大小(MB)
