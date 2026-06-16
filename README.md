@@ -195,3 +195,9 @@ MIT License
 - [Flutter 官方文档](https://flutter.dev/docs)
 - [TrueType 字体规范](https://developer.apple.com/fonts/TrueType-Reference-Manual/)
 - [Material Design 3](https://m3.material.io/)
+
+## 🔧 开发者说明
+
+本项目的核心引擎以私有包形式维护。如需获取核心引擎源码进行开发，请联系作者。
+
+**公开仓库仅包含 UI 层代码。** 核心引擎（字体生成、OCR识别、风格迁移）由独立的私有包提供。
