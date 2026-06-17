@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
@@ -159,8 +160,8 @@ class RecognitionService {
           for (final line in block.lines) {
             for (final element in line.elements) {
               final text = element.text.trim();
-              if (text.isNotEmpty && text.characters.isNotEmpty) {
-                return text.characters.first;
+              if (text.isNotEmpty && text.runes.isNotEmpty) {
+                return String.fromCharCodes(text.runes.take(1));
               }
             }
           }
@@ -237,16 +238,16 @@ class RecognitionService {
           }
           if (data.containsKey('text')) {
             final text = data['text'] as String?;
-            if (text != null && text.isNotEmpty && text.characters.isNotEmpty) {
-              return text.characters.first;
+            if (text != null && text.isNotEmpty && text.runes.isNotEmpty) {
+              return String.fromCharCodes(text.runes.take(1));
             }
           }
           if (data.containsKey('result') && data['result'] is Map) {
             final result = data['result'] as Map;
             if (result.containsKey('text')) {
               final text = result['text'] as String?;
-              if (text != null && text.isNotEmpty && text.characters.isNotEmpty) {
-                return text.characters.first;
+              if (text != null && text.isNotEmpty && text.runes.isNotEmpty) {
+                return String.fromCharCodes(text.runes.take(1));
               }
             }
           }
