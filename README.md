@@ -22,7 +22,8 @@
 git clone https://github.com/MrLing1202/writefont.git
 cd writefont
 pip install -r requirements.txt
-python start.py
+python start.py            # Web UI 模式
+python start.py --api      # API 模式
 ```
 
 浏览器打开 `http://localhost:8080` 即可使用。
