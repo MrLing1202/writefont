@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -21,7 +23,8 @@ class RecognitionService {
   // DeepSeek-OCR (硅基流动) 默认配置
   static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
   static const String defaultModel = 'deepseek-ai/DeepSeek-OCR';
-  static const String cloudDisplayName = 'DeepSeek-OCR（硅基流动免费）';
+  static const String defaultApiKey = 'sk-twdljjyeqgjxejgcxigoizswercfhqomfuoyhltntfutkqqt';
+  static const String cloudDisplayName = 'DeepSeek-OCR 云端识别（免费）';
 
   static const Duration _timeout = Duration(seconds: 30);
   static const int _maxConcurrent = 3;
@@ -75,6 +78,10 @@ class RecognitionService {
         await prefs.remove(_prefKeyCloudKey);
         _cloudKey = oldKey;
       }
+    }
+    // 如果用户没有自定义 Key，返回内置的默认 Key
+    if (_cloudKey == null || _cloudKey!.isEmpty) {
+      return defaultApiKey;
     }
     return _cloudKey;
   }
@@ -155,24 +162,51 @@ class RecognitionService {
       final decoded = img.decodeImage(imageBytes);
       if (decoded == null) return null;
 
-      final width = decoded.width;
-      final height = decoded.height;
+      debugPrint('ML Kit 识别: 原始图片尺寸 ${decoded.width}x${decoded.height}');
 
-      // 转换为 NV21 格式（ML Kit Android 需要）
-      final nv21Bytes = _convertToNV21(decoded);
+      // 小图片（<200px）先放大到至少 200x200，提高 ML Kit 识别率
+      img.Image toProcess = decoded;
+      if (decoded.width < 200 || decoded.height < 200) {
+        final targetW = decoded.width < 200 ? 200 : decoded.width;
+        final targetH = decoded.height < 200 ? 200 : decoded.height;
+        toProcess = img.copyResize(decoded, width: targetW, height: targetH,
+            interpolation: img.Interpolation.linear);
+        debugPrint('ML Kit 识别: 放大到 ${toProcess.width}x${toProcess.height}');
+      }
 
-      final inputImage = InputImage.fromBytes(
-        bytes: nv21Bytes,
-        metadata: InputImageMetadata(
-          size: Size(width.toDouble(), height.toDouble()),
-          rotation: InputImageRotation.rotation0deg,
-          format: InputImageFormat.nv21,
-          bytesPerRow: width,
-        ),
-      );
+      // 保存到临时文件，用 InputImage.fromFilePath 加载（避免 NV21 转换 bug）
+      final result = await _recognizeFromImage(toProcess);
 
+      // 如果 ML Kit 返回空，尝试放大 2 倍再试一次
+      if (result == null || result.isEmpty) {
+        debugPrint('ML Kit 识别: 首次未识别到文字，尝试放大 2 倍重试');
+        final upscaled = img.copyResize(toProcess,
+            width: toProcess.width * 2, height: toProcess.height * 2,
+            interpolation: img.Interpolation.linear);
+        return await _recognizeFromImage(upscaled);
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('ML Kit 识别失败: $e');
+    }
+    return null;
+  }
+
+  /// 从 img.Image 保存临时文件并用 ML Kit 识别
+  Future<String?> _recognizeFromImage(img.Image image) async {
+    File? tempFile;
+    try {
+      final pngBytes = img.encodePng(image);
+      final tempDir = await getTemporaryDirectory();
+      tempFile = File('${tempDir.path}/mlkit_${DateTime.now().millisecondsSinceEpoch}.png');
+      await tempFile.writeAsBytes(pngBytes);
+
+      final inputImage = InputImage.fromFilePath(tempFile.path);
       final recognizer = _getMlKitRecognizer();
       final recognizedText = await recognizer.processImage(inputImage);
+
+      debugPrint('ML Kit 识别: 识别到 ${recognizedText.blocks.length} 个文本块');
 
       if (recognizedText.text.isNotEmpty) {
         for (final block in recognizedText.blocks) {
@@ -186,44 +220,11 @@ class RecognitionService {
           }
         }
       }
-    } catch (e) {
-      debugPrint('ML Kit 识别失败: $e');
+      return null;
+    } finally {
+      // 清理临时文件
+      try { await tempFile?.delete(); } catch (_) {}
     }
-    return null;
-  }
-
-  /// 将图片转换为 NV21 格式
-  Uint8List _convertToNV21(img.Image image) {
-    final width = image.width;
-    final height = image.height;
-    final yuvSize = width * height * 3 ~/ 2;
-    final nv21 = Uint8List(yuvSize);
-
-    int yIndex = 0;
-    int uvIndex = width * height;
-
-    for (int j = 0; j < height; j++) {
-      for (int i = 0; i < width; i++) {
-        final pixel = image.getPixel(i, j);
-        final r = pixel.r.toInt();
-        final g = pixel.g.toInt();
-        final b = pixel.b.toInt();
-
-        // RGB to YUV
-        final y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-        final u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
-        final v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-
-        nv21[yIndex++] = y.clamp(0, 255);
-
-        if (j % 2 == 0 && i % 2 == 0) {
-          nv21[uvIndex++] = v.clamp(0, 255);
-          nv21[uvIndex++] = u.clamp(0, 255);
-        }
-      }
-    }
-
-    return nv21;
   }
 
   /// SSRF 防护：校验 URL 是否为公网地址
