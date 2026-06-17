@@ -38,7 +38,7 @@ class ImageProcessor {
     final h = processed.height;
     final totalArea = w * h;
     final minArea = (totalArea * 0.001).toInt();   // 0.1% — filter noise
-    final maxArea = (totalArea * 0.30).toInt();     // 30%  — filter background blobs
+    final maxArea = (totalArea * 0.15).toInt();     // 15%  — filter multi-char blobs (e.g. nine-grid)
 
     // BFS flood fill to find connected components with bounding boxes
     final visited = List.generate(h, (_) => List.filled(w, false));
@@ -80,6 +80,15 @@ class ImageProcessor {
 
         // Filter by area
         if (area < minArea || area > maxArea) continue;
+
+        // Filter by dimension ratio: single character shouldn't exceed 45% of image width/height
+        final bw = maxX - minX + 1;
+        final bh = maxY - minY + 1;
+        if (bw > w * 0.45 || bh > h * 0.45) continue;
+
+        // Filter by aspect ratio: single character should be roughly square (< 2.5:1)
+        final aspect = bw > bh ? bw / bh : bh / bw;
+        if (aspect > 2.5) continue;
 
         bboxes.add([minX, minY, maxX, maxY, area]);
       }
