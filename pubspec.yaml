@@ -35,6 +35,12 @@ dependencies:
   # UUID for unique filenames
   uuid: ^4.3.3
 
+  # HTTP for API calls
+  http: ^1.2.1
+
+  # Local storage for settings
+  shared_preferences: ^2.2.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
