@@ -11,7 +11,6 @@ class ImageProcessor {
   static List<Uint8List> segmentCharacters(
     Uint8List imageBytes,
     ProcessingParams params,
-    {int gridRows = 4, int gridCols = 7}
   ) {
     final image = img.decodeImage(imageBytes);
     if (image == null) return [];
@@ -34,21 +33,113 @@ class ImageProcessor {
       processed = _dilate(processed);
     }
 
-    // Segment into grid cells
-    final cellWidth = processed.width ~/ gridCols;
-    final cellHeight = processed.height ~/ gridRows;
-    final List<Uint8List> cells = [];
+    // --- Adaptive connected component segmentation ---
+    final w = processed.width;
+    final h = processed.height;
+    final totalArea = w * h;
+    final minArea = (totalArea * 0.001).toInt();   // 0.1% — filter noise
+    final maxArea = (totalArea * 0.30).toInt();     // 30%  — filter background blobs
 
-    for (int row = 0; row < gridRows; row++) {
-      for (int col = 0; col < gridCols; col++) {
-        final x = col * cellWidth;
-        final y = row * cellHeight;
-        final cell = img.copyCrop(processed, x: x, y: y, width: cellWidth, height: cellHeight);
+    // BFS flood fill to find connected components with bounding boxes
+    final visited = List.generate(h, (_) => List.filled(w, false));
+    final directions = const [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+    ];
 
-        // Check if cell has content (not blank)
-        if (_hasContent(cell)) {
-          cells.add(img.encodePng(cell));
+    // Each entry: [minX, minY, maxX, maxY, area]
+    final List<List<int>> bboxes = [];
+
+    for (int sy = 0; sy < h; sy++) {
+      for (int sx = 0; sx < w; sx++) {
+        if (visited[sy][sx] || !_isBlack(processed, sx, sy)) continue;
+
+        // BFS
+        int minX = sx, maxX = sx, minY = sy, maxY = sy, area = 0;
+        final queue = <List<int>>[];
+        queue.add([sx, sy]);
+        visited[sy][sx] = true;
+
+        while (queue.isNotEmpty) {
+          final p = queue.removeAt(0);
+          final px = p[0], py = p[1];
+          area++;
+          if (px < minX) minX = px;
+          if (px > maxX) maxX = px;
+          if (py < minY) minY = py;
+          if (py > maxY) maxY = py;
+
+          for (final d in directions) {
+            final nx = px + d[0], ny = py + d[1];
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
+                !visited[ny][nx] && _isBlack(processed, nx, ny)) {
+              visited[ny][nx] = true;
+              queue.add([nx, ny]);
+            }
+          }
         }
+
+        // Filter by area
+        if (area < minArea || area > maxArea) continue;
+
+        bboxes.add([minX, minY, maxX, maxY, area]);
+      }
+    }
+
+    if (bboxes.isEmpty) return [];
+
+    // Sort by position: group into rows, then sort each row by x
+    // Compute average character height for row grouping tolerance
+    double avgHeight = 0;
+    for (final bb in bboxes) {
+      avgHeight += (bb[3] - bb[1] + 1);
+    }
+    avgHeight /= bboxes.length;
+    final rowTolerance = avgHeight * 0.5;
+
+    // Sort by minY first
+    bboxes.sort((a, b) => a[1].compareTo(b[1]));
+
+    // Group into rows
+    final List<List<List<int>>> rows = [];
+    for (final bb in bboxes) {
+      final centerY = (bb[1] + bb[3]) / 2.0;
+      bool placed = false;
+      for (final row in rows) {
+        final rowCenterY = (row.first[1] + row.first[3]) / 2.0;
+        if ((centerY - rowCenterY).abs() <= rowTolerance) {
+          row.add(bb);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        rows.add([bb]);
+      }
+    }
+
+    // Sort each row by minX
+    for (final row in rows) {
+      row.sort((a, b) => a[0].compareTo(b[0]));
+    }
+
+    // Crop each character with 10% padding
+    final List<Uint8List> cells = [];
+    for (final row in rows) {
+      for (final bb in row) {
+        final minX = bb[0], minY = bb[1], maxX = bb[2], maxY = bb[3];
+        final bw = maxX - minX + 1;
+        final bh = maxY - minY + 1;
+        final padX = (bw * 0.1).toInt();
+        final padY = (bh * 0.1).toInt();
+
+        final cropX = (minX - padX).clamp(0, w - 1);
+        final cropY = (minY - padY).clamp(0, h - 1);
+        final cropW = (bw + padX * 2).clamp(1, w - cropX);
+        final cropH = (bh + padY * 2).clamp(1, h - cropY);
+
+        final cell = img.copyCrop(processed,
+          x: cropX, y: cropY, width: cropW, height: cropH);
+        cells.add(img.encodePng(cell));
       }
     }
 
