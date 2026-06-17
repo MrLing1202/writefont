@@ -53,7 +53,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         colorSchemeSeed: const Color(0xFF4A6741),
         brightness: Brightness.light,
         fontFamily: null, // Use system font
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -75,7 +75,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         useMaterial3: true,
         colorSchemeSeed: const Color(0xFF4A6741),
         brightness: Brightness.dark,
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
