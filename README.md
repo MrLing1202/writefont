@@ -2,7 +2,7 @@
 
 拍张手写照片，几分钟生成一套自己的 TTF 字体。
 
-## 📥 下载安装（普通用户）
+## 📥 下载安装
 
 直接下载 APK 安装到手机，不需要装任何开发工具。
 
@@ -16,25 +16,25 @@
 
 > 下载后打开 → 系统提示"允许安装未知来源"→ 安装完成
 
-## 🔌 API 接口（开发者）
+## 🤖 配置 AI 模型
 
-项目也支持以 REST API 方式运行，方便集成到自己的应用里。
+App 需要一个 AI 模型来识别手写字。打开 App 后进入「设置」，填入你自己的 API Key 即可。
 
-**启动方式：**
-```bash
-python start.py --api
-```
+**支持的模型：**
 
-**接口列表：**
+| 模型 | 免费额度 | 获取地址 |
+|------|----------|----------|
+| 智谱 AI (GLM-4V-Flash) | ✅ 永久免费 | [open.bigmodel.cn](https://open.bigmodel.cn) |
+| MiMo (小米) | 注册赠送 | [mimo.xiaomi.com](https://mimo.xiaomi.com) |
+| 硅基流动 | 注册赠送 | [siliconflow.cn](https://siliconflow.cn) |
+| Ollama (本地) | ✅ 完全免费 | [ollama.ai](https://ollama.ai) — 需要电脑运行 |
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `POST` | `/api/v1/recognize` | 手写字符识别 |
-| `POST` | `/api/v1/generate` | 生成字体文件 |
-| `GET` | `/api/v1/health` | 健康检查 |
-| `GET` | `/docs` | Swagger 交互式文档 |
+> 💡 推荐先用**智谱 AI**，永久免费，注册就能拿 Key。
 
-详细的请求参数和返回格式见 [README_API.md](README_API.md)。
+**设置步骤：**
+1. 去上面的网站注册账号，拿到 API Key
+2. 打开 App → 设置 → 选择模型 → 粘贴 Key → 保存
+3. 回到首页，开始造字
 
 ## 🚀 从源码运行
 
@@ -50,17 +50,18 @@ python start.py
 ## ✨ 功能特性
 
 - 📸 **拍照/选图** — 手机拍照或从相册选图，支持多张
-- 🔍 **智能识别** — 自动检测并分割图片中的字符
+- 🔍 **智能识别** — AI 自动检测并分割图片中的字符
 - 🎨 **参数调节** — 阈值、腐蚀膨胀、平滑度、对比度可调
 - 👀 **实时预览** — 输入任意文字查看字体效果
 - 📦 **导出 TTF** — 生成标准 TrueType 字体，Windows/macOS/Linux/手机通用
 
 ## 🛠 使用指南
 
-1. 用方格纸（田字格/米字格）写好字符，黑色签字笔，字迹清晰
-2. 打开 App → 拍照或选图
-3. 调节参数（阈值、腐蚀、膨胀、平滑度等）
-4. 预览满意后导出 TTF，可分享到微信/QQ/邮件
+1. 配置 AI 模型 Key（见上方）
+2. 用方格纸（田字格/米字格）写好字符，黑色签字笔，字迹清晰
+3. 打开 App → 拍照或选图
+4. 调节参数（阈值、腐蚀、膨胀、平滑度等）
+5. 预览满意后导出 TTF，可分享到微信/QQ/邮件
 
 ## ⚙️ 技术栈
 
@@ -69,6 +70,7 @@ python start.py
 | 前端 | Flutter 3.x / Dart 3.x |
 | 后端 | Python |
 | 图像处理 | OpenCV |
+| AI 识别 | 支持智谱/MiMo/OpenAI/Ollama 等多模型 |
 | 字体生成 | 自研 TTF 引擎 |
 
 ## 📁 项目结构
@@ -80,8 +82,14 @@ writefont/
 │   ├── models/                    # 数据模型
 │   ├── services/                  # 图像处理、字体生成、存储
 │   └── screens/                   # 页面（首页、拍照、调参、预览）
-├── start.py                       # 后端启动脚本
-└── pubspec.yaml
+├── src/writefont/
+│   ├── api/                       # AI 模型接口（智谱/MiMo/OpenAI...）
+│   ├── api_server.py              # REST API 服务端
+│   ├── ocr/                       # 文字识别
+│   ├── generator/                 # 字体生成
+│   └── frontend/                  # Web UI (Gradio)
+├── start.py                       # 启动脚本
+└── requirements.txt
 ```
 
 ## 📝 注意事项
@@ -90,10 +98,11 @@ writefont/
 - 拍照保持纸张平整，避免透视变形
 - 每个字写在格子中央，别出格
 - 生成的 TTF 全平台通用
+- API Key 只存在你手机/电脑本地，不会上传到任何服务器
 
 ## 📄 License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0](LICENSE) — 可以自由使用和修改，但不能闭源商用。
 
 ## 🤝 贡献
 
