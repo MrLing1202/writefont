@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'api_key.dart';
 
 /// OCR 识别服务
 /// 默认：本地 ML Kit 离线识别（免费，无需网络）
@@ -21,10 +22,9 @@ class RecognitionService {
   static const String _prefKeyCloudKey = 'ocr_cloud_key';
 
   // DeepSeek-OCR (硅基流动) 默认配置
-  static const String defaultCloudUrl = 'https://writefont-ocr.gddz.workers.dev';
+  static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
   static const String defaultModel = 'deepseek-ai/DeepSeek-OCR';
-  static const String defaultApiKey = 'sk-twdljjyeqgjxejgcxigoizswercfhqomfuoyhltntfutkqqt';
-  static const String cloudDisplayName = 'DeepSeek-OCR 云端识别（免费）';
+  static const String cloudDisplayName = 'DeepSeek-OCR（免费）';
 
   static const Duration _timeout = Duration(seconds: 30);
   static const int _maxConcurrent = 3;
@@ -67,23 +67,8 @@ class RecognitionService {
   }
 
   Future<String?> getCloudKey() async {
-    if (_cloudKey != null) return _cloudKey;
-    _cloudKey = await _secureStorage.read(key: _prefKeyCloudKey);
-    // 迁移：如果安全存储中没有，但 SharedPreferences 中有旧的明文 Key，迁移过来
-    if (_cloudKey == null || _cloudKey!.isEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      final oldKey = prefs.getString(_prefKeyCloudKey);
-      if (oldKey != null && oldKey.isNotEmpty) {
-        await _secureStorage.write(key: _prefKeyCloudKey, value: oldKey);
-        await prefs.remove(_prefKeyCloudKey);
-        _cloudKey = oldKey;
-      }
-    }
-    // 如果用户没有自定义 Key，返回内置的默认 Key
-    if (_cloudKey == null || _cloudKey!.isEmpty) {
-      return defaultApiKey;
-    }
-    return _cloudKey;
+    // API Key 已内置（混淆存储），始终从 ApiKeyProvider 获取
+    return ApiKeyProvider.getKey();
   }
 
   /// 保存配置
