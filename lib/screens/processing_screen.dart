@@ -33,7 +33,6 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   bool _isRecognizing = false;
   int _recognizedCount = 0;
   int _totalCount = 0;
-  String? _serverUrl;
 
   // Character assignment
   final List<String> _defaultCharacters = _getDefaultChars();
@@ -56,17 +55,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   void initState() {
     super.initState();
     _params = ProcessingParams();
-    _loadServerUrl();
     _processImages();
-  }
-
-  Future<void> _loadServerUrl() async {
-    final url = await _recognitionService.getServerUrl();
-    if (mounted) {
-      setState(() {
-        _serverUrl = url;
-      });
-    }
   }
 
   void _processImages() {
@@ -94,7 +83,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   Future<void> _recognizeCharacters(List<Uint8List> cells) async {
     if (cells.isEmpty) return;
 
-    final charset = widget.charset; // 标准字表 or null
+    final charset = widget.charset;
     final useStandardCharset = charset != null && charset.isNotEmpty;
 
     if (mounted) {
@@ -107,38 +96,25 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
     bool anyRecognized = false;
 
-    // 标准字表模式：用字表顺序作为默认匹配
-    if (useStandardCharset) {
-      // 先尝试 AI 识别，再用字表补齐
-      final serverUrl = await _recognitionService.getServerUrl();
-      if (serverUrl != null && serverUrl.isNotEmpty) {
-        // Try batch recognition first
-        final batchResults = await _recognitionService.recognizeBatch(cells);
-        final hasBatchResults = batchResults.any((r) => r != null);
-
-        if (hasBatchResults) {
-          for (int i = 0; i < batchResults.length; i++) {
-            if (batchResults[i] != null) {
-              _charAssignments[i] = batchResults[i]!;
-              anyRecognized = true;
-            }
-          }
-        } else {
-          // Fallback to individual recognition
-          for (int i = 0; i < cells.length; i++) {
-            final result = await _recognitionService.recognizeCharacter(cells[i]);
-            if (result != null) {
-              _charAssignments[i] = result;
-              anyRecognized = true;
-            }
-            if (mounted) {
-              setState(() => _recognizedCount = i + 1);
-            }
-          }
+    // 带进度回调的批量识别
+    final batchResults = await _recognitionService.recognizeBatch(
+      cells,
+      onProgress: (completed, total) {
+        if (mounted) {
+          setState(() => _recognizedCount = completed);
         }
-      }
+      },
+    );
 
-      // 用字表顺序补齐未识别的格子
+    for (int i = 0; i < batchResults.length; i++) {
+      if (batchResults[i] != null) {
+        _charAssignments[i] = batchResults[i]!;
+        anyRecognized = true;
+      }
+    }
+
+    // 标准字表模式：用字表顺序补齐未识别的格子
+    if (useStandardCharset) {
       for (int i = 0; i < cells.length; i++) {
         if (!_charAssignments.containsKey(i)) {
           if (i < charset.length) {
@@ -147,38 +123,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         }
       }
     } else {
-      // 自由模式：原有逻辑
-      final serverUrl = await _recognitionService.getServerUrl();
-      if (serverUrl == null || serverUrl.isEmpty) {
-        _assignFallbackCharacters(cells.length);
-        if (mounted) setState(() => _isRecognizing = false);
-        return;
-      }
-
-      // Try batch recognition first
-      final batchResults = await _recognitionService.recognizeBatch(cells);
-      final hasBatchResults = batchResults.any((r) => r != null);
-
-      if (hasBatchResults) {
-        for (int i = 0; i < batchResults.length; i++) {
-          if (batchResults[i] != null) {
-            _charAssignments[i] = batchResults[i]!;
-            anyRecognized = true;
-          }
-        }
-      } else {
-        for (int i = 0; i < cells.length; i++) {
-          final result = await _recognitionService.recognizeCharacter(cells[i]);
-          if (result != null) {
-            _charAssignments[i] = result;
-            anyRecognized = true;
-          }
-          if (mounted) {
-            setState(() => _recognizedCount = i + 1);
-          }
-        }
-      }
-
+      // 自由模式：如果识别失败，用默认字符凑数
       if (!anyRecognized) {
         _assignFallbackCharacters(cells.length);
       } else {
@@ -269,10 +214,10 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       appBar: AppBar(
         title: Text(widget.charset != null ? '标准字表匹配' : '调节参数'),
         actions: [
-          IconButton(
-            onPressed: _showSettingsDialog,
-            icon: const Icon(Icons.settings),
-            tooltip: '识别服务器设置',
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).pushNamed('/ocr-settings'),
+            icon: const Icon(Icons.tune),
+            label: const Text('识别'),
           ),
           TextButton.icon(
             onPressed: _proceedToPreview,
@@ -344,12 +289,12 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                             color: colorScheme.primary,
                           ),
                         ),
-                      ] else if (_serverUrl != null && _serverUrl!.isNotEmpty) ...[
+                      ] else ...[
                         const SizedBox(width: 8),
-                        Icon(Icons.cloud_done, size: 14, color: colorScheme.primary),
+                        Icon(Icons.check_circle, size: 14, color: colorScheme.primary),
                         const SizedBox(width: 2),
                         Text(
-                          'AI识别',
+                          '本地识别',
                           style: TextStyle(
                             fontSize: 12,
                             color: colorScheme.primary,
@@ -679,66 +624,6 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
               Navigator.pop(context);
             },
             child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSettingsDialog() {
-    final controller = TextEditingController(text: _serverUrl ?? '');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.cloud_sync),
-        title: const Text('AI 识别服务器'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '配置后端识别服务器地址，启用 AI 字符识别功能。留空则使用顺序分配。',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: '服务器地址',
-                hintText: 'http://192.168.1.100:8080',
-                prefixIcon: Icon(Icons.link),
-              ),
-              keyboardType: TextInputType.url,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '示例: http://192.168.1.100:8080',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final url = controller.text.trim();
-              await _recognitionService.setServerUrl(url.isEmpty ? null : url);
-              if (mounted) {
-                setState(() {
-                  _serverUrl = url.isEmpty ? null : url;
-                });
-                Navigator.pop(context);
-                // Re-process with new settings
-                _processImages();
-              }
-            },
-            child: const Text('保存并重新识别'),
           ),
         ],
       ),

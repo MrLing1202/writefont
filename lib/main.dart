@@ -7,14 +7,41 @@ import 'screens/processing_screen.dart';
 import 'screens/preview_screen.dart';
 import 'screens/writing_tips_screen.dart';
 import 'screens/charset_guide_screen.dart';
+import 'screens/ocr_settings_screen.dart';
+import 'services/recognition_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const WriteFontApp());
 }
 
-class WriteFontApp extends StatelessWidget {
+class WriteFontApp extends StatefulWidget {
   const WriteFontApp({super.key});
+
+  @override
+  State<WriteFontApp> createState() => _WriteFontAppState();
+}
+
+class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    RecognitionService.instance.dispose(); // 释放 ML Kit 资源
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      RecognitionService.instance.dispose();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +107,10 @@ class WriteFontApp extends StatelessWidget {
           case '/charset-guide':
             return MaterialPageRoute(
               builder: (_) => const CharsetGuideScreen(),
+            );
+          case '/ocr-settings':
+            return MaterialPageRoute(
+              builder: (_) => const OcrSettingsScreen(),
             );
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;

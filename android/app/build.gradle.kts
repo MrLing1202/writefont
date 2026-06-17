@@ -33,6 +33,11 @@ android {
     }
 }
 
+dependencies {
+    // ML Kit 中文文字识别
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+}
+
 flutter {
     source = "../.."
 }
