@@ -28,21 +28,20 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
   Future<void> _loadSettings() async {
     final useCloud = await _recognitionService.getUseCloud();
     final cloudUrl = await _recognitionService.getCloudUrl();
-    final cloudKey = await _recognitionService.getCloudKey();
 
     setState(() {
       _useCloud = useCloud;
       _urlController.text = cloudUrl ?? '';
-      _keyController.text = cloudKey ?? '';
       _isLoading = false;
     });
   }
 
   Future<void> _saveSettings({bool showSnackbar = true}) async {
     await _recognitionService.setUseCloud(_useCloud);
+    final userKey = _keyController.text.trim();
     await _recognitionService.setCloudConfig(
       _urlController.text.trim(),
-      _keyController.text.trim(),
+      userKey.isEmpty ? null : userKey,
     );
 
     if (showSnackbar && mounted) {
@@ -225,6 +224,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           value: _useCloud,
                           onChanged: (value) {
                             setState(() => _useCloud = value);
+                    _saveSettings(showSnackbar: false);
                           },
                         ),
 

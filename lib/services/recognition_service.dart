@@ -67,10 +67,12 @@ class RecognitionService {
   }
 
   Future<String?> getCloudKey() async {
-    // API Key 已内置（混淆存储），始终从 ApiKeyProvider 获取
+    // 优先使用用户手动输入的 Key（存在 secure storage）
+    final userKey = await _secureStorage.read(key: _prefKeyCloudKey);
+    if (userKey != null && userKey.isNotEmpty) return userKey;
+    // 否则使用内置 Key（混淆存储）
     return ApiKeyProvider.getKey();
   }
-
   /// 保存配置
   Future<void> setUseCloud(bool value) async {
     _useCloud = value;
