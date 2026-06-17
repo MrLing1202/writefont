@@ -68,7 +68,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   }
 
   void _onParamsChanged(ProcessingParams newParams) {
-    _params = newParams;
+    setState(() {
+      _params = newParams;
+    });
     _processImages();
   }
 
