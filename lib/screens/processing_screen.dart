@@ -33,6 +33,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   bool _isRecognizing = false;
   int _recognizedCount = 0;
   int _totalCount = 0;
+  bool _useCloudRecognition = false;
 
   // Character assignment
   final List<String> _defaultCharacters = _getDefaultChars();
@@ -55,7 +56,21 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   void initState() {
     super.initState();
     _params = ProcessingParams();
+    _loadUseCloudSetting();
     _processImages();
+  }
+
+  /// 读取 OCR 识别模式设置
+  Future<void> _loadUseCloudSetting() async {
+    final useCloud = await _recognitionService.getUseCloud();
+    if (mounted) {
+      setState(() => _useCloudRecognition = useCloud);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
   }
 
   void _processImages() {
@@ -215,7 +230,13 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         title: Text(widget.charset != null ? '标准字表匹配' : '调节参数'),
         actions: [
           TextButton.icon(
-            onPressed: () => Navigator.of(context).pushNamed('/ocr-settings'),
+            onPressed: () {
+              Navigator.of(context).pushNamed('/ocr-settings').then((_) {
+                // 从 OCR 设置页返回时，重新读取识别模式设置
+                _recognitionService.clearCache();
+                _loadUseCloudSetting();
+              });
+            },
             icon: const Icon(Icons.tune),
             label: const Text('识别'),
           ),
@@ -294,7 +315,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                         Icon(Icons.check_circle, size: 14, color: colorScheme.primary),
                         const SizedBox(width: 2),
                         Text(
-                          '本地识别',
+                          _useCloudRecognition ? '云端识别' : '本地识别',
                           style: TextStyle(
                             fontSize: 12,
                             color: colorScheme.primary,

@@ -162,11 +162,23 @@ class TtfBuilder {
 
   // --- maxp table ---
   void _buildMaxp() {
+    // Compute max points and contours across all glyphs
+    int maxPoints = 0;
+    int maxContours = 0;
+    for (final glyph in glyphs) {
+      int points = 0;
+      for (final contour in glyph.contours) {
+        points += contour.points.length;
+      }
+      if (points > maxPoints) maxPoints = points;
+      if (glyph.contours.length > maxContours) maxContours = glyph.contours.length;
+    }
+
     final w = _Writer();
     w.writeUint32(0x00010000); // version
     w.writeUint32(glyphs.length); // numGlyphs
-    w.writeUint16(0); // maxPoints (filled below)
-    w.writeUint16(0); // maxContours
+    w.writeUint16(maxPoints); // maxPoints
+    w.writeUint16(maxContours); // maxContours
     w.writeUint16(0); // maxCompositePoints
     w.writeUint16(0); // maxCompositeContours
     w.writeUint16(2); // maxZones
@@ -230,30 +242,69 @@ class TtfBuilder {
         // Instruction length
         w.writeUint16(0);
 
-        // Flags
-        for (final contour in glyph.contours) {
-          for (final p in contour.points) {
-            w.writeUint8(p.onCurve ? 0x01 : 0x00);
-          }
-        }
-
-        // X coordinates (delta encoded)
+        // Compute deltas and flags for all points
+        // TrueType flag bits:
+        //   0x01 = ON_CURVE (point is on-curve)
+        //   0x02 = X_SHORT (X delta is 1 byte, not 2)
+        //   0x04 = Y_SHORT (Y delta is 1 byte, not 2)
+        //   0x10 = X_SHORT + positive direction
+        //   0x20 = Y_SHORT + positive direction
+        final flags = <int>[];
+        final xDeltas = <int>[];
+        final yDeltas = <int>[];
         int prevX = 0;
+        int prevY = 0;
+
         for (final contour in glyph.contours) {
           for (final p in contour.points) {
-            final delta = p.x - prevX;
-            w.writeInt16(delta);
+            int flag = p.onCurve ? 0x01 : 0x00;
+            final dx = p.x - prevX;
+            final dy = p.y - prevY;
+
+            // X coordinate: use short (1 byte) if delta fits in 0..255
+            if (dx >= 0 && dx <= 255) {
+              flag |= 0x02; // X_SHORT
+              if (dx >= 0) flag |= 0x10; // positive direction
+              xDeltas.add(dx);
+            } else {
+              xDeltas.add(dx); // signed 16-bit
+            }
+
+            // Y coordinate: use short (1 byte) if delta fits in 0..255
+            if (dy >= 0 && dy <= 255) {
+              flag |= 0x04; // Y_SHORT
+              if (dy >= 0) flag |= 0x20; // positive direction
+              yDeltas.add(dy);
+            } else {
+              yDeltas.add(dy); // signed 16-bit
+            }
+
+            flags.add(flag);
             prevX = p.x;
+            prevY = p.y;
           }
         }
 
-        // Y coordinates (delta encoded)
-        int prevY = 0;
-        for (final contour in glyph.contours) {
-          for (final p in contour.points) {
-            final delta = p.y - prevY;
-            w.writeInt16(delta);
-            prevY = p.y;
+        // Write flags
+        for (final flag in flags) {
+          w.writeUint8(flag);
+        }
+
+        // Write X coordinates (delta encoded, respecting short flag)
+        for (int i = 0; i < xDeltas.length; i++) {
+          if (flags[i] & 0x02 != 0) {
+            w.writeUint8(xDeltas[i]); // single byte
+          } else {
+            w.writeInt16(xDeltas[i]); // signed 16-bit
+          }
+        }
+
+        // Write Y coordinates (delta encoded, respecting short flag)
+        for (int i = 0; i < yDeltas.length; i++) {
+          if (flags[i] & 0x04 != 0) {
+            w.writeUint8(yDeltas[i]); // single byte
+          } else {
+            w.writeInt16(yDeltas[i]); // signed 16-bit
           }
         }
       }

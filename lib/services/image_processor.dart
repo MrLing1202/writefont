@@ -374,48 +374,94 @@ class ImageProcessor {
   }
 
   /// Trace the outer contour of a connected component using Moore neighborhood tracing.
+  /// Returns boundary pixels in sequential order (forming a closed polygon path),
+  /// unlike BFS which produces unordered points.
   static List<Point> _traceContour(img.Image binary, int startX, int startY, List<List<bool>> visited) {
-    final contour = <Point>[];
-    final directions = [
+    // Mark the entire component as visited via BFS and collect all component pixels
+    final bfsDirs = [
       Point(1, 0), Point(1, 1), Point(0, 1), Point(-1, 1),
       Point(-1, 0), Point(-1, -1), Point(0, -1), Point(1, -1),
     ];
-
-    int x = startX;
-    int y = startY;
-    int dir = 0; // Start direction: right
-
-    // Flood fill to mark the component
-    final component = <Point>[];
-    final queue = <Point>[Point(x, y)];
+    final componentPixels = <Point>[];
+    final queue = <Point>[Point(startX, startY)];
+    visited[startY][startX] = true;
+    componentPixels.add(Point(startX, startY));
     while (queue.isNotEmpty) {
       final p = queue.removeAt(0);
-      if (visited[p.y][p.x]) continue;
-      visited[p.y][p.x] = true;
-      component.add(p);
-      for (final d in directions) {
+      for (final d in bfsDirs) {
         final nx = p.x + d.x;
         final ny = p.y + d.y;
         if (nx >= 0 && nx < binary.width && ny >= 0 && ny < binary.height &&
             !visited[ny][nx] && _isBlack(binary, nx, ny)) {
+          visited[ny][nx] = true;
           queue.add(Point(nx, ny));
+          componentPixels.add(Point(nx, ny));
         }
       }
     }
 
-    // Find the boundary pixels
-    for (final p in component) {
-      bool isBoundary = false;
+    // Find a boundary pixel within THIS component only.
+    // A boundary pixel is a black pixel with at least one white cardinal neighbor.
+    // Prefer a pixel where the left neighbor is white (standard Moore trace start).
+    int bx = -1, by = -1;
+    for (final p in componentPixels) {
+      if (!_isBlack(binary, p.x - 1, p.y)) {
+        bx = p.x;
+        by = p.y;
+        break; // Best start: left neighbor is white
+      }
+      // Check if this is a boundary pixel at all
+      bool hasWhiteNeighbor = false;
       for (int d = 0; d < 8; d += 2) {
-        final nx = p.x + directions[d].x;
-        final ny = p.y + directions[d].y;
-        if (!_isBlack(binary, nx, ny)) {
-          isBoundary = true;
+        if (!_isBlack(binary, p.x + bfsDirs[d].x, p.y + bfsDirs[d].y)) {
+          hasWhiteNeighbor = true;
           break;
         }
       }
-      if (isBoundary) contour.add(p);
+      if (hasWhiteNeighbor && bx < 0) {
+        bx = p.x;
+        by = p.y;
+      }
     }
+
+    if (bx < 0) return [];
+
+    // Moore neighborhood tracing — produces ordered boundary points.
+    // Directions: 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
+    const dx = [1, 1, 0, -1, -1, -1, 0, 1];
+    const dy = [0, 1, 1, 1, 0, -1, -1, -1];
+
+    // Initial backtracking direction: came from the left (W=4), so start searching from E=0
+    int dir = 0;
+    final traceStartX = bx, traceStartY = by;
+    final contour = <Point>[Point(bx, by)];
+    int maxSteps = binary.width * binary.height;
+    int steps = 0;
+
+    do {
+      // Search clockwise for the next black pixel from (dir+7)%8
+      int searchDir = (dir + 7) % 8;
+      bool found = false;
+      for (int i = 0; i < 8; i++) {
+        int d = (searchDir + i) % 8;
+        int nx = bx + dx[d];
+        int ny = by + dy[d];
+        if (nx >= 0 && nx < binary.width && ny >= 0 && ny < binary.height &&
+            _isBlack(binary, nx, ny)) {
+          bx = nx;
+          by = ny;
+          dir = d;
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+
+      steps++;
+      if (bx != traceStartX || by != traceStartY) {
+        contour.add(Point(bx, by));
+      }
+    } while ((bx != traceStartX || by != traceStartY) && steps < maxSteps);
 
     return contour;
   }
