@@ -50,9 +50,9 @@ class ProcessingParams {
   ProcessingParams({
     this.threshold = 0.5,
     this.strokeWidth = 1.0,
-    this.smoothness = 0.5,
-    this.erosion = 0,
-    this.dilation = 0,
+    this.smoothness = 0.3,
+    this.erosion = 1,
+    this.dilation = 1,
     this.invertColors = false,
     this.contrast = 1.0,
   });

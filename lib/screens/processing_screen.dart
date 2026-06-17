@@ -457,6 +457,39 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header with reset button
+          Row(
+            children: [
+              Text(
+                '参数调节',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '（推荐值）',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _onParamsChanged(ProcessingParams()),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('恢复默认'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+
           // Threshold
           _buildSlider(
             label: '阈值',

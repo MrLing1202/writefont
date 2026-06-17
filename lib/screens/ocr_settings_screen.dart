@@ -48,6 +48,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('设置已保存')),
       );
+      Navigator.pop(context);
     }
   }
 
