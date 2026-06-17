@@ -41,6 +41,9 @@ dependencies:
   # Local storage for settings
   shared_preferences: ^2.2.3
 
+  # Secure storage for API keys
+  flutter_secure_storage: ^9.2.4
+
   # OCR - Local text recognition (ML Kit)
   google_mlkit_text_recognition: ^0.15.1
 
