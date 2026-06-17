@@ -21,7 +21,7 @@ class RecognitionService {
   static const String _prefKeyCloudKey = 'ocr_cloud_key';
 
   // DeepSeek-OCR (硅基流动) 默认配置
-  static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
+  static const String defaultCloudUrl = 'https://writefont-ocr.gddz.workers.dev';
   static const String defaultModel = 'deepseek-ai/DeepSeek-OCR';
   static const String defaultApiKey = 'sk-twdljjyeqgjxejgcxigoizswercfhqomfuoyhltntfutkqqt';
   static const String cloudDisplayName = 'DeepSeek-OCR 云端识别（免费）';
