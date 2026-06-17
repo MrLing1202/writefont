@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'processing_screen.dart';
+import 'writing_tips_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -8,200 +11,198 @@ class HomeScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar.large(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '手迹造字',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                Text(
-                  'WriteFont',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Hero card
-                  Card(
-                    elevation: 0,
-                    color: colorScheme.primaryContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.edit_note,
-                            size: 48,
-                            color: colorScheme.onPrimaryContainer,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            '创建你的手写字体',
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              color: colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '拍照或选择手写字符图片，调节参数，生成属于你的个性化 TTF 字体',
-                            style: TextStyle(
-                              color: colorScheme.onPrimaryContainer.withOpacity(0.8),
-                              fontSize: 14,
-                              height: 1.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Steps section
-                  Text(
-                    '使用步骤',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  _StepCard(
-                    icon: Icons.camera_alt_outlined,
-                    step: '1',
-                    title: '拍照 / 选图',
-                    description: '拍摄手写字符照片，或从相册选择图片。建议使用方格纸书写。',
-                    color: colorScheme,
-                  ),
-                  const SizedBox(height: 12),
-                  _StepCard(
-                    icon: Icons.tune,
-                    step: '2',
-                    title: '调节参数',
-                    description: '调整阈值、笔画粗细、平滑度等参数，优化字符识别效果。',
-                    color: colorScheme,
-                  ),
-                  const SizedBox(height: 12),
-                  _StepCard(
-                    icon: Icons.preview,
-                    step: '3',
-                    title: '预览字体',
-                    description: '实时预览生成的字体效果，输入任意文字查看显示效果。',
-                    color: colorScheme,
-                  ),
-                  const SizedBox(height: 12),
-                  _StepCard(
-                    icon: Icons.file_download_outlined,
-                    step: '4',
-                    title: '导出 TTF',
-                    description: '导出标准 TTF 字体文件，可安装到手机或电脑使用。',
-                    color: colorScheme,
-                  ),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
-          ),
-        ],
+      appBar: AppBar(
+        title: const Text('WriteFont'),
+        centerTitle: true,
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).pushNamed('/capture');
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('开始造字'),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Logo
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.font_download,
+                  size: 50,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // 标题
+              Text(
+                '手迹造字',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '拍照生成你的专属手写字体',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 48),
+
+              // 标准字表造字卡片
+              _buildModeCard(
+                context,
+                icon: Icons.grid_on,
+                title: '标准字表造字',
+                description: '按40个常用字书写，AI自动识别匹配',
+                color: colorScheme.primaryContainer,
+                iconColor: colorScheme.primary,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const WritingTipsScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // 自由拍照造字卡片
+              _buildModeCard(
+                context,
+                icon: Icons.camera_alt,
+                title: '自由拍照造字',
+                description: '任意手写内容，自由拍照识别',
+                color: colorScheme.tertiaryContainer,
+                iconColor: colorScheme.tertiary,
+                onTap: () => _pickImages(context),
+              ),
+
+              const SizedBox(height: 32),
+
+              // 底部提示
+              Text(
+                '推荐使用标准字表，生成效果更好',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
-}
 
-class _StepCard extends StatelessWidget {
-  final IconData icon;
-  final String step;
-  final String title;
-  final String description;
-  final ColorScheme color;
-
-  const _StepCard({
-    required this.icon,
-    required this.step,
-    required this.title,
-    required this.description,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildModeCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+    required Color color,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
     return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: color.outlineVariant,
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: color.secondaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                color: color.onSecondaryContainer,
-                size: 24,
-              ),
+      elevation: 4,
+      shadowColor: color.withValues(alpha: 0.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color,
+                color.withValues(alpha: 0.7),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      color: color.onSurfaceVariant,
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
+          ),
+          child: Row(
+            children: [
+              // 图标
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, size: 32, color: iconColor),
               ),
-            ),
-          ],
+              const SizedBox(width: 20),
+
+              // 文字
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: iconColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: iconColor.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 箭头
+              Icon(
+                Icons.arrow_forward_ios,
+                color: iconColor.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _pickImages(BuildContext context) async {
+    final picker = ImagePicker();
+    final images = await picker.pickMultiImage(imageQuality: 95);
+
+    if (images.isNotEmpty && context.mounted) {
+      // 读取图片字节
+      final imageBytes = await Future.wait(
+        images.map((img) => img.readAsBytes()),
+      );
+
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProcessingScreen(
+              sourceImages: imageBytes,
+            ),
+          ),
+        );
+      }
+    }
   }
 }

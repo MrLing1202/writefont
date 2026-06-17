@@ -6,7 +6,9 @@ import '../models/project.dart';
 import '../services/storage_service.dart';
 
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key});
+  final List<String>? charset; // 标准字表，null = 自由模式
+
+  const CaptureScreen({super.key, this.charset});
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -87,7 +89,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
       if (mounted) {
         Navigator.of(context).pushNamed(
           '/processing',
-          arguments: {'images': imageBytes},
+          arguments: {
+            'images': imageBytes,
+            if (widget.charset != null) 'charset': widget.charset,
+          },
         );
       }
     } catch (e) {

@@ -5,11 +5,17 @@ import '../models/project.dart';
 import '../services/image_processor.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
+import '../data/standard_charset.dart';
 
 class ProcessingScreen extends StatefulWidget {
   final List<Uint8List> sourceImages;
+  final List<String>? charset; // 标准字表，null = 自由模式
 
-  const ProcessingScreen({super.key, required this.sourceImages});
+  const ProcessingScreen({
+    super.key,
+    required this.sourceImages,
+    this.charset,
+  });
 
   @override
   State<ProcessingScreen> createState() => _ProcessingScreenState();
@@ -88,12 +94,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   Future<void> _recognizeCharacters(List<Uint8List> cells) async {
     if (cells.isEmpty) return;
 
-    final serverUrl = await _recognitionService.getServerUrl();
-    if (serverUrl == null || serverUrl.isEmpty) {
-      // No server configured, use sequential fallback
-      _assignFallbackCharacters(cells.length);
-      return;
-    }
+    final charset = widget.charset; // 标准字表 or null
+    final useStandardCharset = charset != null && charset.isNotEmpty;
 
     if (mounted) {
       setState(() {
@@ -105,57 +107,99 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
     bool anyRecognized = false;
 
-    // Try batch recognition first
-    final batchResults = await _recognitionService.recognizeBatch(cells);
-    final hasBatchResults = batchResults.any((r) => r != null);
+    // 标准字表模式：用字表顺序作为默认匹配
+    if (useStandardCharset) {
+      // 先尝试 AI 识别，再用字表补齐
+      final serverUrl = await _recognitionService.getServerUrl();
+      if (serverUrl != null && serverUrl.isNotEmpty) {
+        // Try batch recognition first
+        final batchResults = await _recognitionService.recognizeBatch(cells);
+        final hasBatchResults = batchResults.any((r) => r != null);
 
-    if (hasBatchResults) {
-      for (int i = 0; i < batchResults.length; i++) {
-        if (batchResults[i] != null) {
-          _charAssignments[i] = batchResults[i]!;
-          anyRecognized = true;
+        if (hasBatchResults) {
+          for (int i = 0; i < batchResults.length; i++) {
+            if (batchResults[i] != null) {
+              _charAssignments[i] = batchResults[i]!;
+              anyRecognized = true;
+            }
+          }
+        } else {
+          // Fallback to individual recognition
+          for (int i = 0; i < cells.length; i++) {
+            final result = await _recognitionService.recognizeCharacter(cells[i]);
+            if (result != null) {
+              _charAssignments[i] = result;
+              anyRecognized = true;
+            }
+            if (mounted) {
+              setState(() => _recognizedCount = i + 1);
+            }
+          }
         }
       }
-    } else {
-      // Fallback to individual recognition
-      for (int i = 0; i < cells.length; i++) {
-        final result = await _recognitionService.recognizeCharacter(cells[i]);
-        if (result != null) {
-          _charAssignments[i] = result;
-          anyRecognized = true;
-        }
-        if (mounted) {
-          setState(() {
-            _recognizedCount = i + 1;
-          });
-        }
-      }
-    }
 
-    // Fill unrecognized cells with fallback
-    if (!anyRecognized) {
-      _assignFallbackCharacters(cells.length);
-    } else {
-      // Fill gaps with fallback for unrecognized cells
-      int fallbackIndex = 0;
+      // 用字表顺序补齐未识别的格子
       for (int i = 0; i < cells.length; i++) {
         if (!_charAssignments.containsKey(i)) {
-          while (fallbackIndex < _defaultCharacters.length &&
-              _charAssignments.containsValue(_defaultCharacters[fallbackIndex])) {
-            fallbackIndex++;
+          if (i < charset.length) {
+            _charAssignments[i] = charset[i];
           }
-          if (fallbackIndex < _defaultCharacters.length) {
-            _charAssignments[i] = _defaultCharacters[fallbackIndex];
-            fallbackIndex++;
+        }
+      }
+    } else {
+      // 自由模式：原有逻辑
+      final serverUrl = await _recognitionService.getServerUrl();
+      if (serverUrl == null || serverUrl.isEmpty) {
+        _assignFallbackCharacters(cells.length);
+        if (mounted) setState(() => _isRecognizing = false);
+        return;
+      }
+
+      // Try batch recognition first
+      final batchResults = await _recognitionService.recognizeBatch(cells);
+      final hasBatchResults = batchResults.any((r) => r != null);
+
+      if (hasBatchResults) {
+        for (int i = 0; i < batchResults.length; i++) {
+          if (batchResults[i] != null) {
+            _charAssignments[i] = batchResults[i]!;
+            anyRecognized = true;
+          }
+        }
+      } else {
+        for (int i = 0; i < cells.length; i++) {
+          final result = await _recognitionService.recognizeCharacter(cells[i]);
+          if (result != null) {
+            _charAssignments[i] = result;
+            anyRecognized = true;
+          }
+          if (mounted) {
+            setState(() => _recognizedCount = i + 1);
+          }
+        }
+      }
+
+      if (!anyRecognized) {
+        _assignFallbackCharacters(cells.length);
+      } else {
+        int fallbackIndex = 0;
+        for (int i = 0; i < cells.length; i++) {
+          if (!_charAssignments.containsKey(i)) {
+            while (fallbackIndex < _defaultCharacters.length &&
+                _charAssignments.containsValue(_defaultCharacters[fallbackIndex])) {
+              fallbackIndex++;
+            }
+            if (fallbackIndex < _defaultCharacters.length) {
+              _charAssignments[i] = _defaultCharacters[fallbackIndex];
+              fallbackIndex++;
+            }
           }
         }
       }
     }
 
     if (mounted) {
-      setState(() {
-        _isRecognizing = false;
-      });
+      setState(() => _isRecognizing = false);
     }
   }
 
@@ -223,7 +267,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('调节参数'),
+        title: Text(widget.charset != null ? '标准字表匹配' : '调节参数'),
         actions: [
           IconButton(
             onPressed: _showSettingsDialog,
@@ -266,13 +310,22 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                     children: [
                       Icon(Icons.grid_view, size: 16, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 8),
-                      Text(
-                        '识别到 ${_processedCells.length} 个字符',
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w500,
+                      if (widget.charset != null)
+                        Text(
+                          '已匹配 ${_charAssignments.length}/${widget.charset!.length}',
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        )
+                      else
+                        Text(
+                          '识别到 ${_processedCells.length} 个字符',
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
                       if (_isRecognizing) ...[
                         const SizedBox(width: 12),
                         SizedBox(

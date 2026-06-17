@@ -5,6 +5,8 @@ import 'screens/home_screen.dart';
 import 'screens/capture_screen.dart';
 import 'screens/processing_screen.dart';
 import 'screens/preview_screen.dart';
+import 'screens/writing_tips_screen.dart';
+import 'screens/charset_guide_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,15 +73,28 @@ class WriteFontApp extends StatelessWidget {
             return MaterialPageRoute(
               builder: (_) => const HomeScreen(),
             );
-          case '/capture':
+          case '/writing-tips':
             return MaterialPageRoute(
-              builder: (_) => const CaptureScreen(),
+              builder: (_) => const WritingTipsScreen(),
+            );
+          case '/charset-guide':
+            return MaterialPageRoute(
+              builder: (_) => const CharsetGuideScreen(),
+            );
+          case '/capture':
+            final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
+            return MaterialPageRoute(
+              builder: (_) => CaptureScreen(charset: charset),
             );
           case '/processing':
             final args = settings.arguments as Map<String, dynamic>;
             final images = args['images'] as List<Uint8List>;
+            final charset = args['charset'] as List<String>?;
             return MaterialPageRoute(
-              builder: (_) => ProcessingScreen(sourceImages: images),
+              builder: (_) => ProcessingScreen(
+                sourceImages: images,
+                charset: charset,
+              ),
             );
           case '/preview':
             final args = settings.arguments as Map<String, dynamic>;
