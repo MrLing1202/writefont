@@ -142,161 +142,38 @@ class RecognitionService {
     return results;
   }
 
-  // ===== 图片预处理辅助方法 =====
-
-  /// 锐化卷积（3x3 锐化核，手动实现兼容 image v4）
-  img.Image _sharpen(img.Image src) {
-    final result = img.Image(width: src.width, height: src.height);
-    // 锐化核: [0,-1,0, -1,5,-1, 0,-1,0]
-    for (int y = 0; y < src.height; y++) {
-      for (int x = 0; x < src.width; x++) {
-        num r = 0, g = 0, b = 0;
-        for (int dy = -1; dy <= 1; dy++) {
-          for (int dx = -1; dx <= 1; dx++) {
-            final nx = (x + dx).clamp(0, src.width - 1);
-            final ny = (y + dy).clamp(0, src.height - 1);
-            final pixel = src.getPixel(nx, ny);
-            // kernel weight: center=5, cardinal=-1, corners=0
-            final weight = (dx == 0 && dy == 0) ? 5
-                : ((dx == 0 || dy == 0) ? -1 : 0);
-            r += pixel.r * weight;
-            g += pixel.g * weight;
-            b += pixel.b * weight;
-          }
-        }
-        result.setPixelRgba(x, y,
-          r.clamp(0, 255).toInt(),
-          g.clamp(0, 255).toInt(),
-          b.clamp(0, 255).toInt(),
-          255);
-      }
-    }
-    return result;
-  }
-
-  /// 对比度增强（复用已有 adjustColor API，与 image_processor.dart 一致）
-  img.Image _enhanceContrast(img.Image src) {
-    return img.adjustColor(src, contrast: 1.5, brightness: 1.1);
-  }
-
-  /// 二值化（Otsu 自动阈值）
-  img.Image _binarize(img.Image src) {
-    final gray = img.grayscale(src);
-    // 计算 Otsu 阈值
-    final histogram = List<int>.filled(256, 0);
-    for (int y = 0; y < gray.height; y++) {
-      for (int x = 0; x < gray.width; x++) {
-        histogram[gray.getPixel(x, y).r.toInt()]++;
-      }
-    }
-    final totalPixels = gray.width * gray.height;
-    int sum = 0;
-    for (int i = 0; i < 256; i++) {
-      sum += i * histogram[i];
-    }
-    int sumB = 0;
-    int wB = 0;
-    double maxVariance = 0;
-    int threshold = 0;
-    for (int i = 0; i < 256; i++) {
-      wB += histogram[i];
-      if (wB == 0) continue;
-      final wF = totalPixels - wB;
-      if (wF == 0) break;
-      sumB += i * histogram[i];
-      final mB = sumB / wB;
-      final mF = (sum - sumB) / wF;
-      final variance = wB * wF * (mB - mF) * (mB - mF);
-      if (variance > maxVariance) {
-        maxVariance = variance;
-        threshold = i;
-      }
-    }
-    debugPrint('  二值化 Otsu 阈值: $threshold');
-    // 按阈值二值化
-    final result = img.Image(width: gray.width, height: gray.height);
-    for (int y = 0; y < gray.height; y++) {
-      for (int x = 0; x < gray.width; x++) {
-        final v = gray.getPixel(x, y).r.toInt() > threshold ? 255 : 0;
-        result.setPixelRgba(x, y, v, v, v, 255);
-      }
-    }
-    return result;
-  }
-
-  /// 本地 ML Kit 识别（多级预处理 + 重试策略）
+  /// 本地 ML Kit 识别
   Future<String?> _recognizeLocal(Uint8List imageBytes) async {
     try {
+      // 解码图片获取实际尺寸
       final decoded = img.decodeImage(imageBytes);
       if (decoded == null) return null;
 
-      final w = decoded.width;
-      final h = decoded.height;
-      final maxDim = w > h ? w : h;
-      debugPrint('ML Kit 识别: 原始图片 ${w}x$h，最大边 $maxDim');
+      debugPrint('ML Kit 识别: 原始图片尺寸 ${decoded.width}x${decoded.height}');
 
-      // 根据图片大小分级，定义放大目标尺寸序列
-      List<int> upscaleTargets;
-      if (maxDim < 50) {
-        // 单字级别：放大到 400→600→800
-        upscaleTargets = [400, 600, 800];
-      } else if (maxDim < 100) {
-        // 小字：放大到 300→500→700
-        upscaleTargets = [300, 500, 700];
-      } else if (maxDim < 200) {
-        // 中等：放大到 200→400
-        upscaleTargets = [200, 400];
-      } else {
-        // 大图：不放大，只做预处理
-        upscaleTargets = [0]; // 0 表示不放大，用原图
+      // 小图片（<200px）先放大到至少 200x200，提高 ML Kit 识别率
+      img.Image toProcess = decoded;
+      if (decoded.width < 200 || decoded.height < 200) {
+        final targetW = decoded.width < 200 ? 200 : decoded.width;
+        final targetH = decoded.height < 200 ? 200 : decoded.height;
+        toProcess = img.copyResize(decoded, width: targetW, height: targetH,
+            interpolation: img.Interpolation.linear);
+        debugPrint('ML Kit 识别: 放大到 ${toProcess.width}x${toProcess.height}');
       }
 
-      debugPrint('ML Kit 识别: 分级策略 targets=$upscaleTargets');
+      // 保存到临时文件，用 InputImage.fromFilePath 加载（避免 NV21 转换 bug）
+      final result = await _recognizeFromImage(toProcess);
 
-      // 预处理组合列表：原始、锐化、对比度增强、二值化
-      final preprocessors = <String, img.Image Function(img.Image)>{
-        '原始': (img) => img,
-        '锐化': _sharpen,
-        '对比度增强': _enhanceContrast,
-        '二值化': _binarize,
-      };
-
-      int attempt = 0;
-
-      // 对每个放大级别 × 每种预处理组合尝试识别
-      for (final targetSize in upscaleTargets) {
-        // 确定当前要处理的图片
-        img.Image base;
-        if (targetSize == 0) {
-          base = decoded;
-        } else {
-          // 等比放大到目标尺寸（以最大边为准）
-          final scale = targetSize / maxDim;
-          final newW = (w * scale).round();
-          final newH = (h * scale).round();
-          base = img.copyResize(decoded, width: newW, height: newH,
-              interpolation: img.Interpolation.cubic);
-          debugPrint('ML Kit 识别: 放大到 ${base.width}x${base.height}');
-        }
-
-        for (final entry in preprocessors.entries) {
-          attempt++;
-          final label = entry.key;
-          final preprocessor = entry.value;
-          final processed = preprocessor(base);
-
-          debugPrint('ML Kit 识别: 第${attempt}次尝试 | 放大=${targetSize == 0 ? "原图" : "${base.width}x${base.height}"} | 预处理=$label');
-
-          final result = await _recognizeFromImage(processed);
-          if (result != null && result.isNotEmpty) {
-            debugPrint('ML Kit 识别: ✓ 第${attempt}次成功 (放大=${targetSize == 0 ? "原图" : "${base.width}x${base.height}"}, 预处理=$label)');
-            return result;
-          }
-          debugPrint('ML Kit 识别: ✗ 第${attempt}次未识别到文字');
-        }
+      // 如果 ML Kit 返回空，尝试放大 2 倍再试一次
+      if (result == null || result.isEmpty) {
+        debugPrint('ML Kit 识别: 首次未识别到文字，尝试放大 2 倍重试');
+        final upscaled = img.copyResize(toProcess,
+            width: toProcess.width * 2, height: toProcess.height * 2,
+            interpolation: img.Interpolation.linear);
+        return await _recognizeFromImage(upscaled);
       }
 
-      debugPrint('ML Kit 识别: 所有${attempt}次尝试均未识别到文字');
+      return result;
     } catch (e) {
       debugPrint('ML Kit 识别失败: $e');
     }
@@ -395,7 +272,7 @@ class RecognitionService {
                 },
                 {
                   'type': 'text',
-                  'text': '请识别图片中的汉字，只输出识别到的汉字，不要输出其他内容。如果识别不出，输出空。',
+                  'text': 'Free OCR.',
                 },
               ],
             },
@@ -415,13 +292,7 @@ class RecognitionService {
             if (message is Map) {
               final content = message['content'] as String?;
               if (content != null && content.isNotEmpty && content.runes.isNotEmpty) {
-                // 优先提取第一个中文字符
-                final chineseMatch = RegExp(r'[一-鿿]').firstMatch(content);
-                if (chineseMatch != null) {
-                  return chineseMatch.group(0);
-                }
-                // 否则取最后一个字符（API 通常在末尾输出识别结果）
-                return String.fromCharCodes(content.runes.toList().reversed.take(1));
+                return String.fromCharCodes(content.runes.take(1));
               }
             }
           }
