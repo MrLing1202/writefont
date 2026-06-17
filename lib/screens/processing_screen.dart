@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../models/project.dart';
@@ -18,6 +19,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   List<Uint8List> _processedCells = [];
   bool _isProcessing = true;
   int _selectedCellIndex = -1;
+  Timer? _debounceTimer;
 
   // Character assignment
   final List<String> _defaultCharacters = _getDefaultChars();
@@ -71,7 +73,17 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
     setState(() {
       _params = newParams;
     });
-    _processImages();
+    // Debounce: 只在用户停止拖动 500ms 后才触发处理
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _processImages();
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
   }
 
   void _proceedToPreview() {
@@ -253,8 +265,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           _buildSlider(
             label: '阈值',
             value: _params.threshold,
-            min: 0.1,
-            max: 0.9,
+            min: 0.0,
+            max: 1.0,
+            divisions: 20,
             icon: Icons.contrast,
             colorScheme: colorScheme,
             onChanged: (v) => _onParamsChanged(_params.copyWith(threshold: v)),
