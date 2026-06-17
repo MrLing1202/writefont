@@ -270,7 +270,7 @@ class ImageProcessor {
         if (cell.getPixel(x, y).r.toInt() < 128) blackPixels++;
       }
     }
-    return blackPixels > totalPixels * 0.02; // At least 2% filled
+    return blackPixels > totalPixels * 0.005; // At least 0.5% filled (was 2%, missed small chars)
   }
 
   /// Trace the outer contour of a connected component using Moore neighborhood tracing.
