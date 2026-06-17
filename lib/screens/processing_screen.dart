@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/image_processor.dart';
 import '../services/storage_service.dart';
+import '../services/recognition_service.dart';
 
 class ProcessingScreen extends StatefulWidget {
   final List<Uint8List> sourceImages;
@@ -20,6 +21,13 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   bool _isProcessing = true;
   int _selectedCellIndex = -1;
   Timer? _debounceTimer;
+
+  // AI recognition
+  final RecognitionService _recognitionService = RecognitionService.instance;
+  bool _isRecognizing = false;
+  int _recognizedCount = 0;
+  int _totalCount = 0;
+  String? _serverUrl;
 
   // Character assignment
   final List<String> _defaultCharacters = _getDefaultChars();
@@ -42,22 +50,27 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   void initState() {
     super.initState();
     _params = ProcessingParams();
+    _loadServerUrl();
     _processImages();
+  }
+
+  Future<void> _loadServerUrl() async {
+    final url = await _recognitionService.getServerUrl();
+    if (mounted) {
+      setState(() {
+        _serverUrl = url;
+      });
+    }
   }
 
   void _processImages() {
     setState(() => _isProcessing = true);
 
-    Future.microtask(() {
+    Future.microtask(() async {
       final allCells = <Uint8List>[];
       for (final img in widget.sourceImages) {
         final cells = ImageProcessor.segmentCharacters(img, _params);
         allCells.addAll(cells);
-      }
-
-      // Auto-assign characters
-      for (int i = 0; i < allCells.length && i < _defaultCharacters.length; i++) {
-        _charAssignments[i] = _defaultCharacters[i];
       }
 
       if (mounted) {
@@ -66,7 +79,90 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           _isProcessing = false;
         });
       }
+
+      // Try AI recognition
+      await _recognizeCharacters(allCells);
     });
+  }
+
+  Future<void> _recognizeCharacters(List<Uint8List> cells) async {
+    if (cells.isEmpty) return;
+
+    final serverUrl = await _recognitionService.getServerUrl();
+    if (serverUrl == null || serverUrl.isEmpty) {
+      // No server configured, use sequential fallback
+      _assignFallbackCharacters(cells.length);
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isRecognizing = true;
+        _recognizedCount = 0;
+        _totalCount = cells.length;
+      });
+    }
+
+    bool anyRecognized = false;
+
+    // Try batch recognition first
+    final batchResults = await _recognitionService.recognizeBatch(cells);
+    final hasBatchResults = batchResults.any((r) => r != null);
+
+    if (hasBatchResults) {
+      for (int i = 0; i < batchResults.length; i++) {
+        if (batchResults[i] != null) {
+          _charAssignments[i] = batchResults[i]!;
+          anyRecognized = true;
+        }
+      }
+    } else {
+      // Fallback to individual recognition
+      for (int i = 0; i < cells.length; i++) {
+        final result = await _recognitionService.recognizeCharacter(cells[i]);
+        if (result != null) {
+          _charAssignments[i] = result;
+          anyRecognized = true;
+        }
+        if (mounted) {
+          setState(() {
+            _recognizedCount = i + 1;
+          });
+        }
+      }
+    }
+
+    // Fill unrecognized cells with fallback
+    if (!anyRecognized) {
+      _assignFallbackCharacters(cells.length);
+    } else {
+      // Fill gaps with fallback for unrecognized cells
+      int fallbackIndex = 0;
+      for (int i = 0; i < cells.length; i++) {
+        if (!_charAssignments.containsKey(i)) {
+          while (fallbackIndex < _defaultCharacters.length &&
+              _charAssignments.containsValue(_defaultCharacters[fallbackIndex])) {
+            fallbackIndex++;
+          }
+          if (fallbackIndex < _defaultCharacters.length) {
+            _charAssignments[i] = _defaultCharacters[fallbackIndex];
+            fallbackIndex++;
+          }
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isRecognizing = false;
+      });
+    }
+  }
+
+  void _assignFallbackCharacters(int count) {
+    for (int i = 0; i < count && i < _defaultCharacters.length; i++) {
+      _charAssignments[i] = _defaultCharacters[i];
+    }
   }
 
   void _onParamsChanged(ProcessingParams newParams) {
@@ -129,6 +225,11 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
       appBar: AppBar(
         title: const Text('调节参数'),
         actions: [
+          IconButton(
+            onPressed: _showSettingsDialog,
+            icon: const Icon(Icons.settings),
+            tooltip: '识别服务器设置',
+          ),
           TextButton.icon(
             onPressed: _proceedToPreview,
             icon: const Icon(Icons.preview),
@@ -172,6 +273,36 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (_isRecognizing) ...[
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'AI识别中 $_recognizedCount/$_totalCount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ] else if (_serverUrl != null && _serverUrl!.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.cloud_done, size: 14, color: colorScheme.primary),
+                        const SizedBox(width: 2),
+                        Text(
+                          'AI识别',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ],
                       const Spacer(),
                       if (_selectedCellIndex >= 0)
                         Text(
@@ -495,6 +626,66 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
               Navigator.pop(context);
             },
             child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSettingsDialog() {
+    final controller = TextEditingController(text: _serverUrl ?? '');
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.cloud_sync),
+        title: const Text('AI 识别服务器'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '配置后端识别服务器地址，启用 AI 字符识别功能。留空则使用顺序分配。',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: '服务器地址',
+                hintText: 'http://192.168.1.100:8080',
+                prefixIcon: Icon(Icons.link),
+              ),
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '示例: http://192.168.1.100:8080',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final url = controller.text.trim();
+              await _recognitionService.setServerUrl(url.isEmpty ? null : url);
+              if (mounted) {
+                setState(() {
+                  _serverUrl = url.isEmpty ? null : url;
+                });
+                Navigator.pop(context);
+                // Re-process with new settings
+                _processImages();
+              }
+            },
+            child: const Text('保存并重新识别'),
           ),
         ],
       ),
