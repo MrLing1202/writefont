@@ -5,6 +5,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
@@ -17,8 +18,16 @@ class RecognitionService {
   static const String _prefKeyCloudUrl = 'ocr_cloud_url';
   static const String _prefKeyCloudKey = 'ocr_cloud_key';
 
-  static const Duration _timeout = Duration(seconds: 10);
+  // DeepSeek-OCR (硅基流动) 默认配置
+  static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
+  static const String defaultModel = 'deepseek-ai/DeepSeek-OCR';
+  static const String cloudDisplayName = 'DeepSeek-OCR（硅基流动免费）';
+
+  static const Duration _timeout = Duration(seconds: 30);
   static const int _maxConcurrent = 3;
+
+  // Secure storage for sensitive data (API keys)
+  static const _secureStorage = FlutterSecureStorage();
 
   static RecognitionService? _instance;
   static RecognitionService get instance => _instance ??= RecognitionService._();
@@ -47,17 +56,26 @@ class RecognitionService {
     return _useCloud!;
   }
 
-  Future<String?> getCloudUrl() async {
-    if (_cloudUrl != null) return _cloudUrl;
+  Future<String> getCloudUrl() async {
+    if (_cloudUrl != null) return _cloudUrl!;
     final prefs = await SharedPreferences.getInstance();
-    _cloudUrl = prefs.getString(_prefKeyCloudUrl);
-    return _cloudUrl;
+    _cloudUrl = prefs.getString(_prefKeyCloudUrl) ?? defaultCloudUrl;
+    return _cloudUrl!;
   }
 
   Future<String?> getCloudKey() async {
     if (_cloudKey != null) return _cloudKey;
-    final prefs = await SharedPreferences.getInstance();
-    _cloudKey = prefs.getString(_prefKeyCloudKey);
+    _cloudKey = await _secureStorage.read(key: _prefKeyCloudKey);
+    // 迁移：如果安全存储中没有，但 SharedPreferences 中有旧的明文 Key，迁移过来
+    if (_cloudKey == null || _cloudKey!.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final oldKey = prefs.getString(_prefKeyCloudKey);
+      if (oldKey != null && oldKey.isNotEmpty) {
+        await _secureStorage.write(key: _prefKeyCloudKey, value: oldKey);
+        await prefs.remove(_prefKeyCloudKey);
+        _cloudKey = oldKey;
+      }
+    }
     return _cloudKey;
   }
 
@@ -77,10 +95,11 @@ class RecognitionService {
     } else {
       await prefs.setString(_prefKeyCloudUrl, url);
     }
+    // API Key 存入安全存储（加密）
     if (key == null || key.isEmpty) {
-      await prefs.remove(_prefKeyCloudKey);
+      await _secureStorage.delete(key: _prefKeyCloudKey);
     } else {
-      await prefs.setString(_prefKeyCloudKey, key);
+      await _secureStorage.write(key: _prefKeyCloudKey, value: key);
     }
   }
 
@@ -207,12 +226,40 @@ class RecognitionService {
     return nv21;
   }
 
-  /// 云端 API 识别
+  /// SSRF 防护：校验 URL 是否为公网地址
+  bool _isValidPublicUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      if (uri.scheme != 'https' && uri.scheme != 'http') return false;
+      final host = uri.host;
+      // 禁止私有/保留地址
+      if (host == 'localhost' || host == '127.0.0.1' || host == '::1') return false;
+      if (host.startsWith('10.') || host.startsWith('192.168.')) return false;
+      if (host.startsWith('172.')) {
+        final parts = host.split('.');
+        if (parts.length >= 2) {
+          final second = int.tryParse(parts[1]);
+          if (second != null && second >= 16 && second <= 31) return false;
+        }
+      }
+      if (host.startsWith('169.254.')) return false;
+      if (host == '0.0.0.0') return false;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 云端 API 识别（OpenAI 兼容格式，支持 DeepSeek-OCR / 硅基流动）
   Future<String?> _recognizeCloud(Uint8List imageBytes) async {
     final cloudUrl = await getCloudUrl();
     final cloudKey = await getCloudKey();
 
-    if (cloudUrl == null || cloudUrl.isEmpty) return null;
+    if (cloudUrl.isEmpty) return null;
+    if (!_isValidPublicUrl(cloudUrl)) {
+      debugPrint('云端识别: URL 不合法或为私有地址');
+      return null;
+    }
 
     try {
       final base64Image = base64Encode(imageBytes);
@@ -224,35 +271,54 @@ class RecognitionService {
           if (cloudKey != null && cloudKey.isNotEmpty) 'Authorization': 'Bearer $cloudKey',
         },
         body: jsonEncode({
-          'image': base64Image,
-          'type': 'character',
+          'model': defaultModel,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {
+                  'type': 'image_url',
+                  'image_url': {
+                    'url': 'data:image/png;base64,$base64Image',
+                  },
+                },
+                {
+                  'type': 'text',
+                  'text': 'Free OCR.',
+                },
+              ],
+            },
+          ],
+          'max_tokens': 1024,
         }),
       ).timeout(_timeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        if (data is Map) {
-          if (data.containsKey('character')) {
-            return data['character'] as String?;
-          }
-          if (data.containsKey('text')) {
-            final text = data['text'] as String?;
-            if (text != null && text.isNotEmpty && text.runes.isNotEmpty) {
-              return String.fromCharCodes(text.runes.take(1));
-            }
-          }
-          if (data.containsKey('result') && data['result'] is Map) {
-            final result = data['result'] as Map;
-            if (result.containsKey('text')) {
-              final text = result['text'] as String?;
-              if (text != null && text.isNotEmpty && text.runes.isNotEmpty) {
-                return String.fromCharCodes(text.runes.take(1));
+        // OpenAI 格式: choices[0].message.content
+        if (data is Map && data['choices'] is List) {
+          final choices = data['choices'] as List;
+          if (choices.isNotEmpty) {
+            final message = choices[0]['message'];
+            if (message is Map) {
+              final content = message['content'] as String?;
+              if (content != null && content.isNotEmpty && content.runes.isNotEmpty) {
+                return String.fromCharCodes(content.runes.take(1));
               }
             }
           }
         }
+      } else {
+        final statusCode = response.statusCode;
+        if (statusCode == 401 || statusCode == 403) {
+          debugPrint('云端识别认证失败 ($statusCode): API Key 无效或已过期');
+          throw const CloudAuthException('认证失败: API Key 无效或已过期，请检查后重试');
+        }
+        debugPrint('云端识别 HTTP $statusCode: ${response.body}');
       }
+    } on CloudAuthException {
+      rethrow; // 认证错误直接向上传播，让调用方显示友好提示
     } catch (e) {
       debugPrint('云端识别失败: $e');
     }
@@ -271,6 +337,14 @@ class RecognitionService {
     _cloudUrl = null;
     _cloudKey = null;
   }
+}
+
+/// 云端认证错误（API Key 无效或过期）
+class CloudAuthException implements Exception {
+  final String message;
+  const CloudAuthException(this.message);
+  @override
+  String toString() => message;
 }
 
 /// 信号量（并发控制）
