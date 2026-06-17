@@ -232,9 +232,14 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           TextButton.icon(
             onPressed: () {
               Navigator.of(context).pushNamed('/ocr-settings').then((_) {
-                // 从 OCR 设置页返回时，重新读取识别模式设置
+                // 从 OCR 设置页返回时，重新读取识别模式设置并用新模式重新识别
                 _recognitionService.clearCache();
-                _loadUseCloudSetting();
+                _loadUseCloudSetting().then((_) {
+                  if (_processedCells.isNotEmpty) {
+                    _charAssignments.clear();
+                    _recognizeCharacters(_processedCells);
+                  }
+                });
               });
             },
             icon: const Icon(Icons.tune),
