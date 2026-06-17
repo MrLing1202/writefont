@@ -1,0 +1,6 @@
+name = "writefont-ocr"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+SF_API_KEY = "sk-twdljjyeqgjxejgcxigoizswercfhqomfuoyhltntfutkqqt"
