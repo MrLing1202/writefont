@@ -25,7 +25,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   late ProcessingParams _params;
   List<Uint8List> _processedCells = [];
   bool _isProcessing = true;
-  int _selectedCellIndex = -1;
+  final Set<int> _selectedCells = {};
   Timer? _debounceTimer;
 
   // AI recognition
@@ -302,9 +302,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                         ),
                       ],
                       const Spacer(),
-                      if (_selectedCellIndex >= 0)
+                      if (_selectedCells.isNotEmpty)
                         Text(
-                          '已选: ${_charAssignments[_selectedCellIndex] ?? "?"}',
+                          '已选 ${_selectedCells.length} 个',
                           style: TextStyle(
                             color: colorScheme.primary,
                             fontWeight: FontWeight.w600,
@@ -313,6 +313,52 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                     ],
                   ),
                 ),
+
+                // Select all row
+                if (_processedCells.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Text(
+                          '识别到 ${_processedCells.length} 个字符',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              if (_selectedCells.length == _processedCells.length) {
+                                _selectedCells.clear();
+                              } else {
+                                _selectedCells.addAll(
+                                  List.generate(_processedCells.length, (i) => i),
+                                );
+                              }
+                            });
+                          },
+                          icon: Icon(
+                            _selectedCells.length == _processedCells.length
+                                ? Icons.deselect
+                                : Icons.select_all,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _selectedCells.length == _processedCells.length
+                                ? '取消全选'
+                                : '全选',
+                          ),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 // Character grid
                 Expanded(
@@ -536,13 +582,17 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   }
 
   Widget _buildCharacterCell(int index, ColorScheme colorScheme) {
-    final isSelected = _selectedCellIndex == index;
+    final isSelected = _selectedCells.contains(index);
     final assignedChar = _charAssignments[index];
 
     return GestureDetector(
       onTap: () {
         setState(() {
-          _selectedCellIndex = isSelected ? -1 : index;
+          if (isSelected) {
+            _selectedCells.remove(index);
+          } else {
+            _selectedCells.add(index);
+          }
         });
       },
       onLongPress: () => _editCharacter(index),
