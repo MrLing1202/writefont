@@ -1,76 +1,78 @@
 # 手迹造字 WriteFont
 
-从手写样本到可安装字体，全链路自动化。
+拍张手写照片，几分钟生成一套自己的 TTF 字体。
 
 ## 📥 下载安装
+
+直接下载 APK 安装到手机，不需要装任何开发工具。
 
 **下载地址：** [GitHub Releases](https://github.com/MrLing1202/writefont/releases/tag/v1.0.0-android)
 
 | 文件名 | 适用设备 |
 |--------|----------|
-| `app-arm64-v8a-release.apk` | **主流手机选这个** |
+| `app-arm64-v8a-release.apk` | **主流手机选这个**（近 5 年的安卓机基本都是） |
 | `app-armeabi-v7a-release.apk` | 老款 32 位手机 |
 | `app-x86_64-release.apk` | 安卓模拟器 |
 
-> 下载 → 允许安装未知来源 → 完成
+> 下载后打开 → 系统提示"允许安装未知来源"→ 安装完成
 
-## 🚀 本地部署
+## 🚀 从源码运行
 
 ```bash
-# 1. 安装 Tesseract OCR
-brew install tesseract        # macOS
-sudo apt install tesseract-ocr  # Ubuntu
+# 1. 安装 Tesseract OCR（本地图片识别必需）
+# macOS
+brew install tesseract
+# Ubuntu / Debian
+sudo apt install tesseract-ocr
 
-# 2. 克隆项目
+# 2. 克隆并安装依赖
 git clone https://github.com/MrLing1202/writefont.git
 cd writefont
 pip install -r requirements.txt
 
 # 3. 启动
-python start.py            # Web UI
-python start.py --api      # API 服务
+python start.py            # Web UI 模式
+python start.py --api      # API 模式
 ```
 
-## ✨ 核心能力
+浏览器打开 `http://localhost:8080` 即可使用。
 
-- **端到端字体生成** — 拍照到 TTF 一条龙，无需人工描字
-- **多模型 AI 识别** — 接入主流视觉语言模型，识别精度自适应
-- **智能字符分割** — 自动检测、分离、校正手写字符
-- **参数自适应引擎** — 阈值/腐蚀/膨胀/平滑度实时可调，所见即所得
-- **跨平台字体输出** — 生成标准 TrueType 字体，Windows/macOS/Linux/Android/iOS 通用
+## ✨ 功能特性
 
-## 🛠 使用流程
+- 📸 **拍照/选图** — 手机拍照或从相册选图，支持多张
+- 🔍 **智能识别** — AI 模型接口识别 + 本地 Tesseract OCR 双通道
+- 🎨 **参数调节** — 阈值、腐蚀膨胀、平滑度、对比度可调
+- 👀 **实时预览** — 输入任意文字查看字体效果
+- 📦 **导出 TTF** — 生成标准 TrueType 字体，全平台通用
 
-1. 配置 AI 模型（见下方）
-2. 方格纸手写字符 → 拍照
-3. 调参 → 预览 → 导出
+## 🛠 使用指南
 
-## ⚙️ 技术架构
+1. 配置 AI 模型 Key（见下方）
+2. 用方格纸写好字符（黑色签字笔，字迹清晰）
+3. 打开 App → 拍照或选图 → 调节参数 → 预览 → 导出 TTF
 
-```
-┌─────────────┐    ┌──────────────┐    ┌──────────────┐
-│  Flutter App │───▶│  Python 后端  │───▶│  AI 模型 API  │
-│  (前端交互)   │    │  (图像处理)   │    │  (视觉识别)   │
-└─────────────┘    └──────┬───────┘    └──────────────┘
-                          │
-                   ┌──────▼───────┐
-                   │  字体生成引擎  │
-                   │  (TTF 输出)   │
-                   └──────────────┘
-```
+## ⚙️ 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 前端 | Flutter 3.x / Dart 3.x |
+| 后端 | Python |
+| 图像处理 | OpenCV |
+| OCR 识别 | Tesseract OCR（本地）+ AI 模型接口（云端） |
+| 字体生成 | 自研 TTF 引擎 |
 
 ## 📝 注意事项
 
-- 方格纸网格越清晰，识别越准
-- 拍照保持纸张平整
+- 方格纸网格越清晰，分割越准确
+- 拍照保持纸张平整，避免透视变形
 - 生成的 TTF 全平台通用
 
 ## 📄 License
 
-[AGPL-3.0](LICENSE) — 可自由使用和修改，禁止闭源商用。
+[AGPL-3.0](LICENSE) — 可以自由使用和修改，但不能闭源商用。
 
 ## 🤝 贡献
 
-欢迎提 Issue 和 PR。核心引擎不开源，获取源码请联系作者。
+欢迎提 Issue 和 PR。核心引擎以私有包维护，获取源码请联系作者。
 
 支持自定义 AI 模型接口调用。
