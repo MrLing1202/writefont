@@ -65,11 +65,4 @@ python start.py
 
 欢迎提 Issue 和 PR。核心引擎以私有包维护，获取源码请联系作者。
 
----
-
-<details>
-<summary>🤖 配置 AI 模型</summary>
-
-App 需要一个 AI 模型来识别手写字。打开 App → 设置 → 填入你的 API Key 即可。Key 只存本地，不上传任何服务器。
-
-</details>
+支持自定义 AI 模型接口调用。
