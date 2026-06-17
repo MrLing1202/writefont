@@ -10,12 +10,3 @@ build/
 .dart_tool/
 *.apk
 *.aab
-
-# Security: prevent accidental key leaks
-.env
-.env.*
-*.pem
-*.key
-secrets/
-wrangler.toml.local
-wrangler.dev.toml
