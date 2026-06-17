@@ -16,12 +16,19 @@
 
 > 下载后打开 → 系统提示"允许安装未知来源"→ 安装完成
 
-## 🚀 从源码运行
+## 🚀 本地部署
 
 ```bash
+# 1. 安装 Tesseract OCR
+brew install tesseract        # macOS
+sudo apt install tesseract-ocr  # Ubuntu
+
+# 2. 克隆项目
 git clone https://github.com/MrLing1202/writefont.git
 cd writefont
 pip install -r requirements.txt
+
+# 3. 启动
 python start.py            # Web UI 模式
 python start.py --api      # API 模式
 ```
@@ -48,6 +55,7 @@ python start.py --api      # API 模式
 |------|------|
 | 前端 | Flutter 3.x / Dart 3.x |
 | 后端 | Python |
+| OCR | Tesseract |
 | 图像处理 | OpenCV |
 | AI 识别 | 支持多模型接入 |
 | 字体生成 | 自研 TTF 引擎 |
