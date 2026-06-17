@@ -38,14 +38,14 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
     });
   }
 
-  Future<void> _saveSettings() async {
+  Future<void> _saveSettings({bool showSnackbar = true}) async {
     await _recognitionService.setUseCloud(_useCloud);
     await _recognitionService.setCloudConfig(
       _urlController.text.trim(),
       _keyController.text.trim(),
     );
 
-    if (mounted) {
+    if (showSnackbar && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('设置已保存')),
       );
@@ -56,6 +56,9 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
     setState(() => _isTesting = true);
 
     try {
+      // 先保存当前 UI 输入的配置，确保测试使用最新值
+      await _saveSettings(showSnackbar: false);
+
       // 创建一个简单的测试图片（1x1 白色 PNG）
       final testImage = Uint8List.fromList([
         0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG header
@@ -196,7 +199,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                             Icon(Icons.cloud_upload, color: colorScheme.secondary),
                             const SizedBox(width: 12),
                             Text(
-                              '云端识别（可选）',
+                              RecognitionService.cloudDisplayName,
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -207,7 +210,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '如果本地识别效果不满意，可以使用云端 OCR API（需自行申请）。',
+                          'DeepSeek 开源 3B 视觉 OCR 模型，通过硅基流动免费 API 调用，仅需填写 API Key。',
                           style: TextStyle(
                             fontSize: 14,
                             color: colorScheme.onSurfaceVariant,
@@ -234,7 +237,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                             controller: _urlController,
                             decoration: InputDecoration(
                               labelText: 'API 地址',
-                              hintText: 'https://api.example.com/ocr',
+                              hintText: RecognitionService.defaultCloudUrl,
                               prefixIcon: const Icon(Icons.link),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -249,8 +252,8 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           TextField(
                             controller: _keyController,
                             decoration: InputDecoration(
-                              labelText: 'API Key（可选）',
-                              hintText: 'sk-xxxxxxxxxxxx',
+                              labelText: 'API Key（硅基流动）',
+                              hintText: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
                               prefixIcon: const Icon(Icons.key),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -287,7 +290,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
 
                 const SizedBox(height: 16),
 
-                // 支持的云端服务说明
+                // 使用说明
                 Card(
                   color: colorScheme.surfaceVariant.withOpacity(0.3),
                   child: Padding(
@@ -296,7 +299,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '支持的云端 OCR 服务',
+                          '如何获取 API Key',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -305,11 +308,11 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '• 百度 OCR（通用文字识别）\n'
-                          '• 腾讯 OCR（通用印刷体识别）\n'
-                          '• 阿里云 OCR（通用文字识别）\n'
-                          '• 智谱 AI（视觉理解）\n'
-                          '• 其他兼容 OpenAI 格式的 API',
+                          '1. 访问 siliconflow.cn 注册账号\n'
+                          '2. 进入「API 密钥」页面创建密钥\n'
+                          '3. 将密钥粘贴到上方输入框即可\n\n'
+                          'DeepSeek-OCR 模型目前免费调用，无需充值。\n'
+                          '也可替换为其他兼容 OpenAI 格式的云端 API。',
                           style: TextStyle(
                             fontSize: 13,
                             color: colorScheme.onSurfaceVariant,
