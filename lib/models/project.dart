@@ -54,6 +54,7 @@ class GlyphData {
   int leftSideBearing;
   int xMin, yMin, xMax, yMax;
   String? sourceImagePath; // 原始图片路径
+  double? confidence; // 识别置信度 0.0-1.0
 
   GlyphData({
     required this.character,
@@ -66,6 +67,7 @@ class GlyphData {
     this.xMax = 0,
     this.yMax = 0,
     this.sourceImagePath,
+    this.confidence,
   }) : contours = contours ?? [];
 
   /// 序列化为 JSON
@@ -80,6 +82,7 @@ class GlyphData {
         'xMax': xMax,
         'yMax': yMax,
         'sourceImagePath': sourceImagePath,
+        'confidence': confidence,
       };
 
   /// 从 JSON 反序列化
@@ -97,6 +100,7 @@ class GlyphData {
         xMax: json['xMax'] as int? ?? 0,
         yMax: json['yMax'] as int? ?? 0,
         sourceImagePath: json['sourceImagePath'] as String?,
+        confidence: (json['confidence'] as num?)?.toDouble(),
       );
 
   /// 根据轮廓实际边界计算动态字宽
