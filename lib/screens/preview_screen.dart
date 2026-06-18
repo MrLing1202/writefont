@@ -365,29 +365,49 @@ class _PreviewScreenState extends State<PreviewScreen> {
       runSpacing: 6,
       children: glyphs.entries.map((entry) {
         final glyph = entry.value;
-        return Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: colorScheme.outlineVariant),
-            color: colorScheme.surface,
-          ),
-          child: glyph.contours.isNotEmpty
-              ? _GlyphWidget(
-                  contours: glyph.contours,
-                  size: 32,
-                  color: colorScheme.onSurface,
-                )
-              : Center(
-                  child: Text(
-                    entry.key,
-                    style: TextStyle(
-                      fontSize: 20,
-                      color: colorScheme.onSurface,
-                    ),
+        final unicodeHex = 'U+${glyph.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}';
+        return Tooltip(
+          message: '$unicodeHex (${glyph.contours.length} 轮廓)',
+          child: Container(
+            width: 48,
+            height: 58,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colorScheme.outlineVariant),
+              color: colorScheme.surface,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: glyph.contours.isNotEmpty
+                      ? _GlyphWidget(
+                          contours: glyph.contours,
+                          size: 32,
+                          color: colorScheme.onSurface,
+                        )
+                      : Center(
+                          child: Text(
+                            entry.key,
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                ),
+                Text(
+                  unicodeHex.substring(2), // 显示 4 位十六进制
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: colorScheme.onSurfaceVariant,
+                    fontFamily: 'monospace',
                   ),
                 ),
+                const SizedBox(height: 2),
+              ],
+            ),
+          ),
         );
       }).toList(),
     );
@@ -509,21 +529,62 @@ class _GlyphPainter extends CustomPainter {
     // Font Y goes up, screen Y goes down
     final scale = size.width / 1000;
 
-    for (final contour in contours) {
+    // Merge all contours into a single Path with nonZero fill type.
+    // This ensures inner contours (holes) create hollow regions:
+    // - Outer contour winding number +1 → filled
+    // - Inner contour winding number -1 → total 0 → unfilled (hole)
+    final path = Path()..fillType = PathFillType.nonZero;
+
+    // Helper: compute signed area via shoelace formula.
+    // Positive = clockwise in screen coords (Y down), negative = counter-clockwise.
+    double signedArea(List<ContourPoint> pts) {
+      double a = 0;
+      for (int i = 0; i < pts.length; i++) {
+        final j = (i + 1) % pts.length;
+        a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+      }
+      return a;
+    }
+
+    // Find the outer contour (largest by absolute area).
+    double maxArea = 0;
+    int outerIdx = 0;
+    for (int c = 0; c < contours.length; c++) {
+      if (contours[c].points.length < 3) continue;
+      final a = signedArea(contours[c].points).abs();
+      if (a > maxArea) {
+        maxArea = a;
+        outerIdx = c;
+      }
+    }
+
+    // Determine the winding direction of the outer contour.
+    final outerCW = signedArea(contours[outerIdx].points) > 0;
+
+    // Add each contour, ensuring inner contours have opposite winding
+    // so the non-zero rule produces hollow regions.
+    for (int c = 0; c < contours.length; c++) {
+      final contour = contours[c];
       if (contour.points.length < 3) continue;
 
-      final path = Path();
-      final first = contour.points.first;
-      path.moveTo(first.x * scale, (1000 - first.y) * scale);
+      final pts = contour.points;
+      final isCW = signedArea(pts) > 0;
 
-      for (int i = 1; i < contour.points.length; i++) {
-        final p = contour.points[i];
+      // If winding matches the outer contour and it's not the outer itself,
+      // reverse it so it becomes a hole.
+      final needReverse = c != outerIdx && isCW == outerCW;
+      final ordered = needReverse ? pts.reversed.toList() : pts;
+
+      final first = ordered.first;
+      path.moveTo(first.x * scale, (1000 - first.y) * scale);
+      for (int i = 1; i < ordered.length; i++) {
+        final p = ordered[i];
         path.lineTo(p.x * scale, (1000 - p.y) * scale);
       }
-
       path.close();
-      canvas.drawPath(path, paint);
     }
+
+    canvas.drawPath(path, paint);
   }
 
   @override
