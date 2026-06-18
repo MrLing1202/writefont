@@ -19,3 +19,13 @@ build/
 secrets/
 wrangler.toml.local
 wrangler.dev.toml
+
+# Security: prevent sensitive files from being committed
+.wrangler/
+wrangler.toml
+!wrangler.toml.example
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+src/

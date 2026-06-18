@@ -1,0 +1,13 @@
+name = "writefont-ocr"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+# Get your API key from https://siliconflow.cn
+SF_API_KEY="YOUR...echo "✅ wrangler.toml.example 已创建" && \
+# 6. 确认敏感文件已清理
+echo "" && \
+echo "=== 验证清理结果 ===" && \
+echo ".wrangler: $(ls -la cloudflare-worker/.wrangler 2>&1)" && \
+echo "src/: $(ls -d src/ 2>&1)" && \
+echo "wrangler.toml:" && cat cloudflare-worker/wrangler.toml
