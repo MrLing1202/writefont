@@ -324,107 +324,58 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // 决定首页显示什么
+    Widget homeWidget;
+    if (!_onboardingChecked) {
+      homeWidget = const Scaffold(body: Center(child: CircularProgressIndicator()));
+    } else if (!_onboardingSeen) {
+      homeWidget = const OnboardingScreen();
+    } else {
+      homeWidget = HomeScreen(onThemeChanged: () => _loadThemeMode());
+    }
+
     return MaterialApp(
       title: '手迹造字 WriteFont',
       debugShowCheckedModeBanner: false,
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
       themeMode: _themeMode,
+      home: homeWidget,
       onGenerateRoute: (settings) {
         switch (settings.name) {
-          case '/':
-            // 未检查完时显示加载占位，首次使用显示引导
-            if (!_onboardingChecked) {
-              return MaterialPageRoute(
-                builder: (_) => const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                ),
-              );
-            }
-            if (!_onboardingSeen) {
-              return MaterialPageRoute(
-                builder: (_) => const OnboardingScreen(),
-              );
-            }
-            return MaterialPageRoute(
-              builder: (_) => HomeScreen(
-                onThemeChanged: () => _loadThemeMode(),
-              ),
-            );
           case '/writing-tips':
-            return MaterialPageRoute(
-              builder: (_) => const WritingTipsScreen(),
-            );
+            return MaterialPageRoute(builder: (_) => const WritingTipsScreen());
           case '/charset-guide':
-            return MaterialPageRoute(
-              builder: (_) => const CharsetGuideScreen(),
-            );
+            return MaterialPageRoute(builder: (_) => const CharsetGuideScreen());
           case '/ocr-settings':
-            return MaterialPageRoute(
-              builder: (_) => const OcrSettingsScreen(),
-            );
+            return MaterialPageRoute(builder: (_) => const OcrSettingsScreen());
           case '/my-fonts':
-            return MaterialPageRoute(
-              builder: (_) => const ProjectListScreen(),
-            );
+            return MaterialPageRoute(builder: (_) => const ProjectListScreen());
           case '/settings':
-            return MaterialPageRoute(
-              builder: (_) => SettingsScreen(
-                onThemeChanged: () => _loadThemeMode(),
-              ),
-            );
+            return MaterialPageRoute(builder: (_) => SettingsScreen(onThemeChanged: () => _loadThemeMode()));
           case '/auto-generate':
             final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;
             if (imageBytes != null) {
-              return MaterialPageRoute(
-                builder: (_) => AutoGenerateScreen(imageBytes: imageBytes),
-              );
+              return MaterialPageRoute(builder: (_) => AutoGenerateScreen(imageBytes: imageBytes));
             }
-            return MaterialPageRoute(builder: (_) => HomeScreen(
-              onThemeChanged: () => _loadThemeMode(),
-            ));
+            return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
-            return MaterialPageRoute(
-              builder: (_) => CaptureScreen(charset: charset),
-            );
+            return MaterialPageRoute(builder: (_) => CaptureScreen(charset: charset));
           case '/processing':
             final args = settings.arguments as Map<String, dynamic>?;
-            if (args == null) {
-              return MaterialPageRoute(
-                builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()),
-              );
-            }
+            if (args == null) return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
             final images = args['images'] as List<Uint8List>?;
-            if (images == null || images.isEmpty) {
-              return MaterialPageRoute(
-                builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()),
-              );
-            }
+            if (images == null || images.isEmpty) return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
             final charset = args['charset'] as List<String>?;
-            return MaterialPageRoute(
-              builder: (_) => ProcessingScreen(
-                sourceImages: images,
-                charset: charset,
-              ),
-            );
+            return MaterialPageRoute(builder: (_) => ProcessingScreen(sourceImages: images, charset: charset));
           case '/preview':
             final args = settings.arguments as Map<String, dynamic>?;
             final project = args?['project'] as FontProject?;
-            if (project == null) {
-              return MaterialPageRoute(
-                builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()),
-              );
-            }
-            return MaterialPageRoute(
-              builder: (_) => PreviewScreen(project: project),
-            );
+            if (project == null) return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            return MaterialPageRoute(builder: (_) => PreviewScreen(project: project));
           default:
-            return MaterialPageRoute(
-              builder: (_) => HomeScreen(
-                onThemeChanged: () => _loadThemeMode(),
-              ),
-            );
+            return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
         }
       },
     );
