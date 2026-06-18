@@ -50,6 +50,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
     final savedModel = await _recognitionService.getModel();
     final savedCustomModel = await _recognitionService.getCustomModel();
 
+    if (!mounted) return;
     setState(() {
       _useCloud = useCloud;
       _urlController.text = cloudUrl ?? '';

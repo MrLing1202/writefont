@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../models/project.dart';
 import '../theme/app_theme.dart';
 import 'auto_generate_screen.dart';
@@ -25,11 +26,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _savedProjectCount = 0;
   List<FontProject> _recentProjects = [];
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _loadProjectData();
+    _loadAppVersion();
   }
 
   @override
@@ -47,6 +50,18 @@ class _HomeScreenState extends State<HomeScreen> {
           _savedProjectCount = projects.length;
           // 取最近 2 个项目（StorageService 已按 updatedAt 倒序排列）
           _recentProjects = projects.take(2).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 动态获取应用版本号
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = 'v${packageInfo.version}';
         });
       }
     } catch (_) {}
@@ -258,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white.withValues(alpha: 0.2),
                   margin: const EdgeInsets.symmetric(horizontal: 24),
                 ),
-                _buildStatItem('v2.1.0', '当前版本'),
+                _buildStatItem(_appVersion, '当前版本'),
               ],
             ),
           ],

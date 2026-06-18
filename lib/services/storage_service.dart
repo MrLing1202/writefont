@@ -12,43 +12,57 @@ import 'ttf_builder.dart';
 class StorageService {
   static const _uuid = Uuid();
 
+  // ── 目录路径缓存（首次调用时初始化，后续直接返回） ──
+  static Directory? _cachedDocumentsDir;
+  static Directory? _cachedProjectsDir;
+  static Directory? _cachedExportsDir;
+  static Directory? _cachedBackupDir;
+
   /// Get the app's documents directory.
   static Future<Directory> get _documentsDir async {
+    if (_cachedDocumentsDir != null) return _cachedDocumentsDir!;
     final dir = await getApplicationDocumentsDirectory();
     final writefontDir = Directory(p.join(dir.path, 'writefont'));
     if (!await writefontDir.exists()) {
       await writefontDir.create(recursive: true);
     }
+    _cachedDocumentsDir = writefontDir;
     return writefontDir;
   }
 
   /// Get the projects directory.
   static Future<Directory> get _projectsDir async {
+    if (_cachedProjectsDir != null) return _cachedProjectsDir!;
     final docs = await _documentsDir;
     final projDir = Directory(p.join(docs.path, 'projects'));
     if (!await projDir.exists()) {
       await projDir.create(recursive: true);
     }
+    _cachedProjectsDir = projDir;
     return projDir;
   }
 
   /// Get the exports directory.
   static Future<Directory> get _exportsDir async {
+    if (_cachedExportsDir != null) return _cachedExportsDir!;
     final docs = await _documentsDir;
     final expDir = Directory(p.join(docs.path, 'exports'));
     if (!await expDir.exists()) {
       await expDir.create(recursive: true);
     }
+    _cachedExportsDir = expDir;
     return expDir;
   }
 
   /// Get the backup directory.
   static Future<Directory> get _backupDir async {
+    if (_cachedBackupDir != null) return _cachedBackupDir!;
     final docs = await _documentsDir;
     final bakDir = Directory(p.join(docs.path, 'backups'));
     if (!await bakDir.exists()) {
       await bakDir.create(recursive: true);
     }
+    _cachedBackupDir = bakDir;
     return bakDir;
   }
 
@@ -408,6 +422,18 @@ class StorageService {
       final jsonString = await file.readAsString();
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
 
+      return await importProjectFromJson(json);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 从已解析的 JSON Map 导入项目（避免重复读取文件）
+  ///
+  /// [json] 已解析的项目 JSON 数据
+  /// 返回导入的 FontProject，失败返回 null
+  static Future<FontProject?> importProjectFromJson(Map<String, dynamic> json) async {
+    try {
       // 重建 FontProject
       final project = FontProject.fromJson(json);
 

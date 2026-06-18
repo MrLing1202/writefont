@@ -187,6 +187,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
   // === 自动保存 ===
   static const Duration _autoSaveInterval = Duration(seconds: 30);
   Timer? _autoSaveTimer;
+  bool _isDirty = false;
 
   // === 绘画相关状态 ===
   /// 当前工具模式
@@ -251,8 +252,9 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
 
   /// 自动保存：将当前笔画同步到 GlyphData 轮廓
   void _autoSave() {
-    if (_strokes.isEmpty) return;
+    if (_strokes.isEmpty || !_isDirty) return;
     _saveStrokesToContours();
+    _isDirty = false;
     debugPrint('自动保存: 已保存 ${_strokes.length} 个笔画到轮廓');
   }
 
@@ -390,6 +392,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
     setState(() {
       _strokes.clear();
       _strokes.addAll(next);
+      _isDirty = true;
     });
   }
 
@@ -400,6 +403,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
     setState(() {
       _strokes.clear();
       _eraserPosition = null;
+      _isDirty = true;
     });
   }
 
@@ -481,6 +485,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
       setState(() {
         _strokes.add(_activeStroke!);
         _activeStroke = null;
+        _isDirty = true;
       });
     } else if (_currentTool == DrawTool.eraser) {
       setState(() {
@@ -506,6 +511,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
           }
           setState(() {
             _strokes.removeAt(i);
+            _isDirty = true;
           });
           break;
         }

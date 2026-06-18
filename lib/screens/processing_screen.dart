@@ -1053,6 +1053,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
                   _processedCells[index],
                   fit: BoxFit.contain,
                   gaplessPlayback: true,
+                  cacheWidth: 200,
+                  cacheHeight: 200,
                 ),
               ),
 

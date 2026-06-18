@@ -410,7 +410,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         return;
       }
 
-      final project = await StorageService.importProject(filePath);
+      final project = await StorageService.importProjectFromJson(json);
       if (project != null) {
         await _loadProjects();
         if (mounted) {
