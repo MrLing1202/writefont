@@ -79,7 +79,7 @@ class WritingTipsScreen extends StatelessWidget {
             const SizedBox(height: 12),
             _buildDetailTipCard(
               context,
-              icon: Icons.pen_fountain,
+              icon: Icons.edit,
               title: '使用黑色签字笔或中性笔',
               description: '避免使用铅笔、彩色笔或可擦笔，黑色笔迹对比度高，识别效果最好。建议使用 0.5mm 或 0.7mm 笔芯。',
               colorScheme: colorScheme,

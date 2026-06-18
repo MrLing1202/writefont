@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
@@ -19,6 +20,16 @@ class _PreviewScreenState extends State<PreviewScreen> {
   bool _isExporting = false;
   bool _isSaving = false;
   final TextEditingController _textController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  // Auto-save debounce
+  Timer? _autoSaveTimer;
+  bool _isAutoSaving = false;
+
+  // Batch select
+  bool _isMultiSelectMode = false;
+  final Set<String> _selectedCharacters = {};
 
   @override
   void initState() {
@@ -29,6 +40,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   void dispose() {
     _textController.dispose();
+    _searchController.dispose();
+    _autoSaveTimer?.cancel();
     super.dispose();
   }
 
@@ -315,6 +328,22 @@ class _PreviewScreenState extends State<PreviewScreen> {
     return result;
   }
 
+  /// 自动保存（带 1 秒 debounce）
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 1), () async {
+      if (!mounted) return;
+      setState(() => _isAutoSaving = true);
+      try {
+        await StorageService.saveProject(widget.project);
+      } catch (_) {
+        // Auto-save failure is silent
+      } finally {
+        if (mounted) setState(() => _isAutoSaving = false);
+      }
+    });
+  }
+
   /// 保存项目到本地
   Future<void> _saveProject() async {
     setState(() => _isSaving = true);
@@ -370,6 +399,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   /// 打开字符编辑对话框
   void _editCharacter(String character, GlyphData glyph) {
+    if (_isMultiSelectMode) {
+      _toggleSelection(character);
+      return;
+    }
     CharacterEditDialog.show(
       context,
       character: character,
@@ -382,12 +415,79 @@ class _PreviewScreenState extends State<PreviewScreen> {
           widget.project.glyphs[glyph.character] = glyph;
         }
         setState(() {});
+        _scheduleAutoSave();
       },
       onCharacterDeleted: () {
         widget.project.glyphs.remove(character);
         setState(() {});
+        _scheduleAutoSave();
       },
     );
+  }
+
+  /// 切换多选状态
+  void _toggleSelection(String character) {
+    setState(() {
+      if (_selectedCharacters.contains(character)) {
+        _selectedCharacters.remove(character);
+        if (_selectedCharacters.isEmpty) {
+          _isMultiSelectMode = false;
+        }
+      } else {
+        _selectedCharacters.add(character);
+      }
+    });
+  }
+
+  /// 进入多选模式
+  void _enterMultiSelectMode(String character) {
+    setState(() {
+      _isMultiSelectMode = true;
+      _selectedCharacters.add(character);
+    });
+  }
+
+  /// 退出多选模式
+  void _exitMultiSelectMode() {
+    setState(() {
+      _isMultiSelectMode = false;
+      _selectedCharacters.clear();
+    });
+  }
+
+  /// 批量删除选中的字符
+  Future<void> _deleteSelectedCharacters() async {
+    final count = _selectedCharacters.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.delete_outline, color: Colors.red),
+        title: const Text('确认删除'),
+        content: Text('确定要删除选中的 $count 个字符吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        for (final char in _selectedCharacters) {
+          widget.project.glyphs.remove(char);
+        }
+        _selectedCharacters.clear();
+        _isMultiSelectMode = false;
+      });
+      _scheduleAutoSave();
+    }
   }
 
   @override
@@ -397,14 +497,41 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('字体预览'),
-        actions: [
-          IconButton(
-            onPressed: () => _showGlyphList(colorScheme),
-            icon: const Icon(Icons.list),
-            tooltip: '查看字符列表',
-          ),
-        ],
+        title: _isMultiSelectMode
+            ? Text('已选 ${_selectedCharacters.length} 个')
+            : const Text('字体预览'),
+        leading: _isMultiSelectMode
+            ? IconButton(
+                onPressed: _exitMultiSelectMode,
+                icon: const Icon(Icons.close),
+              )
+            : null,
+        actions: _isMultiSelectMode
+            ? [
+                IconButton(
+                  onPressed: _deleteSelectedCharacters,
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  tooltip: '删除选中',
+                ),
+              ]
+            : [
+                if (_isAutoSaving)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  onPressed: () => _showGlyphList(colorScheme),
+                  icon: const Icon(Icons.list),
+                  tooltip: '查看字符列表',
+                ),
+              ],
       ),
       body: Column(
         children: [
@@ -579,11 +706,35 @@ class _PreviewScreenState extends State<PreviewScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '点击字符可编辑标签、删除或查看原图',
+                          '点击字符可编辑 · 长按批量选择',
                           style: TextStyle(
                             fontSize: 12,
                             color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                           ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Search box
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: '搜索字符或 Unicode 编码...',
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 18),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onChanged: (v) => setState(() => _searchQuery = v),
                         ),
                         const SizedBox(height: 8),
                         _buildCharacterGrid(glyphs, colorScheme),
@@ -721,15 +872,42 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Widget _buildCharacterGrid(Map<String, GlyphData> glyphs, ColorScheme colorScheme) {
+    // Filter glyphs based on search query
+    final filteredEntries = glyphs.entries.where((entry) {
+      if (_searchQuery.isEmpty) return true;
+      final query = _searchQuery.toLowerCase();
+      final character = entry.key;
+      final unicodeHex = entry.value.unicode.toRadixString(16).toUpperCase().padLeft(4, '0');
+      return character.toLowerCase().contains(query) ||
+          unicodeHex.toLowerCase().contains(query) ||
+          'U+$unicodeHex'.toLowerCase().contains(query);
+    }).toList();
+
+    if (filteredEntries.isEmpty && _searchQuery.isNotEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        alignment: Alignment.center,
+        child: Text(
+          '未找到匹配的字符',
+          style: TextStyle(
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
+
     return Wrap(
       spacing: 6,
       runSpacing: 6,
-      children: glyphs.entries.map((entry) {
+      children: filteredEntries.map((entry) {
         final glyph = entry.value;
         final character = entry.key;
         final unicodeHex = 'U+${glyph.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}';
+        final isSelected = _selectedCharacters.contains(character);
         return GestureDetector(
           onTap: () => _editCharacter(character, glyph),
+          onLongPress: () => _enterMultiSelectMode(character),
           child: Tooltip(
             message: '$unicodeHex · 点击编辑',
             child: Container(
@@ -737,28 +915,56 @@ class _PreviewScreenState extends State<PreviewScreen> {
               height: 58,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: colorScheme.outlineVariant),
+                border: Border.all(
+                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
+                  width: isSelected ? 2.5 : 1,
+                ),
                 color: colorScheme.surface,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: glyph.contours.isNotEmpty
-                        ? GlyphWidget(
+                    child: Stack(
+                      children: [
+                        glyph.contours.isNotEmpty
+                            ? GlyphWidget(
                             contours: glyph.contours,
                             size: 32,
-                            color: colorScheme.onSurface,
+                            color: isSelected
+                                ? colorScheme.primary
+                                : colorScheme.onSurface,
                           )
-                        : Center(
+                            : Center(
                             child: Text(
                               entry.key,
                               style: TextStyle(
                                 fontSize: 20,
-                                color: colorScheme.onSurface,
+                                color: isSelected
+                                    ? colorScheme.primary
+                                    : colorScheme.onSurface,
                               ),
                             ),
                           ),
+                        if (isSelected)
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(1),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.check,
+                                size: 12,
+                                color: colorScheme.onPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   Text(
                     unicodeHex.substring(2), // 显示 4 位十六进制
