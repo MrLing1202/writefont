@@ -503,6 +503,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       if (mounted) {
         setState(() {
           _isGenerating = false;
+          // 保留已识别的字符数据，回到确认模式
+          _isConfirming = true;
           _hasError = true;
           _errorMessage = '生成字体出错：请检查字符数据是否完整，或尝试重新识别。\n错误详情：$e';
           _status = '生成失败';
@@ -1032,6 +1034,9 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
 
   /// 构建错误视图
   Widget _buildErrorView(ColorScheme colorScheme) {
+    // 判断是否有已识别的字符数据可保留
+    final hasRecognizedChars = _charAssignments.isNotEmpty || _editedAssignments.isNotEmpty;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1062,21 +1067,56 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            FilledButton.icon(
-              onPressed: () {
-                setState(() {
-                  _hasError = false;
-                  _errorMessage = null;
-                  _progress = 0.0;
-                  _charAssignments.clear();
-                  _editedAssignments.clear();
-                  _aiRecognized.clear();
-                });
-                _startProcessing();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('重试'),
-            ),
+
+            // 有已识别字符时，优先显示"返回确认"按钮保留进度
+            if (hasRecognizedChars) ...[
+              FilledButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _hasError = false;
+                    _errorMessage = null;
+                    _isConfirming = true;
+                  });
+                },
+                icon: const Icon(Icons.check_circle),
+                label: const Text('返回确认'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _hasError = false;
+                    _errorMessage = null;
+                    _progress = 0.0;
+                    _charAssignments.clear();
+                    _editedAssignments.clear();
+                    _aiRecognized.clear();
+                    _failedRecognition.clear();
+                    _isConfirming = false;
+                  });
+                  _startProcessing();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('全部重新识别'),
+              ),
+            ] else ...[
+              FilledButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _hasError = false;
+                    _errorMessage = null;
+                    _progress = 0.0;
+                    _charAssignments.clear();
+                    _editedAssignments.clear();
+                    _aiRecognized.clear();
+                    _failedRecognition.clear();
+                  });
+                  _startProcessing();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
