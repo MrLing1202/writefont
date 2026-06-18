@@ -19,8 +19,6 @@ import 'dart:typed_data';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 预加载主题设置
-  await AppConfigService.instance.getThemeMode();
   runApp(const WriteFontApp());
 }
 
@@ -39,9 +37,13 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   /// SharedPreferences 缓存，避免重复同步 I/O
   static SharedPreferences? _prefsCache;
 
-  /// 获取 SharedPreferences 实例（带缓存）
+  /// 获取 SharedPreferences 实例（带缓存 + 5秒超时）
   static Future<SharedPreferences> getPrefs() async {
-    _prefsCache ??= await SharedPreferences.getInstance();
+    _prefsCache ??= await SharedPreferences.getInstance()
+        .timeout(const Duration(seconds: 5), onTimeout: () {
+      // 超时后使用默认值，不阻塞UI
+      throw Exception('SharedPreferences init timed out');
+    });
     return _prefsCache!;
   }
 
@@ -51,17 +53,34 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _loadThemeMode();
     _checkOnboarding();
+    // 3秒兜底：如果 _checkOnboarding 还没完成，强制标记为已检查，避免永久 loading
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && !_onboardingChecked) {
+        setState(() {
+          _onboardingChecked = true;
+        });
+      }
+    });
   }
 
   /// 检查是否已看过新手引导
   Future<void> _checkOnboarding() async {
-    final prefs = await getPrefs();
-    final seen = prefs.getBool('onboarding_seen') ?? false;
-    if (mounted) {
-      setState(() {
-        _onboardingSeen = seen;
-        _onboardingChecked = true;
-      });
+    try {
+      final prefs = await getPrefs();
+      final seen = prefs.getBool('onboarding_seen') ?? false;
+      if (mounted) {
+        setState(() {
+          _onboardingSeen = seen;
+          _onboardingChecked = true;
+        });
+      }
+    } catch (e) {
+      // getPrefs 超时或其他错误，直接标记为已检查，避免永久 loading
+      if (mounted) {
+        setState(() {
+          _onboardingChecked = true;
+        });
+      }
     }
   }
 
