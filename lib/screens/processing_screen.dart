@@ -346,7 +346,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
       final char = _charAssignments[i];
       if (char == null) continue;
 
-      final contours = ImageProcessor.extractContours(
+      final contours = await ImageProcessor.extractContours(
         _processedCells[i],
         _params,
       );
