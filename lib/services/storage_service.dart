@@ -42,6 +42,16 @@ class StorageService {
     return expDir;
   }
 
+  /// Get the backup directory.
+  static Future<Directory> get _backupDir async {
+    final docs = await _documentsDir;
+    final bakDir = Directory(p.join(docs.path, 'backups'));
+    if (!await bakDir.exists()) {
+      await bakDir.create(recursive: true);
+    }
+    return bakDir;
+  }
+
   /// Generate a unique project ID.
   static String generateId() => _uuid.v4();
 
@@ -144,7 +154,12 @@ class StorageService {
   // ============================================================
 
   /// 保存项目到本地文件（JSON 格式）
+  ///
+  /// 每次保存时自动创建备份（最多保留 5 份，FIFO 淘汰）
   static Future<void> saveProject(FontProject project) async {
+    // ── 自动备份（仅对已存在的项目创建备份）──
+    await _autoBackup(project.id);
+
     final projDir = await _projectsDir;
     final projectDir = Directory(p.join(projDir.path, project.id));
     if (!await projectDir.exists()) {
@@ -162,6 +177,96 @@ class StorageService {
     // 保存源图片
     for (int i = 0; i < project.sourceImages.length; i++) {
       await saveSourceImage(project.id, project.sourceImages[i], i);
+    }
+  }
+
+  /// 自动备份：在覆盖前将现有 project.json 拷贝到 backup 目录
+  static Future<void> _autoBackup(String projectId) async {
+    try {
+      final projDir = await _projectsDir;
+      final jsonFile = File(p.join(projDir.path, projectId, 'project.json'));
+      if (!await jsonFile.exists()) return; // 新项目，无需备份
+
+      final bakDir = await _backupDir;
+      final projectBakDir = Directory(p.join(bakDir.path, projectId));
+      if (!await projectBakDir.exists()) {
+        await projectBakDir.create(recursive: true);
+      }
+
+      // 使用时间戳命名备份文件
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final bakFile = File(p.join(projectBakDir.path, 'backup_$timestamp.json'));
+      await jsonFile.copy(bakFile.path);
+
+      // 清理旧备份，最多保留 5 份
+      await _cleanOldBackups(projectBakDir);
+    } catch (_) {
+      // 备份失败不影响正常保存流程
+    }
+  }
+
+  /// 清理旧备份，保留最新的 [maxCount] 份
+  static Future<void> _cleanOldBackups(Directory projectBakDir, {int maxCount = 5}) async {
+    final files = <FileSystemEntity>[];
+    await for (final entity in projectBakDir.list()) {
+      if (entity is File && entity.path.endsWith('.json')) {
+        files.add(entity);
+      }
+    }
+
+    if (files.length <= maxCount) return;
+
+    // 按修改时间排序（旧的在前）
+    files.sort((a, b) {
+      final aTime = a.statSync().modified;
+      final bTime = b.statSync().modified;
+      return aTime.compareTo(bTime);
+    });
+
+    // 删除多余的旧备份
+    final toDelete = files.length - maxCount;
+    for (int i = 0; i < toDelete; i++) {
+      try {
+        await files[i].delete();
+      } catch (_) {}
+    }
+  }
+
+  /// 从备份恢复项目
+  ///
+  /// [projectId] 要恢复的项目 ID
+  /// 恢复最新一份备份并覆盖当前项目数据
+  static Future<FontProject?> restoreFromBackup(String projectId) async {
+    try {
+      final bakDir = await _backupDir;
+      final projectBakDir = Directory(p.join(bakDir.path, projectId));
+      if (!await projectBakDir.exists()) return null;
+
+      // 获取最新的备份文件
+      final files = <FileSystemEntity>[];
+      await for (final entity in projectBakDir.list()) {
+        if (entity is File && entity.path.endsWith('.json')) {
+          files.add(entity);
+        }
+      }
+      if (files.isEmpty) return null;
+
+      files.sort((a, b) {
+        final aTime = a.statSync().modified;
+        final bTime = b.statSync().modified;
+        return bTime.compareTo(aTime); // 降序，最新的在前
+      });
+
+      final latestBak = files.first as File;
+      final jsonString = await latestBak.readAsString();
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
+      final project = FontProject.fromJson(json);
+
+      // 用备份数据覆盖当前项目
+      await saveProject(project);
+      return project;
+    } catch (_) {
+      return null;
     }
   }
 
