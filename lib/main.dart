@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'models/project.dart';
 import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
 import 'screens/auto_generate_screen.dart';
 import 'screens/capture_screen.dart';
 import 'screens/processing_screen.dart';
@@ -30,12 +32,27 @@ class WriteFontApp extends StatefulWidget {
 
 class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver {
   String _themeModeStr = AppConfigService.defaultThemeMode;
+  bool _onboardingSeen = false;
+  bool _onboardingChecked = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadThemeMode();
+    _checkOnboarding();
+  }
+
+  /// 检查是否已看过新手引导
+  Future<void> _checkOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool('onboarding_seen') ?? false;
+    if (mounted) {
+      setState(() {
+        _onboardingSeen = seen;
+        _onboardingChecked = true;
+      });
+    }
   }
 
   @override
@@ -127,6 +144,19 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       onGenerateRoute: (settings) {
         switch (settings.name) {
           case '/':
+            // 未检查完时显示加载占位，首次使用显示引导
+            if (!_onboardingChecked) {
+              return MaterialPageRoute(
+                builder: (_) => const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+            if (!_onboardingSeen) {
+              return MaterialPageRoute(
+                builder: (_) => const OnboardingScreen(),
+              );
+            }
             return MaterialPageRoute(
               builder: (_) => HomeScreen(
                 onThemeChanged: () => _loadThemeMode(),

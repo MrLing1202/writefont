@@ -235,4 +235,80 @@ class StorageService {
     }
     return null;
   }
+
+  // ============================================================
+  // 项目导出/导入备份
+  // ============================================================
+
+  /// 将项目导出为 JSON 备份文件（含源图片 base64 编码）
+  ///
+  /// - 包含所有 glyph 数据（contours、metrics）
+  /// - 包含处理参数（ProcessingParams）
+  /// - 将 sourceImages 转为 base64 编码内嵌到 JSON
+  /// - 文件名格式: {项目名}_backup.json
+  ///
+  /// 返回导出文件的完整路径
+  static Future<String> exportProject(FontProject project) async {
+    final expDir = await _exportsDir;
+    final safeName = project.name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final fileName = '${safeName}_backup.json';
+    final filePath = p.join(expDir.path, fileName);
+
+    // 构建导出 JSON（含 sourceImages 的 base64 编码）
+    final exportJson = project.toJson();
+
+    // 将源图片转为 base64 编码并嵌入 JSON
+    final sourceImagesBase64 = <String>[];
+    for (int i = 0; i < project.sourceImages.length; i++) {
+      sourceImagesBase64.add(base64Encode(project.sourceImages[i]));
+    }
+    exportJson['sourceImagesBase64'] = sourceImagesBase64;
+
+    final jsonString = const JsonEncoder.withIndent('  ').convert(exportJson);
+    final file = File(filePath);
+    await file.writeAsString(jsonString);
+
+    return filePath;
+  }
+
+  /// 从 JSON 备份文件导入项目
+  ///
+  /// - 解析 JSON，重建 FontProject
+  /// - 将 base64 编码的 sourceImages 还原为二进制
+  /// - 保存到本地项目目录
+  ///
+  /// [jsonPath] JSON 备份文件的完整路径
+  /// 返回导入的 FontProject，失败返回 null
+  static Future<FontProject?> importProject(String jsonPath) async {
+    try {
+      final file = File(jsonPath);
+      if (!await file.exists()) return null;
+
+      final jsonString = await file.readAsString();
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      // 重建 FontProject
+      final project = FontProject.fromJson(json);
+
+      // 还原 base64 编码的源图片
+      final sourceImagesBase64 = json['sourceImagesBase64'] as List<dynamic>?;
+      if (sourceImagesBase64 != null) {
+        project.sourceImages = sourceImagesBase64
+            .map((b64) => base64Decode(b64 as String))
+            .toList();
+      }
+
+      // 为导入的项目生成新 ID（避免冲突）
+      project.id = generateId();
+      project.createdAt = DateTime.now();
+      project.updatedAt = DateTime.now();
+
+      // 保存到本地
+      await saveProject(project);
+
+      return project;
+    } catch (e) {
+      return null;
+    }
+  }
 }

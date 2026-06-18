@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
 import 'preview_screen.dart';
@@ -302,6 +304,81 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     }
   }
 
+  /// 导出项目备份（JSON 格式，含源图片 base64）
+  Future<void> _exportProjectBackup(FontProject project) async {
+    try {
+      final filePath = await StorageService.exportProject(project);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('备份已导出: ${project.name}_backup.json'),
+            action: SnackBarAction(
+              label: '分享',
+              onPressed: () {
+                Share.shareXFiles(
+                  [XFile(filePath)],
+                  subject: 'WriteFont 项目备份',
+                  text: 'WriteFont 项目备份文件',
+                );
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('备份导出失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 从文件选择器导入项目备份
+  Future<void> _importProject() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: '选择 WriteFont 备份文件',
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final filePath = result.files.single.path;
+      if (filePath == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法读取文件路径')),
+          );
+        }
+        return;
+      }
+
+      final project = await StorageService.importProject(filePath);
+      if (project != null) {
+        await _loadProjects();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已导入项目「${project.name}」')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('导入失败：文件格式不正确')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入失败: $e')),
+        );
+      }
+    }
+  }
+
   /// 显示项目操作底部菜单
   void _showProjectActions(FontProject project) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -369,6 +446,16 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                   _exportProject(project);
                 },
               ),
+              // 导出备份
+              ListTile(
+                leading: const Icon(Icons.backup),
+                title: const Text('导出备份'),
+                subtitle: const Text('导出 JSON 备份文件'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportProjectBackup(project);
+                },
+              ),
               // 字符总览
               ListTile(
                 leading: const Icon(Icons.grid_view),
@@ -432,6 +519,12 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         title: const Text('我的字体'),
         centerTitle: true,
         actions: [
+          // 导入备份按钮
+          IconButton(
+            onPressed: _importProject,
+            icon: const Icon(Icons.file_upload),
+            tooltip: '导入备份',
+          ),
           // 排序按钮
           IconButton(
             onPressed: _toggleSortMode,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/project.dart';
 import 'auto_generate_screen.dart';
+import 'capture_screen.dart';
 import 'font_preview_screen.dart';
 import 'processing_screen.dart';
 import 'project_list_screen.dart';
@@ -153,6 +154,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: '一键生成',
                 description: '拍照即生成，全自动无需手动操作',
                 onTap: () => _quickCapture(context),
+              ),
+              const SizedBox(height: 16),
+
+              // 快速体验卡片（橙色系）
+              _buildModeCard(
+                context,
+                icon: Icons.bolt,
+                title: '快速体验',
+                description: '只需写10个字，快速体验造字',
+                color: const Color(0xFFFFE0B2), // 浅橙色
+                iconColor: const Color(0xFFE65100), // 深橙色
+                onTap: () => _startQuickMode(context),
               ),
               const SizedBox(height: 16),
 
@@ -642,6 +655,39 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 快速体验模式：只需10个常用字
+  void _startQuickMode(BuildContext context) {
+    // 10个最常用汉字
+    const quickCharsList = ['的', '一', '是', '不', '了', '在', '人', '有', '我', '他', '这'];
+    final now = DateTime.now();
+    final dateStr = '${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+
+    // 创建快速体验项目
+    final project = FontProject(
+      id: StorageService.generateId(),
+      name: '快速体验 $dateStr',
+    );
+    // 初始化10个常用字的字形数据
+    for (final char in quickCharsList) {
+      project.glyphs[char] = GlyphData(
+        character: char,
+        unicode: char.codeUnitAt(0),
+      );
+    }
+
+    // 保存项目并跳转到拍照页面
+    StorageService.saveProject(project);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CaptureScreen(
+          charset: quickCharsList,
         ),
       ),
     );
