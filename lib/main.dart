@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import 'models/project.dart';
 import 'screens/home_screen.dart';
 import 'screens/auto_generate_screen.dart';
@@ -11,10 +10,14 @@ import 'screens/charset_guide_screen.dart';
 import 'screens/ocr_settings_screen.dart';
 import 'screens/project_list_screen.dart';
 import 'screens/settings_screen.dart';
+import 'services/app_config_service.dart';
 import 'services/recognition_service.dart';
+import 'dart:typed_data';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 预加载主题设置
+  await AppConfigService.instance.getThemeMode();
   runApp(const WriteFontApp());
 }
 
@@ -26,10 +29,13 @@ class WriteFontApp extends StatefulWidget {
 }
 
 class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver {
+  String _themeModeStr = AppConfigService.defaultThemeMode;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadThemeMode();
   }
 
   @override
@@ -43,6 +49,27 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
       RecognitionService.instance.dispose();
+    }
+  }
+
+  /// 加载主题模式设置
+  Future<void> _loadThemeMode() async {
+    final themeMode = await AppConfigService.instance.getThemeMode();
+    if (mounted) {
+      setState(() => _themeModeStr = themeMode);
+    }
+  }
+
+  /// 根据字符串获取 ThemeMode
+  ThemeMode get _themeMode {
+    switch (_themeModeStr) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      case 'system':
+      default:
+        return ThemeMode.system;
     }
   }
 
@@ -96,12 +123,14 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
-      themeMode: ThemeMode.system,
+      themeMode: _themeMode,
       onGenerateRoute: (settings) {
         switch (settings.name) {
           case '/':
             return MaterialPageRoute(
-              builder: (_) => const HomeScreen(),
+              builder: (_) => HomeScreen(
+                onThemeChanged: () => _loadThemeMode(),
+              ),
             );
           case '/writing-tips':
             return MaterialPageRoute(
@@ -121,7 +150,9 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             );
           case '/settings':
             return MaterialPageRoute(
-              builder: (_) => const SettingsScreen(),
+              builder: (_) => SettingsScreen(
+                onThemeChanged: () => _loadThemeMode(),
+              ),
             );
           case '/auto-generate':
             final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;
@@ -130,7 +161,9 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
                 builder: (_) => AutoGenerateScreen(imageBytes: imageBytes),
               );
             }
-            return MaterialPageRoute(builder: (_) => const HomeScreen());
+            return MaterialPageRoute(builder: (_) => HomeScreen(
+              onThemeChanged: () => _loadThemeMode(),
+            ));
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
             return MaterialPageRoute(
@@ -154,7 +187,9 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             );
           default:
             return MaterialPageRoute(
-              builder: (_) => const HomeScreen(),
+              builder: (_) => HomeScreen(
+                onThemeChanged: () => _loadThemeMode(),
+              ),
             );
         }
       },

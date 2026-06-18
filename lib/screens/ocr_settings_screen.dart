@@ -46,10 +46,14 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
   Future<void> _loadSettings() async {
     final useCloud = await _recognitionService.getUseCloud();
     final cloudUrl = await _recognitionService.getCloudUrl();
+    final savedModel = await _recognitionService.getModel();
+    final savedCustomModel = await _recognitionService.getCustomModel();
 
     setState(() {
       _useCloud = useCloud;
       _urlController.text = cloudUrl ?? '';
+      _selectedModel = savedModel;
+      _customModelController.text = savedCustomModel;
       _isLoading = false;
     });
   }
@@ -61,6 +65,11 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
       _urlController.text.trim(),
       userKey.isEmpty ? null : userKey,
     );
+
+    // 保存模型选择
+    await _recognitionService.setModel(_selectedModel);
+    // 保存自定义模型名
+    await _recognitionService.setCustomModel(_customModelController.text.trim());
 
     if (showSnackbar && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

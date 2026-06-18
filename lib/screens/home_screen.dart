@@ -8,7 +8,10 @@ import 'writing_tips_screen.dart';
 import '../services/storage_service.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  /// 主题变更回调，用于从设置页返回时刷新主题
+  final VoidCallback? onThemeChanged;
+
+  const HomeScreen({super.key, this.onThemeChanged});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -68,11 +71,14 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: '设置',
-            onPressed: () {
-              Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                MaterialPageRoute(builder: (_) => SettingsScreen(
+                  onThemeChanged: widget.onThemeChanged,
+                )),
               );
+              widget.onThemeChanged?.call();
             },
           ),
         ],

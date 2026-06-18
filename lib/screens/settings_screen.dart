@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/app_config_service.dart';
 import '../services/recognition_service.dart';
 import '../services/storage_service.dart';
 import 'ocr_settings_screen.dart';
 
 /// 设置页面
-/// 包含识别模式、云端配置、默认参数、缓存管理、关于信息
+/// 包含识别模式、云端配置、默认参数、外观设置、缓存管理、关于信息
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  /// 主题变更回调，通知主页面刷新主题模式
+  final VoidCallback? onThemeChanged;
+
+  const SettingsScreen({super.key, this.onThemeChanged});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -14,19 +20,27 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final RecognitionService _recognition = RecognitionService.instance;
+  final AppConfigService _config = AppConfigService.instance;
 
   // 识别模式
   bool _useCloud = false;
   bool _isLoading = true;
 
   // 默认参数
-  double _threshold = 0.5;
-  double _contrast = 1.0;
-  double _smoothness = 0.3;
-  double _strokeWidth = 1.0;
+  double _threshold = AppConfigService.defaultThreshold;
+  double _contrast = AppConfigService.defaultContrast;
+  double _smoothness = AppConfigService.defaultSmoothness;
+  double _strokeWidth = AppConfigService.defaultStrokeWidth;
 
   // 缓存状态
   bool _isClearing = false;
+
+  // 外观设置
+  String _themeMode = AppConfigService.defaultThemeMode;
+
+  // 版本信息
+  String _version = '';
+  String _buildNumber = '';
 
   @override
   void initState() {
@@ -37,9 +51,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 加载当前设置
   Future<void> _loadSettings() async {
     final useCloud = await _recognition.getUseCloud();
+    final threshold = await _config.getThreshold();
+    final contrast = await _config.getContrast();
+    final smoothness = await _config.getSmoothness();
+    final strokeWidth = await _config.getStrokeWidth();
+    final themeMode = await _config.getThemeMode();
+    final packageInfo = await PackageInfo.fromPlatform();
+
     if (mounted) {
       setState(() {
         _useCloud = useCloud;
+        _threshold = threshold;
+        _contrast = contrast;
+        _smoothness = smoothness;
+        _strokeWidth = strokeWidth;
+        _themeMode = themeMode;
+        _version = packageInfo.version;
+        _buildNumber = packageInfo.buildNumber;
         _isLoading = false;
       });
     }
@@ -81,16 +109,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// 重置默认参数
-  void _resetParams() {
-    setState(() {
-      _threshold = 0.5;
-      _contrast = 1.0;
-      _smoothness = 0.3;
-      _strokeWidth = 1.0;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('参数已重置为默认值')),
-    );
+  Future<void> _resetParams() async {
+    await _config.resetParams();
+    if (mounted) {
+      setState(() {
+        _threshold = AppConfigService.defaultThreshold;
+        _contrast = AppConfigService.defaultContrast;
+        _smoothness = AppConfigService.defaultSmoothness;
+        _strokeWidth = AppConfigService.defaultStrokeWidth;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('参数已重置为默认值')),
+      );
+    }
+  }
+
+  /// 更新滑块值并实时保存
+  Future<void> _updateThreshold(double value) async {
+    setState(() => _threshold = value);
+    await _config.setThreshold(value);
+  }
+
+  Future<void> _updateContrast(double value) async {
+    setState(() => _contrast = value);
+    await _config.setContrast(value);
+  }
+
+  Future<void> _updateSmoothness(double value) async {
+    setState(() => _smoothness = value);
+    await _config.setSmoothness(value);
+  }
+
+  Future<void> _updateStrokeWidth(double value) async {
+    setState(() => _strokeWidth = value);
+    await _config.setStrokeWidth(value);
   }
 
   @override
@@ -115,6 +167,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ===== 默认参数 =====
                 _buildSectionHeader(context, '默认处理参数', Icons.tune),
                 _buildParamsSection(colorScheme),
+
+                const SizedBox(height: 8),
+
+                // ===== 外观 =====
+                _buildSectionHeader(context, '外观', Icons.palette),
+                _buildAppearanceSection(colorScheme),
 
                 const SizedBox(height: 8),
 
@@ -231,7 +289,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               max: 1.0,
               divisions: 20,
               colorScheme: colorScheme,
-              onChanged: (v) => setState(() => _threshold = v),
+              onChanged: _updateThreshold,
             ),
             const SizedBox(height: 8),
 
@@ -243,7 +301,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               max: 3.0,
               divisions: 25,
               colorScheme: colorScheme,
-              onChanged: (v) => setState(() => _contrast = v),
+              onChanged: _updateContrast,
             ),
             const SizedBox(height: 8),
 
@@ -255,7 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               max: 1.0,
               divisions: 20,
               colorScheme: colorScheme,
-              onChanged: (v) => setState(() => _smoothness = v),
+              onChanged: _updateSmoothness,
             ),
             const SizedBox(height: 8),
 
@@ -267,7 +325,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               max: 3.0,
               divisions: 25,
               colorScheme: colorScheme,
-              onChanged: (v) => setState(() => _strokeWidth = v),
+              onChanged: _updateStrokeWidth,
             ),
             const SizedBox(height: 12),
 
@@ -333,6 +391,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// 外观设置区域（深色模式切换）
+  Widget _buildAppearanceSection(ColorScheme colorScheme) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          RadioListTile<String>(
+            value: 'light',
+            groupValue: _themeMode,
+            onChanged: (v) => _setThemeMode(v!),
+            title: const Text('浅色'),
+            secondary: Icon(
+              Icons.light_mode,
+              color: _themeMode == 'light'
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+          ),
+          Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+          RadioListTile<String>(
+            value: 'dark',
+            groupValue: _themeMode,
+            onChanged: (v) => _setThemeMode(v!),
+            title: const Text('深色'),
+            secondary: Icon(
+              Icons.dark_mode,
+              color: _themeMode == 'dark'
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+          ),
+          Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+          RadioListTile<String>(
+            value: 'system',
+            groupValue: _themeMode,
+            onChanged: (v) => _setThemeMode(v!),
+            title: const Text('跟随系统'),
+            secondary: Icon(
+              Icons.settings_brightness,
+              color: _themeMode == 'system'
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 切换主题模式
+  Future<void> _setThemeMode(String mode) async {
+    await _config.setThemeMode(mode);
+    if (mounted) {
+      setState(() => _themeMode = mode);
+      // 通知主页面刷新主题
+      widget.onThemeChanged?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('外观已切换为${_themeModeLabel(mode)}'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  /// 主题模式中文标签
+  String _themeModeLabel(String mode) {
+    switch (mode) {
+      case 'light':
+        return '浅色';
+      case 'dark':
+        return '深色';
+      case 'system':
+      default:
+        return '跟随系统';
+    }
+  }
+
   /// 存储管理区域
   Widget _buildStorageSection(ColorScheme colorScheme) {
     return Card(
@@ -362,7 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: Icon(Icons.info_outline, color: colorScheme.primary),
             title: const Text('版本'),
-            subtitle: const Text('v1.6.5'),
+            subtitle: Text('v$_version'),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
@@ -370,7 +506,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Build 14',
+                'Build $_buildNumber',
                 style: TextStyle(
                   fontSize: 11,
                   color: colorScheme.onPrimaryContainer,
@@ -394,11 +530,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('GitHub'),
             subtitle: const Text('查看源代码'),
             trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () {
-              // TODO: 使用 url_launcher 打开 GitHub 链接
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('GitHub 仓库链接待配置')),
-              );
+            onTap: () async {
+              final uri = Uri.parse('https://github.com/MrLing1202/writefont');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('无法打开链接')),
+                  );
+                }
+              }
             },
           ),
         ],

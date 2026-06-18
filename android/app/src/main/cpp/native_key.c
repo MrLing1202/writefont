@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
 
 // Key 分段加密数据（从 api_key.dart 迁移过来）
 // 这些字节是 XOR 加密后的，运行时解密

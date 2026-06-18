@@ -20,6 +20,8 @@ class RecognitionService {
   static const String _prefKeyUseCloud = 'ocr_use_cloud';
   static const String _prefKeyCloudUrl = 'ocr_cloud_url';
   static const String _prefKeyCloudKey = 'ocr_cloud_key';
+  static const String _prefKeyModel = 'ocr_model';
+  static const String _prefKeyCustomModel = 'ocr_custom_model';
 
   // DeepSeek-OCR (硅基流动) 默认配置
   static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
@@ -503,6 +505,30 @@ class RecognitionService {
 
     debugPrint('云端识别: 所有尝试均未返回有效字符');
     return null;
+  }
+
+  /// 读取已选择的模型
+  Future<String> getModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_prefKeyModel) ?? defaultModel;
+  }
+
+  /// 保存选择的模型
+  Future<void> setModel(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKeyModel, model);
+  }
+
+  /// 读取自定义模型名称
+  Future<String> getCustomModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_prefKeyCustomModel) ?? '';
+  }
+
+  /// 保存自定义模型名称
+  Future<void> setCustomModel(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKeyCustomModel, model);
   }
 
   /// 释放资源（应在 app 退出时调用）

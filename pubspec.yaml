@@ -1,7 +1,7 @@
 name: writefont
 description: 手迹造字 - 拍照生成手写字体的工具
 publish_to: 'none'
-version: 1.6.5+14
+version: 1.8.0+16
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -49,6 +49,12 @@ dependencies:
 
   # OCR - Local text recognition (ML Kit)
   google_mlkit_text_recognition: ^0.15.1
+
+  # App info for dynamic version display
+  package_info_plus: ^8.0.0
+
+  # Open URLs (GitHub link)
+  url_launcher: ^6.2.0
 
 dev_dependencies:
   flutter_test:
