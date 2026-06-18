@@ -557,7 +557,7 @@ class RecognitionService {
           } else {
             final statusCode = response.statusCode;
             if (statusCode == 401 || statusCode == 403) {
-              debugPrint('云端识别认证失败 ($statusCode): API Key 无效或已过期');
+              debugPrint('云端识别认证失败 ($statusCode)');
               throw const CloudAuthException('认证失败: API Key 无效或已过期。请到「设置 → 云端识别配置」中重新填写 API Key，或切换为本地识别模式');
             }
             // 5xx 服务端错误可重试，4xx 客户端错误不重试
