@@ -76,6 +76,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
   // 是否显示完成汇总
   bool _showSummary = false;
 
+  // 任务代数计数器，用于取消过期的异步任务
+  int _generation = 0;
+
   // Character assignment
   final List<String> _defaultCharacters = _getDefaultChars();
   final Map<int, String> _charAssignments = {};
@@ -130,6 +133,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
   }
 
   void _processImages() {
+    final gen = ++_generation; // 递增代数，取消旧任务
     setState(() => _isProcessing = true);
 
     Future.microtask(() async {
@@ -139,21 +143,22 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
         allCells.addAll(cells);
       }
 
-      if (mounted) {
-        setState(() {
-          _processedCells = allCells;
-          _isProcessing = false;
-          // 初始化所有格子为 pending 状态
-          _cellResults.clear();
-          for (int i = 0; i < allCells.length; i++) {
-            _cellResults[i] = const CellResult(status: CellStatus.pending);
-          }
-          _showSummary = false;
-        });
-      }
+      // 代数不匹配，旧任务已过期
+      if (!mounted || _generation != gen) return;
+
+      setState(() {
+        _processedCells = allCells;
+        _isProcessing = false;
+        // 初始化所有格子为 pending 状态
+        _cellResults.clear();
+        for (int i = 0; i < allCells.length; i++) {
+          _cellResults[i] = const CellResult(status: CellStatus.pending);
+        }
+        _showSummary = false;
+      });
 
       // 逐个识别字符
-      await _recognizeCharacters(allCells);
+      await _recognizeCharacters(allCells, gen);
     });
   }
 
@@ -170,8 +175,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
     return ConfidenceLevel.medium;
   }
 
-  Future<void> _recognizeCharacters(List<Uint8List> cells) async {
+  Future<void> _recognizeCharacters(List<Uint8List> cells, [int? gen]) async {
     if (cells.isEmpty) return;
+    if (gen != null && _generation != gen) return; // 代数不匹配，取消
 
     final charset = widget.charset;
     final useStandardCharset = charset != null && charset.isNotEmpty;
@@ -196,6 +202,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
       futures.add(() async {
         await semaphore.acquire();
         try {
+          // 代数不匹配，跳过
+          if (gen != null && _generation != gen) return;
+
           if (mounted) {
             setState(() {
               _cellResults[i] = const CellResult(status: CellStatus.recognizing);
@@ -209,10 +218,13 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
             result = null;
           }
 
+          // 代数不匹配，丢弃结果
+          if (gen != null && _generation != gen) return;
+
           final confidence = _calcConfidence(i, result);
           final status = result != null ? CellStatus.recognized : CellStatus.failed;
 
-          if (mounted) {
+          if (mounted && (gen == null || _generation == gen)) {
             setState(() {
               if (result != null) {
                 _charAssignments[i] = result;
@@ -229,7 +241,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
           }
 
           // 触发弹跳动画
-          _triggerBounce(i);
+          if (gen == null || _generation == gen) {
+            _triggerBounce(i);
+          }
         } finally {
           semaphore.release();
         }
@@ -237,6 +251,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
     }
 
     await Future.wait(futures);
+
+    // 代数不匹配，取消后续逻辑
+    if (gen != null && _generation != gen) return;
 
     // 标准字表模式：用字表顺序补齐未识别的格子
     if (useStandardCharset) {
@@ -273,6 +290,9 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
       }
     }
 
+    // 最终检查代数
+    if (gen != null && _generation != gen) return;
+
     if (mounted) {
       setState(() {
         _isRecognizing = false;
@@ -296,10 +316,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
       vsync: this,
     );
     _bounceControllers[index] = controller;
-    final animation = CurvedAnimation(parent: controller, curve: Curves.elasticOut);
-    animation.addListener(() {
-      if (mounted) setState(() {});
-    });
+    // AnimatedBuilder 会监听 controller 并局部刷新对应格子，无需全局 setState
     controller.forward();
   }
 

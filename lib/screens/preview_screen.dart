@@ -1055,7 +1055,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   child: WFPrimaryButton(
                     text: _isExporting ? '导出中...' : '导出 TTF',
                     icon: _isExporting ? null : Icons.file_download,
-                    onPressed: _isExporting ? () {} : _exportFont,
+                    onPressed: _isExporting ? null : _exportFont,
                   ),
                 ),
               ],

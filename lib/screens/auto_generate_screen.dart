@@ -44,6 +44,9 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   // 处理参数（从用户设置加载）
   ProcessingParams _params = ProcessingParams();
 
+  // 防止 _startProcessing 重入
+  bool _isStartProcessingRunning = false;
+
   // 动画
   late AnimationController _animController;
 
@@ -170,6 +173,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   }
 
   Future<void> _startProcessing() async {
+    if (_isStartProcessingRunning) return;
+    _isStartProcessingRunning = true;
     try {
       // 从用户设置加载处理参数
       final config = AppConfigService.instance;
@@ -299,6 +304,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
           _status = statusText;
         });
       }
+    } finally {
+      _isStartProcessingRunning = false;
     }
   }
 

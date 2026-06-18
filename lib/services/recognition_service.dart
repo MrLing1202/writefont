@@ -47,6 +47,9 @@ class RecognitionService {
   // ML Kit 识别器（懒加载）
   TextRecognizer? _mlKitRecognizer;
 
+  // 原子计数器，用于临时文件名防碰撞
+  static int _fileCounter = 0;
+
   /// 获取 ML Kit 识别器（中文）
   TextRecognizer _getMlKitRecognizer() {
     _mlKitRecognizer ??= TextRecognizer(script: TextRecognitionScript.chinese);
@@ -346,7 +349,8 @@ class RecognitionService {
     try {
       final pngBytes = img.encodePng(image);
       final tempDir = await getTemporaryDirectory();
-      tempFile = File('${tempDir.path}/mlkit_${DateTime.now().millisecondsSinceEpoch}_${(100000 + (900000 * (DateTime.now().microsecond % 1000) / 1000).round())}.png');
+      final counter = ++_fileCounter;
+      tempFile = File('${tempDir.path}/mlkit_${DateTime.now().microsecondsSinceEpoch}_$counter.png');
       await tempFile.writeAsBytes(pngBytes);
 
       final inputImage = InputImage.fromFilePath(tempFile.path);

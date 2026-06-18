@@ -125,24 +125,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// 更新滑块值并实时保存
-  Future<void> _updateThreshold(double value) async {
+  /// 更新滑块值（仅 UI），保存在 onChangeEnd 中触发
+  void _onThresholdChanged(double value) {
     setState(() => _threshold = value);
+  }
+
+  void _onContrastChanged(double value) {
+    setState(() => _contrast = value);
+  }
+
+  void _onSmoothnessChanged(double value) {
+    setState(() => _smoothness = value);
+  }
+
+  void _onStrokeWidthChanged(double value) {
+    setState(() => _strokeWidth = value);
+  }
+
+  /// 滑块松手后持久化保存
+  Future<void> _onThresholdChangeEnd(double value) async {
     await _config.setThreshold(value);
   }
 
-  Future<void> _updateContrast(double value) async {
-    setState(() => _contrast = value);
+  Future<void> _onContrastChangeEnd(double value) async {
     await _config.setContrast(value);
   }
 
-  Future<void> _updateSmoothness(double value) async {
-    setState(() => _smoothness = value);
+  Future<void> _onSmoothnessChangeEnd(double value) async {
     await _config.setSmoothness(value);
   }
 
-  Future<void> _updateStrokeWidth(double value) async {
-    setState(() => _strokeWidth = value);
+  Future<void> _onStrokeWidthChangeEnd(double value) async {
     await _config.setStrokeWidth(value);
   }
 
@@ -364,7 +377,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             min: 0.0,
             max: 1.0,
             divisions: 20,
-            onChanged: _updateThreshold,
+            onChanged: _onThresholdChanged,
+            onChangeEnd: _onThresholdChangeEnd,
           ),
           const SizedBox(height: 8),
           _buildSliderRow(
@@ -373,7 +387,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             min: 0.5,
             max: 3.0,
             divisions: 25,
-            onChanged: _updateContrast,
+            onChanged: _onContrastChanged,
+            onChangeEnd: _onContrastChangeEnd,
           ),
           const SizedBox(height: 8),
           _buildSliderRow(
@@ -382,7 +397,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             min: 0.0,
             max: 1.0,
             divisions: 20,
-            onChanged: _updateSmoothness,
+            onChanged: _onSmoothnessChanged,
+            onChangeEnd: _onSmoothnessChangeEnd,
           ),
           const SizedBox(height: 8),
           _buildSliderRow(
@@ -391,7 +407,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             min: 0.5,
             max: 3.0,
             divisions: 25,
-            onChanged: _updateStrokeWidth,
+            onChanged: _onStrokeWidthChanged,
+            onChangeEnd: _onStrokeWidthChangeEnd,
           ),
           const SizedBox(height: 12),
           // 重置按钮
@@ -408,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 滑块行 — 统一样式
+  /// 滑块行 — 统一样式，onChangeEnd 时才持久化保存
   Widget _buildSliderRow({
     required String label,
     required double value,
@@ -416,6 +433,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required double max,
     required int divisions,
     required ValueChanged<double> onChanged,
+    ValueChanged<double>? onChangeEnd,
   }) {
     return Row(
       children: [
@@ -442,6 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               max: max,
               divisions: divisions,
               onChanged: onChanged,
+              onChangeEnd: onChangeEnd,
             ),
           ),
         ),

@@ -173,31 +173,37 @@ class WFActionCard extends StatelessWidget {
 /// 主要操作按钮 — 圆角 24px，渐变效果
 class WFPrimaryButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final IconData? icon;
 
   const WFPrimaryButton({
     super.key,
     required this.text,
-    required this.onPressed,
+    this.onPressed,
     this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = onPressed == null;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          colors: [WFColors.primary, WFColors.primaryLight],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: WFColors.primary.withValues(alpha: 0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        gradient: isDisabled
+            ? null
+            : const LinearGradient(
+                colors: [WFColors.primary, WFColors.primaryLight],
+              ),
+        color: isDisabled ? WFColors.textLight : null,
+        boxShadow: isDisabled
+            ? null
+            : [
+                BoxShadow(
+                  color: WFColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: ElevatedButton(
         onPressed: onPressed,

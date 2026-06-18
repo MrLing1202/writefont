@@ -370,8 +370,18 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
               builder: (_) => CaptureScreen(charset: charset),
             );
           case '/processing':
-            final args = settings.arguments as Map<String, dynamic>;
-            final images = args['images'] as List<Uint8List>;
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args == null) {
+              return MaterialPageRoute(
+                builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()),
+              );
+            }
+            final images = args['images'] as List<Uint8List>?;
+            if (images == null || images.isEmpty) {
+              return MaterialPageRoute(
+                builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()),
+              );
+            }
             final charset = args['charset'] as List<String>?;
             return MaterialPageRoute(
               builder: (_) => ProcessingScreen(
@@ -380,8 +390,13 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
               ),
             );
           case '/preview':
-            final args = settings.arguments as Map<String, dynamic>;
-            final project = args['project'] as FontProject;
+            final args = settings.arguments as Map<String, dynamic>?;
+            final project = args?['project'] as FontProject?;
+            if (project == null) {
+              return MaterialPageRoute(
+                builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()),
+              );
+            }
             return MaterialPageRoute(
               builder: (_) => PreviewScreen(project: project),
             );
