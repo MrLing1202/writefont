@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../models/project.dart';
+
+/// 进度回调类型：progress 范围 0.0 ~ 1.0，message 描述当前步骤
+typedef ProgressCallback = void Function(double progress, String message);
 
 /// Service for processing handwriting images into glyph data.
 class ImageProcessor {
@@ -230,23 +234,55 @@ class ImageProcessor {
 
   /// Extract contour points from a binary character image.
   /// Returns contours scaled to font units (0-1000).
-  static List<Contour> extractContours(
+  /// [onProgress] 可选进度回调，[timeout] 超时时间（默认30秒）
+  static Future<List<Contour>> extractContours(
     Uint8List imageBytes,
-    ProcessingParams params,
-  ) {
+    ProcessingParams params, {
+    ProgressCallback? onProgress,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final stopwatch = Stopwatch()..start();
+
+    // 超时检查辅助函数
+    void checkTimeout(String stage) {
+      if (stopwatch.elapsed > timeout) {
+        throw TimeoutException('轮廓提取超时 ($stage)', timeout);
+      }
+    }
+
+    onProgress?.call(0.0, '开始解码图片...');
     final image = img.decodeImage(imageBytes);
     if (image == null) return [];
 
-    // 大图等比缩小，避免 BFS 在百万像素级别卡死闪退
+    // 检查可用内存，大图进一步缩小
     img.Image workImage = image;
     final maxDim = workImage.width > workImage.height ? workImage.width : workImage.height;
-    if (maxDim > 800) {
+    final pixelCount = workImage.width * workImage.height;
+
+    // 内存预估：每个像素约4字节(RGBA)，加上处理中间图像约3倍
+    final estimatedMemoryMB = (pixelCount * 4 * 3) / (1024 * 1024);
+    debugPrint('extractContours: 图片 ${workImage.width}x${workImage.height}, 预估内存 ${estimatedMemoryMB.toStringAsFixed(1)}MB');
+
+    // 内存不足时进一步缩小（阈值150MB）
+    if (estimatedMemoryMB > 150) {
+      final memScale = sqrt(150.0 / estimatedMemoryMB);
+      final targetMaxDim = (maxDim * memScale).round().clamp(200, 99999);
+      final scale = targetMaxDim / maxDim;
+      final newW = (workImage.width * scale).round().clamp(1, 99999);
+      final newH = (workImage.height * scale).round().clamp(1, 99999);
+      debugPrint('extractContours: 内存不足，缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
+      workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
+    } else if (maxDim > 800) {
+      // 常规大图缩小
       final scale = 800.0 / maxDim;
       final newW = (workImage.width * scale).round().clamp(1, 99999);
       final newH = (workImage.height * scale).round().clamp(1, 99999);
       debugPrint('extractContours: 大图缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
       workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
     }
+
+    onProgress?.call(0.1, '图片预处理中...');
+    checkTimeout('图片预处理');
 
     final gray = img.grayscale(workImage);
     // Gaussian blur + adaptive threshold for contour extraction too
@@ -267,6 +303,8 @@ class ImageProcessor {
     }
 
     debugPrint('extractContours: 开始轮廓提取, 图片 ${binary.width}x${binary.height}');
+    onProgress?.call(0.3, '提取轮廓中...');
+    checkTimeout('轮廓提取');
 
     // Find connected components and trace contours (outer boundaries)
     final List<Contour> allContours = [];
@@ -294,6 +332,9 @@ class ImageProcessor {
         }
       }
     }
+
+    onProgress?.call(0.6, '检测空心字区域...');
+    checkTimeout('空心字检测');
 
     // --- Hole detection: find white regions enclosed by black pixels ---
     // Flood fill from image edges to mark all exterior white pixels.
@@ -463,6 +504,8 @@ class ImageProcessor {
     debugPrint('轮廓提取: 共 ${allContours.length} 个轮廓 (含 $holeCount 个洞), '
         '点数=[${allContours.map((c) => c.points.length).join(", ")}]');
 
+    checkTimeout('最终检查');
+    onProgress?.call(1.0, '轮廓提取完成');
     return allContours;
   }
 
