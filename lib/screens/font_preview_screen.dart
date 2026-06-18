@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../models/project.dart';
 import '../services/storage_service.dart';
+import 'font_test_screen.dart';
 
 /// 字体实时预览页面
 /// 用户输入文字后，使用已编辑的 GlyphData 轮廓实时渲染预览
@@ -177,6 +178,18 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
               title: const Text('字体预览'),
               centerTitle: true,
               actions: [
+                IconButton(
+                  icon: const Icon(Icons.text_fields),
+                  tooltip: '字体测试',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FontTestScreen(project: _project),
+                      ),
+                    );
+                  },
+                ),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: '重新加载',
