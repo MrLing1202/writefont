@@ -210,15 +210,15 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
   /// 米字格辅助线开关
   bool _showGrid = true;
 
-  /// 橡皮擦半径
-  double get _eraserRadius => _strokeWidth * 2 + 5;
+  /// 橡皮擦半径（10-50px，独立可调）
+  double _eraserRadius = 20.0;
 
   // === 缩放/平移 ===
   final TransformationController _transformController =
       TransformationController();
 
   // === 撤销/重做 ===
-  static const int _maxHistorySize = 20;
+  static const int _maxHistorySize = 30;
   final List<List<StrokeRecord>> _undoStack = [];
   final List<List<StrokeRecord>> _redoStack = [];
 
@@ -597,45 +597,78 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
         ),
         body: Column(
           children: [
-            // === 笔画粗细滑块 ===
+            // === 工具参数滑块（根据当前模式切换） ===
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               color: colorScheme.surfaceContainerLow,
               child: Row(
                 children: [
-                  Icon(Icons.line_weight,
-                      size: 18, color: colorScheme.onSurfaceVariant),
+                  // 模式指示图标
+                  Icon(
+                    _currentTool == DrawTool.eraser
+                        ? Icons.cleaning_services
+                        : Icons.edit,
+                    size: 18,
+                    color: _currentTool == DrawTool.eraser
+                        ? Colors.red
+                        : colorScheme.onSurfaceVariant,
+                  ),
                   Expanded(
                     child: Slider(
-                      value: _strokeWidth,
-                      min: 1.0,
-                      max: 10.0,
-                      divisions: 9,
-                      label: '${_strokeWidth.round()}px',
-                      onChanged: (v) => setState(() => _strokeWidth = v),
+                      value: _currentTool == DrawTool.eraser
+                          ? _eraserRadius
+                          : _strokeWidth,
+                      min: _currentTool == DrawTool.eraser ? 10.0 : 1.0,
+                      max: _currentTool == DrawTool.eraser ? 50.0 : 10.0,
+                      divisions: _currentTool == DrawTool.eraser ? 8 : 9,
+                      label: _currentTool == DrawTool.eraser
+                          ? '${_eraserRadius.round()}px'
+                          : '${_strokeWidth.round()}px',
+                      onChanged: (v) => setState(() {
+                        if (_currentTool == DrawTool.eraser) {
+                          _eraserRadius = v;
+                        } else {
+                          _strokeWidth = v;
+                        }
+                      }),
                     ),
                   ),
                   SizedBox(
-                    width: 36,
+                    width: 42,
                     child: Text(
-                      '${_strokeWidth.round()}px',
+                      _currentTool == DrawTool.eraser
+                          ? '${_eraserRadius.round()}px'
+                          : '${_strokeWidth.round()}px',
                       style: TextStyle(
                         fontSize: 12,
-                        color: colorScheme.onSurfaceVariant,
+                        color: _currentTool == DrawTool.eraser
+                            ? Colors.red
+                            : colorScheme.onSurfaceVariant,
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // 笔画预览圆点
+                  // 预览圆点（显示当前工具大小）
                   Container(
-                    width: _strokeWidth * 2 + 4,
-                    height: _strokeWidth * 2 + 4,
+                    width: (_currentTool == DrawTool.eraser
+                            ? _eraserRadius
+                            : _strokeWidth) *
+                            2 +
+                        4,
+                    height: (_currentTool == DrawTool.eraser
+                            ? _eraserRadius
+                            : _strokeWidth) *
+                            2 +
+                        4,
                     decoration: BoxDecoration(
                       color: _currentTool == DrawTool.eraser
-                          ? Colors.red
+                          ? Colors.red.withValues(alpha: 0.3)
                           : _penColor,
                       shape: BoxShape.circle,
+                      border: _currentTool == DrawTool.eraser
+                          ? Border.all(color: Colors.red, width: 1.5)
+                          : null,
                     ),
                   ),
                   // 缩放控制按钮
@@ -767,7 +800,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                     ),
                     // 橡皮擦工具
                     _ToolButton(
-                      icon: Icons.auto_fix_high,
+                      icon: Icons.cleaning_services,
                       label: '橡皮擦',
                       isActive: _currentTool == DrawTool.eraser,
                       onTap: () =>
