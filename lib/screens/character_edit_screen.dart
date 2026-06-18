@@ -234,7 +234,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
       TransformationController();
 
   // === 撤销/重做 ===
-  static const int _maxHistorySize = 50;
+  static const int _maxHistorySize = 20;
   final List<List<StrokeRecord>> _undoStack = [];
   final List<List<StrokeRecord>> _redoStack = [];
 
