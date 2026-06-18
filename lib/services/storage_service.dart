@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
@@ -120,5 +121,118 @@ class StorageService {
         await dir.delete(recursive: true);
       }
     } catch (_) {}
+  }
+
+  // ============================================================
+  // 项目持久化管理
+  // ============================================================
+
+  /// 保存项目到本地文件（JSON 格式）
+  static Future<void> saveProject(FontProject project) async {
+    final projDir = await _projectsDir;
+    final projectDir = Directory(p.join(projDir.path, project.id));
+    if (!await projectDir.exists()) {
+      await projectDir.create(recursive: true);
+    }
+
+    // 更新修改时间
+    project.updatedAt = DateTime.now();
+
+    // 保存项目元数据 JSON
+    final jsonFile = File(p.join(projectDir.path, 'project.json'));
+    final jsonString = const JsonEncoder.withIndent('  ').convert(project.toJson());
+    await jsonFile.writeAsString(jsonString);
+
+    // 保存源图片
+    for (int i = 0; i < project.sourceImages.length; i++) {
+      await saveSourceImage(project.id, project.sourceImages[i], i);
+    }
+  }
+
+  /// 加载所有已保存的项目（仅加载元数据，不含源图片二进制）
+  static Future<List<FontProject>> loadProjects() async {
+    final projDir = await _projectsDir;
+    final projects = <FontProject>[];
+
+    if (!await projDir.exists()) return projects;
+
+    await for (final entity in projDir.list()) {
+      if (entity is Directory) {
+        final jsonFile = File(p.join(entity.path, 'project.json'));
+        if (await jsonFile.exists()) {
+          try {
+            final jsonString = await jsonFile.readAsString();
+            final json = jsonDecode(jsonString) as Map<String, dynamic>;
+            final project = FontProject.fromJson(json);
+            projects.add(project);
+          } catch (e) {
+            // 跳过损坏的项目文件
+            continue;
+          }
+        }
+      }
+    }
+
+    // 按更新时间倒序排列
+    projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return projects;
+  }
+
+  /// 根据 ID 加载单个项目
+  static Future<FontProject?> loadProject(String id) async {
+    final projDir = await _projectsDir;
+    final jsonFile = File(p.join(projDir.path, id, 'project.json'));
+
+    if (!await jsonFile.exists()) return null;
+
+    try {
+      final jsonString = await jsonFile.readAsString();
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
+      return FontProject.fromJson(json);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 删除项目
+  static Future<void> deleteProject(String id) async {
+    final projDir = await _projectsDir;
+    final projectDir = Directory(p.join(projDir.path, id));
+    if (await projectDir.exists()) {
+      await projectDir.delete(recursive: true);
+    }
+  }
+
+  /// 获取项目中某个字符的原始图片
+  static Future<Uint8List?> loadCharacterImage(String projectId, String character) async {
+    final projDir = await _projectsDir;
+    final codeUnit = character.codeUnitAt(0);
+    final filePath = p.join(
+      projDir.path,
+      projectId,
+      'characters',
+      'char_${codeUnit.toRadixString(16)}.png',
+    );
+    final file = File(filePath);
+    if (await file.exists()) {
+      return await file.readAsBytes();
+    }
+    return null;
+  }
+
+  /// 获取项目中某个字符的源图片（从源图片列表中的第一张裁切）
+  static Future<Uint8List?> loadSourceImage(String projectId, int index) async {
+    final projDir = await _projectsDir;
+    final filePath = p.join(
+      projDir.path,
+      projectId,
+      'images',
+      'source_$index.png',
+    );
+    final file = File(filePath);
+    if (await file.exists()) {
+      return await file.readAsBytes();
+    }
+    return null;
   }
 }

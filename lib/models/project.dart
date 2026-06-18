@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 /// Represents a single point on a glyph contour.
@@ -7,12 +8,38 @@ class ContourPoint {
   final bool onCurve;
 
   ContourPoint(this.x, this.y, {this.onCurve = true});
+
+  /// 序列化为 JSON
+  Map<String, dynamic> toJson() => {
+        'x': x,
+        'y': y,
+        'onCurve': onCurve,
+      };
+
+  /// 从 JSON 反序列化
+  factory ContourPoint.fromJson(Map<String, dynamic> json) => ContourPoint(
+        json['x'] as int,
+        json['y'] as int,
+        onCurve: json['onCurve'] as bool? ?? true,
+      );
 }
 
 /// Represents a contour (closed path) of a glyph.
 class Contour {
   final List<ContourPoint> points;
   Contour(this.points);
+
+  /// 序列化为 JSON
+  Map<String, dynamic> toJson() => {
+        'points': points.map((p) => p.toJson()).toList(),
+      };
+
+  /// 从 JSON 反序列化
+  factory Contour.fromJson(Map<String, dynamic> json) => Contour(
+        (json['points'] as List)
+            .map((p) => ContourPoint.fromJson(p as Map<String, dynamic>))
+            .toList(),
+      );
 }
 
 /// Represents a single glyph (character) with its contours and metrics.
@@ -23,6 +50,7 @@ class GlyphData {
   int advanceWidth;
   int leftSideBearing;
   int xMin, yMin, xMax, yMax;
+  String? sourceImagePath; // 原始图片路径
 
   GlyphData({
     required this.character,
@@ -34,7 +62,39 @@ class GlyphData {
     this.yMin = 0,
     this.xMax = 0,
     this.yMax = 0,
+    this.sourceImagePath,
   }) : contours = contours ?? [];
+
+  /// 序列化为 JSON
+  Map<String, dynamic> toJson() => {
+        'character': character,
+        'unicode': unicode,
+        'contours': contours.map((c) => c.toJson()).toList(),
+        'advanceWidth': advanceWidth,
+        'leftSideBearing': leftSideBearing,
+        'xMin': xMin,
+        'yMin': yMin,
+        'xMax': xMax,
+        'yMax': yMax,
+        'sourceImagePath': sourceImagePath,
+      };
+
+  /// 从 JSON 反序列化
+  factory GlyphData.fromJson(Map<String, dynamic> json) => GlyphData(
+        character: json['character'] as String,
+        unicode: json['unicode'] as int,
+        contours: (json['contours'] as List?)
+                ?.map((c) => Contour.fromJson(c as Map<String, dynamic>))
+                .toList() ??
+            [],
+        advanceWidth: json['advanceWidth'] as int? ?? 500,
+        leftSideBearing: json['leftSideBearing'] as int? ?? 0,
+        xMin: json['xMin'] as int? ?? 0,
+        yMin: json['yMin'] as int? ?? 0,
+        xMax: json['xMax'] as int? ?? 0,
+        yMax: json['yMax'] as int? ?? 0,
+        sourceImagePath: json['sourceImagePath'] as String?,
+      );
 }
 
 /// Image processing parameters.
@@ -50,9 +110,9 @@ class ProcessingParams {
   ProcessingParams({
     this.threshold = 0.5,
     this.strokeWidth = 1.0,
-    this.smoothness = 0.5,
-    this.erosion = 0,
-    this.dilation = 0,
+    this.smoothness = 0.3,
+    this.erosion = 1,
+    this.dilation = 1,
     this.invertColors = false,
     this.contrast = 1.0,
   });
@@ -76,6 +136,29 @@ class ProcessingParams {
       contrast: contrast ?? this.contrast,
     );
   }
+
+  /// 序列化为 JSON
+  Map<String, dynamic> toJson() => {
+        'threshold': threshold,
+        'strokeWidth': strokeWidth,
+        'smoothness': smoothness,
+        'erosion': erosion,
+        'dilation': dilation,
+        'invertColors': invertColors,
+        'contrast': contrast,
+      };
+
+  /// 从 JSON 反序列化
+  factory ProcessingParams.fromJson(Map<String, dynamic> json) =>
+      ProcessingParams(
+        threshold: (json['threshold'] as num?)?.toDouble() ?? 0.5,
+        strokeWidth: (json['strokeWidth'] as num?)?.toDouble() ?? 1.0,
+        smoothness: (json['smoothness'] as num?)?.toDouble() ?? 0.3,
+        erosion: json['erosion'] as int? ?? 1,
+        dilation: json['dilation'] as int? ?? 1,
+        invertColors: json['invertColors'] as bool? ?? false,
+        contrast: (json['contrast'] as num?)?.toDouble() ?? 1.0,
+      );
 }
 
 /// Represents a font project containing all glyph data.
@@ -101,4 +184,39 @@ class FontProject {
         glyphs = glyphs ?? {},
         params = params ?? ProcessingParams(),
         sourceImages = sourceImages ?? [];
+
+  /// 序列化为 JSON（不含 sourceImages 二进制数据，需单独存储）
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+        'glyphs': glyphs.map((k, v) => MapEntry(k, v.toJson())),
+        'params': params.toJson(),
+      };
+
+  /// 从 JSON 反序列化
+  factory FontProject.fromJson(Map<String, dynamic> json) {
+    final glyphsMap = <String, GlyphData>{};
+    final glyphsJson = json['glyphs'] as Map<String, dynamic>? ?? {};
+    for (final entry in glyphsJson.entries) {
+      glyphsMap[entry.key] =
+          GlyphData.fromJson(entry.value as Map<String, dynamic>);
+    }
+
+    return FontProject(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
+      glyphs: glyphsMap,
+      params: json['params'] != null
+          ? ProcessingParams.fromJson(json['params'] as Map<String, dynamic>)
+          : null,
+    );
+  }
 }

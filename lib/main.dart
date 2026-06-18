@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'models/project.dart';
 import 'screens/home_screen.dart';
+import 'screens/auto_generate_screen.dart';
 import 'screens/capture_screen.dart';
 import 'screens/processing_screen.dart';
 import 'screens/preview_screen.dart';
 import 'screens/writing_tips_screen.dart';
 import 'screens/charset_guide_screen.dart';
 import 'screens/ocr_settings_screen.dart';
+import 'screens/project_list_screen.dart';
 import 'services/recognition_service.dart';
 
 void main() {
@@ -112,6 +114,18 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             return MaterialPageRoute(
               builder: (_) => const OcrSettingsScreen(),
             );
+          case '/my-fonts':
+            return MaterialPageRoute(
+              builder: (_) => const ProjectListScreen(),
+            );
+          case '/auto-generate':
+            final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;
+            if (imageBytes != null) {
+              return MaterialPageRoute(
+                builder: (_) => AutoGenerateScreen(imageBytes: imageBytes),
+              );
+            }
+            return MaterialPageRoute(builder: (_) => const HomeScreen());
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
             return MaterialPageRoute(

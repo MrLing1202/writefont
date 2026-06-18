@@ -1,10 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'auto_generate_screen.dart';
 import 'processing_screen.dart';
+import 'project_list_screen.dart';
 import 'writing_tips_screen.dart';
+import '../services/storage_service.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _savedProjectCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProjectCount();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadProjectCount();
+  }
+
+  /// 加载已保存项目数量
+  Future<void> _loadProjectCount() async {
+    try {
+      final projects = await StorageService.loadProjects();
+      if (mounted) {
+        setState(() => _savedProjectCount = projects.length);
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +107,16 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
+              // 一键生成卡片（醒目主按钮）
+              _buildPrimaryCard(
+                context,
+                icon: Icons.auto_awesome,
+                title: '一键生成',
+                description: '拍照即生成，全自动无需手动操作',
+                onTap: () => _quickCapture(context),
+              ),
+              const SizedBox(height: 16),
+
               // 自由拍照造字卡片
               _buildModeCard(
                 context,
@@ -85,6 +127,10 @@ class HomeScreen extends StatelessWidget {
                 iconColor: colorScheme.tertiary,
                 onTap: () => _pickImages(context),
               ),
+              const SizedBox(height: 16),
+
+              // 我的字体入口卡片
+              _buildMyFontsCard(context, colorScheme),
 
               const SizedBox(height: 32),
 
@@ -181,6 +227,245 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 一键生成的醒目主按钮
+  Widget _buildPrimaryCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      elevation: 6,
+      shadowColor: colorScheme.primary.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                colorScheme.primary,
+                colorScheme.primary.withValues(alpha: 0.8),
+              ],
+            ),
+          ),
+          child: Row(
+            children: [
+              // 图标
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, size: 32, color: Colors.white),
+              ),
+              const SizedBox(width: 20),
+
+              // 文字
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 箭头
+              Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 我的字体入口卡片
+  Widget _buildMyFontsCard(BuildContext context, ColorScheme colorScheme) {
+    return Card(
+      elevation: 2,
+      shadowColor: colorScheme.secondaryContainer.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ProjectListScreen(),
+            ),
+          );
+          // 返回后刷新项目数量
+          _loadProjectCount();
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              // 图标
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.folder_special,
+                  size: 28,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // 文字
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '我的字体',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _savedProjectCount > 0
+                          ? '已保存 $_savedProjectCount 个字体项目'
+                          : '查看和管理已保存的字体项目',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 项目数量徽章
+              if (_savedProjectCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$_savedProjectCount',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
+
+              // 箭头
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 一键生成：拍照或选图后直接进入自动处理
+  Future<void> _quickCapture(BuildContext context) async {
+    final picker = ImagePicker();
+
+    // 弹出选择：拍照 or 从相册选
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('拍照'),
+                subtitle: const Text('拍摄手写内容'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('从相册选择'),
+                subtitle: const Text('选择已有的手写照片'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null || !context.mounted) return;
+
+    XFile? image;
+    if (source == ImageSource.camera) {
+      image = await picker.pickImage(source: ImageSource.camera, imageQuality: 95);
+    } else {
+      image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 95);
+    }
+
+    if (image == null || !context.mounted) return;
+
+    final imageBytes = await image.readAsBytes();
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AutoGenerateScreen(imageBytes: imageBytes),
+        ),
+      );
+    }
   }
 
   Future<void> _pickImages(BuildContext context) async {

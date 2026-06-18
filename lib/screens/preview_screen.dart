@@ -1,6 +1,8 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
+import 'character_edit_screen.dart';
 
 class PreviewScreen extends StatefulWidget {
   final FontProject project;
@@ -14,6 +16,7 @@ class PreviewScreen extends StatefulWidget {
 class _PreviewScreenState extends State<PreviewScreen> {
   String _previewText = '你好世界 Hello';
   bool _isExporting = false;
+  bool _isSaving = false;
   final TextEditingController _textController = TextEditingController();
 
   @override
@@ -28,6 +31,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     super.dispose();
   }
 
+  /// 导出 TTF 字体
   Future<void> _exportFont() async {
     setState(() => _isExporting = true);
     try {
@@ -47,12 +51,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('字体文件已保存到：'),
+                const Text('字体文件已保存到：'),
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -97,6 +101,55 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
+  /// 保存项目到本地
+  Future<void> _saveProject() async {
+    setState(() => _isSaving = true);
+    try {
+      await StorageService.saveProject(widget.project);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('项目「${widget.project.name}」已保存'),
+            action: SnackBarAction(
+              label: '知道了',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// 打开字符编辑对话框
+  void _editCharacter(String character, GlyphData glyph) {
+    CharacterEditDialog.show(
+      context,
+      character: character,
+      glyph: glyph,
+      projectId: widget.project.id,
+      onCharacterChanged: () {
+        // 如果字符标签改变了，需要更新 glyphs Map
+        if (glyph.character != character) {
+          widget.project.glyphs.remove(character);
+          widget.project.glyphs[glyph.character] = glyph;
+        }
+        setState(() {});
+      },
+      onCharacterDeleted: () {
+        widget.project.glyphs.remove(character);
+        setState(() {});
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -118,7 +171,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
           // Stats bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: colorScheme.primaryContainer.withOpacity(0.3),
+            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
             child: Row(
               children: [
                 Icon(Icons.font_download, size: 20, color: colorScheme.primary),
@@ -128,6 +181,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                // 字符可点击提示
+                Icon(
+                  Icons.touch_app,
+                  size: 16,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '点击字符可编辑',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                   ),
                 ),
               ],
@@ -166,7 +234,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     child: Text(
                       '输入文字查看预览效果',
                       style: TextStyle(
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                         fontSize: 16,
                       ),
                     ),
@@ -269,6 +337,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
                             color: colorScheme.onSurfaceVariant,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '点击字符可编辑标签、删除或查看原图',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         _buildCharacterGrid(glyphs, colorScheme),
                         const SizedBox(height: 100),
@@ -281,41 +357,69 @@ class _PreviewScreenState extends State<PreviewScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
+              // 保存项目按钮
+              SizedBox(
+                width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.edit),
-                  label: const Text('返回编辑'),
+                  onPressed: _isSaving ? null : _saveProject,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(_isSaving ? '保存中...' : '保存项目'),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: FilledButton.icon(
-                  onPressed: _isExporting ? null : _exportFont,
-                  icon: _isExporting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.file_download),
-                  label: Text(_isExporting ? '导出中...' : '导出 TTF'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 10),
+              // 底部操作按钮
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.edit),
+                      label: const Text('返回编辑'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: _isExporting ? null : _exportFont,
+                      icon: _isExporting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.file_download),
+                      label: Text(_isExporting ? '导出中...' : '导出 TTF'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -365,47 +469,51 @@ class _PreviewScreenState extends State<PreviewScreen> {
       runSpacing: 6,
       children: glyphs.entries.map((entry) {
         final glyph = entry.value;
+        final character = entry.key;
         final unicodeHex = 'U+${glyph.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}';
-        return Tooltip(
-          message: '$unicodeHex (${glyph.contours.length} 轮廓)',
-          child: Container(
-            width: 48,
-            height: 58,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colorScheme.outlineVariant),
-              color: colorScheme.surface,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: glyph.contours.isNotEmpty
-                      ? _GlyphWidget(
-                          contours: glyph.contours,
-                          size: 32,
-                          color: colorScheme.onSurface,
-                        )
-                      : Center(
-                          child: Text(
-                            entry.key,
-                            style: TextStyle(
-                              fontSize: 20,
-                              color: colorScheme.onSurface,
+        return GestureDetector(
+          onTap: () => _editCharacter(character, glyph),
+          child: Tooltip(
+            message: '$unicodeHex · 点击编辑',
+            child: Container(
+              width: 48,
+              height: 58,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: colorScheme.outlineVariant),
+                color: colorScheme.surface,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: glyph.contours.isNotEmpty
+                        ? _GlyphWidget(
+                            contours: glyph.contours,
+                            size: 32,
+                            color: colorScheme.onSurface,
+                          )
+                        : Center(
+                            child: Text(
+                              entry.key,
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: colorScheme.onSurface,
+                              ),
                             ),
                           ),
-                        ),
-                ),
-                Text(
-                  unicodeHex.substring(2), // 显示 4 位十六进制
-                  style: TextStyle(
-                    fontSize: 8,
-                    color: colorScheme.onSurfaceVariant,
-                    fontFamily: 'monospace',
                   ),
-                ),
-                const SizedBox(height: 2),
-              ],
+                  Text(
+                    unicodeHex.substring(2), // 显示 4 位十六进制
+                    style: TextStyle(
+                      fontSize: 8,
+                      color: colorScheme.onSurfaceVariant,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                ],
+              ),
             ),
           ),
         );
@@ -432,7 +540,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -453,6 +561,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   itemBuilder: (context, index) {
                     final entry = glyphs[index];
                     return ListTile(
+                      onTap: () {
+                        Navigator.pop(context);
+                        _editCharacter(entry.key, entry.value);
+                      },
                       leading: SizedBox(
                         width: 40,
                         height: 40,
@@ -471,9 +583,20 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       ),
                       title: Text('U+${entry.value.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}'),
                       subtitle: Text('${entry.value.contours.length} 个轮廓'),
-                      trailing: Text(
-                        entry.key,
-                        style: const TextStyle(fontSize: 24),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            entry.key,
+                            style: const TextStyle(fontSize: 24),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.edit,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          ),
+                        ],
                       ),
                     );
                   },
