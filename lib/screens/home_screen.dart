@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'auto_generate_screen.dart';
 import 'processing_screen.dart';
 import 'project_list_screen.dart';
+import 'settings_screen.dart';
 import 'writing_tips_screen.dart';
 import '../services/storage_service.dart';
 
@@ -44,8 +45,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        // 左侧：我的字体图标按钮（有项目时显示徽章）
+        leading: IconButton(
+          icon: Badge(
+            isLabelVisible: _savedProjectCount > 0,
+            label: Text('$_savedProjectCount'),
+            child: const Icon(Icons.folder_special),
+          ),
+          tooltip: '我的字体',
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProjectListScreen()),
+            );
+            _loadProjectCount();
+          },
+        ),
         title: const Text('WriteFont'),
         centerTitle: true,
+        // 右侧：设置图标按钮
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: '设置',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: Center(
         child: SingleChildScrollView(

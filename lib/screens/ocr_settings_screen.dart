@@ -14,10 +14,28 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
   final RecognitionService _recognitionService = RecognitionService.instance;
   final _urlController = TextEditingController();
   final _keyController = TextEditingController();
+  final _customModelController = TextEditingController();
 
   bool _useCloud = false;
   bool _isLoading = true;
   bool _isTesting = false;
+  String _selectedModel = RecognitionService.defaultModel;
+
+  // 预置模型列表
+  static const List<Map<String, String>> _presetModels = [
+    {
+      'name': 'deepseek-ai/DeepSeek-OCR',
+      'label': 'DeepSeek-OCR（推荐，免费）',
+    },
+    {
+      'name': 'Qwen/Qwen2.5-VL-7B-Instruct',
+      'label': 'Qwen2.5-VL-7B（通义千问视觉）',
+    },
+    {
+      'name': 'custom',
+      'label': '自定义模型',
+    },
+  ];
 
   @override
   void initState() {
@@ -105,6 +123,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
   void dispose() {
     _urlController.dispose();
     _keyController.dispose();
+    _customModelController.dispose();
     super.dispose();
   }
 
@@ -161,7 +180,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: colorScheme.primaryContainer.withOpacity(0.3),
+                            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -254,7 +273,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                             controller: _keyController,
                             decoration: InputDecoration(
                               labelText: 'API Key（硅基流动）',
-                              hintText: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
+                              hintText: 'sk-xxx...xxxx',
                               prefixIcon: const Icon(Icons.key),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -265,7 +284,53 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
 
                           const SizedBox(height: 16),
 
-                          // 测试按钮
+                          // 模型选择
+                          DropdownButtonFormField<String>(
+                            value: _presetModels.any((m) => m['name'] == _selectedModel)
+                                ? _selectedModel
+                                : 'custom',
+                            decoration: InputDecoration(
+                              labelText: '识别模型',
+                              prefixIcon: const Icon(Icons.smart_toy),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            items: _presetModels.map((model) {
+                              return DropdownMenuItem(
+                                value: model['name'],
+                                child: Text(
+                                  model['label']!,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _selectedModel = value);
+                              }
+                            },
+                          ),
+
+                          // 自定义模型输入框
+                          if (_selectedModel == 'custom') ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _customModelController,
+                              decoration: InputDecoration(
+                                labelText: '模型名称',
+                                hintText: 'org/model-name',
+                                prefixIcon: const Icon(Icons.edit),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 16),
+
+                          // 测试连接按钮
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton.icon(
@@ -293,7 +358,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
 
                 // 使用说明
                 Card(
-                  color: colorScheme.surfaceVariant.withOpacity(0.3),
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(

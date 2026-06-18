@@ -29,7 +29,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.10.2"
+            // 不指定版本，使用系统可用的 CMake（CI 上通常是 3.22+）
         }
     }
 

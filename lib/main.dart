@@ -10,6 +10,7 @@ import 'screens/writing_tips_screen.dart';
 import 'screens/charset_guide_screen.dart';
 import 'screens/ocr_settings_screen.dart';
 import 'screens/project_list_screen.dart';
+import 'screens/settings_screen.dart';
 import 'services/recognition_service.dart';
 
 void main() {
@@ -117,6 +118,10 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
           case '/my-fonts':
             return MaterialPageRoute(
               builder: (_) => const ProjectListScreen(),
+            );
+          case '/settings':
+            return MaterialPageRoute(
+              builder: (_) => const SettingsScreen(),
             );
           case '/auto-generate':
             final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;

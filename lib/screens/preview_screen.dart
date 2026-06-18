@@ -31,14 +31,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
     super.dispose();
   }
 
-  /// 导出 TTF 字体
+  /// 导出 TTF 字体（先弹出命名对话框）
   Future<void> _exportFont() async {
+    // 弹出字体命名对话框
+    final fontName = await _showFontNameDialog();
+    if (fontName == null || fontName.isEmpty) return; // 用户取消
+
+    // 更新项目名称
+    widget.project.name = fontName;
+
     setState(() => _isExporting = true);
     try {
       final filePath = await StorageService.exportTtf(widget.project);
 
       if (mounted) {
-        // Show success dialog
+        // Show success dialog with install hint
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -71,6 +78,37 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
+                // 安装提示
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.tertiary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '安装字体：将 TTF 文件发送到电脑，双击安装即可在设计软件中使用。Android 可通过「设置→显示→字体」导入。',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
             actions: [
@@ -99,6 +137,86 @@ class _PreviewScreenState extends State<PreviewScreen> {
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
+  }
+
+  /// 显示字体命名对话框，返回用户输入的字体名称（取消返回 null）
+  Future<String?> _showFontNameDialog() async {
+    final controller = TextEditingController(text: widget.project.name);
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return AlertDialog(
+          icon: Icon(Icons.font_download, color: colorScheme.primary, size: 36),
+          title: const Text('为你的字体命名'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '这个名字将作为字体文件名和项目标题',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: '字体名称',
+                    hintText: '例如：我的手写体',
+                    prefixIcon: const Icon(Icons.edit),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return '请输入字体名称';
+                    }
+                    // 检查非法文件名字符
+                    if (RegExp(r'[<>:"/\\|?*]').hasMatch(value)) {
+                      return '名称不能包含特殊字符';
+                    }
+                    return null;
+                  },
+                  maxLength: 30,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) {
+                    if (formKey.currentState!.validate()) {
+                      Navigator.pop(context, controller.text.trim());
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(context, controller.text.trim());
+                }
+              },
+              child: const Text('导出'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+    return result;
   }
 
   /// 保存项目到本地
