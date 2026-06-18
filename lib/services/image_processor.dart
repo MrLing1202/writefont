@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,297 @@ import '../models/project.dart';
 
 /// 进度回调类型：progress 范围 0.0 ~ 1.0，message 描述当前步骤
 typedef ProgressCallback = void Function(double progress, String message);
+
+// --- Isolate helpers: 序列化/反序列化，确保数据可跨 Isolate 传递 ---
+
+List<Map<String, dynamic>> _serializeContour(Contour contour) {
+  return contour.points
+      .map((p) => {'x': p.x, 'y': p.y, 'onCurve': p.onCurve})
+      .toList();
+}
+
+Contour _deserializeContour(List<Map<String, dynamic>> pointMaps) {
+  return Contour(
+    pointMaps
+        .map((p) => ContourPoint(
+              p['x'] as int,
+              p['y'] as int,
+              onCurve: p['onCurve'] as bool? ?? true,
+            ))
+        .toList(),
+  );
+}
+
+/// Isolate 入口函数：执行轮廓提取的核心计算逻辑。
+/// 接收序列化的参数 Map，返回序列化的轮廓数据。
+/// 必须为顶层函数以满足 Isolate.run() 的要求。
+List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
+  final imageBytes = params['imageBytes'] as Uint8List;
+  final threshold = params['threshold'] as double;
+  final strokeWidth = params['strokeWidth'] as double;
+  final smoothness = params['smoothness'] as double;
+  final invertColors = params['invertColors'] as bool;
+
+  final image = img.decodeImage(imageBytes);
+  if (image == null) return [];
+
+  // --- 图片预处理（与原 extractContours 逻辑一致）---
+  img.Image workImage = image;
+  final maxDim = workImage.width > workImage.height
+      ? workImage.width
+      : workImage.height;
+  final pixelCount = workImage.width * workImage.height;
+  final estimatedMemoryMB = (pixelCount * 4 * 3) / (1024 * 1024);
+
+  if (estimatedMemoryMB > 150) {
+    final memScale = sqrt(150.0 / estimatedMemoryMB);
+    final targetMaxDim = (maxDim * memScale).round().clamp(200, 99999);
+    final scale = targetMaxDim / maxDim;
+    final newW = (workImage.width * scale).round().clamp(1, 99999);
+    final newH = (workImage.height * scale).round().clamp(1, 99999);
+    workImage = img.copyResize(workImage,
+        width: newW, height: newH, interpolation: img.Interpolation.linear);
+  } else if (maxDim > 800) {
+    final scale = 800.0 / maxDim;
+    final newW = (workImage.width * scale).round().clamp(1, 99999);
+    final newH = (workImage.height * scale).round().clamp(1, 99999);
+    workImage = img.copyResize(workImage,
+        width: newW, height: newH, interpolation: img.Interpolation.linear);
+  }
+
+  final gray = img.grayscale(workImage);
+  final blurred = ImageProcessor._gaussianBlur(gray);
+  img.Image binary;
+  final adaptiveResult =
+      ImageProcessor._adaptiveThreshold(blurred, blockSize: 31, c: 12, invert: invertColors);
+  final blackRatio = ImageProcessor._blackPixelRatio(adaptiveResult);
+  if (blackRatio > 0.80 || blackRatio < 0.01) {
+    if ((threshold - 0.5).abs() < 0.001) {
+      final otsuT = ImageProcessor._otsuThreshold(blurred);
+      binary = ImageProcessor._binarize(blurred, otsuT / 255.0, invertColors);
+    } else {
+      binary = ImageProcessor._binarize(blurred, threshold, invertColors);
+    }
+  } else {
+    binary = adaptiveResult;
+  }
+
+  // --- 外轮廓提取 ---
+  final List<Contour> allContours = [];
+  final visited = List.generate(
+    binary.height,
+    (_) => List.filled(binary.width, false),
+  );
+
+  for (int y = 0; y < binary.height; y++) {
+    for (int x = 0; x < binary.width; x++) {
+      if (!visited[y][x] && ImageProcessor._isBlack(binary, x, y)) {
+        final contour =
+            ImageProcessor._traceContour(binary, x, y, visited);
+        if (contour.length > 4) {
+          final scaled = ImageProcessor._scaleContour(
+              contour, binary.width, binary.height, strokeWidth);
+          final simplified =
+              ImageProcessor._simplifyContour(scaled, smoothness * 5 + 2);
+          if (simplified.length >= 3) {
+            final closed = ImageProcessor._ensureClosedContour(simplified);
+            final fitted = ImageProcessor._fitBezierCurves(closed, smoothness);
+            allContours.add(Contour(fitted));
+          }
+        }
+      }
+    }
+  }
+
+  // --- 空心字检测 ---
+  final w = binary.width, h = binary.height;
+  final isExterior = List.generate(h, (_) => List.filled(w, false));
+  final bfsDirs4 = const [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ];
+
+  // BFS from edge pixels to mark exterior white regions
+  final queue = <List<int>>[];
+  for (int x = 0; x < w; x++) {
+    if (!ImageProcessor._isBlack(binary, x, 0)) {
+      queue.add([x, 0]);
+      isExterior[0][x] = true;
+    }
+    if (!ImageProcessor._isBlack(binary, x, h - 1)) {
+      queue.add([x, h - 1]);
+      isExterior[h - 1][x] = true;
+    }
+  }
+  for (int y = 1; y < h - 1; y++) {
+    if (!ImageProcessor._isBlack(binary, 0, y)) {
+      queue.add([0, y]);
+      isExterior[y][0] = true;
+    }
+    if (!ImageProcessor._isBlack(binary, w - 1, y)) {
+      queue.add([w - 1, y]);
+      isExterior[y][w - 1] = true;
+    }
+  }
+  while (queue.isNotEmpty) {
+    final p = queue.removeAt(0);
+    for (final d in bfsDirs4) {
+      final nx = p[0] + d[0], ny = p[1] + d[1];
+      if (nx >= 0 &&
+          nx < w &&
+          ny >= 0 &&
+          ny < h &&
+          !isExterior[ny][nx] &&
+          !ImageProcessor._isBlack(binary, nx, ny)) {
+        isExterior[ny][nx] = true;
+        queue.add([nx, ny]);
+      }
+    }
+  }
+
+  // Find interior white regions (holes) and trace their contours
+  final holeVisited = List.generate(h, (_) => List.filled(w, false));
+
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      if (ImageProcessor._isBlack(binary, x, y) ||
+          isExterior[y][x] ||
+          holeVisited[y][x]) continue;
+
+      final holePixels = <Point>[];
+      int minX = x, maxX = x, minY = y, maxY = y;
+      final holeQueue = <List<int>>[];
+      holeQueue.add([x, y]);
+      holeVisited[y][x] = true;
+
+      while (holeQueue.isNotEmpty) {
+        final p = holeQueue.removeAt(0);
+        final px = p[0], py = p[1];
+        holePixels.add(Point(px, py));
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+
+        for (final d in bfsDirs4) {
+          final nx = px + d[0], ny = py + d[1];
+          if (nx >= 0 &&
+              nx < w &&
+              ny >= 0 &&
+              ny < h &&
+              !holeVisited[ny][nx] &&
+              !ImageProcessor._isBlack(binary, nx, ny) &&
+              !isExterior[ny][nx]) {
+            holeVisited[ny][nx] = true;
+            holeQueue.add([nx, ny]);
+          }
+        }
+      }
+
+      if (holePixels.length < 4) continue;
+      final holeW = maxX - minX + 1;
+      final holeH = maxY - minY + 1;
+      if (holeW > w * 0.4 || holeH > h * 0.4) continue;
+
+      int bx = -1, by = -1;
+      for (final p in holePixels) {
+        if (p.x > 0 && ImageProcessor._isBlack(binary, p.x - 1, p.y)) {
+          bx = p.x;
+          by = p.y;
+          break;
+        }
+      }
+      if (bx < 0) {
+        for (final p in holePixels) {
+          bool hasBlackNeighbor = false;
+          for (final d in bfsDirs4) {
+            final nx = p.x + d[0], ny = p.y + d[1];
+            if (nx >= 0 &&
+                nx < w &&
+                ny >= 0 &&
+                ny < h &&
+                ImageProcessor._isBlack(binary, nx, ny)) {
+              hasBlackNeighbor = true;
+              break;
+            }
+          }
+          if (hasBlackNeighbor) {
+            bx = p.x;
+            by = p.y;
+            break;
+          }
+        }
+      }
+      if (bx < 0) continue;
+
+      // Moore neighborhood tracing for hole boundary
+      const tdx = [1, 1, 0, -1, -1, -1, 0, 1];
+      const tdy = [0, 1, 1, 1, 0, -1, -1, -1];
+
+      int dir = 0;
+      final traceStartX = bx, traceStartY = by;
+      final holeContour = <Point>[Point(bx, by)];
+      int maxSteps = w * h;
+      int steps = 0;
+
+      do {
+        int searchDir = (dir + 7) % 8;
+        bool found = false;
+        for (int i = 0; i < 8; i++) {
+          int d = (searchDir + i) % 8;
+          int nx = bx + tdx[d];
+          int ny = by + tdy[d];
+          if (nx >= 0 &&
+              nx < w &&
+              ny >= 0 &&
+              ny < h &&
+              ImageProcessor._isBlack(binary, nx, ny)) {
+            bx = nx;
+            by = ny;
+            dir = d;
+            found = true;
+            break;
+          }
+        }
+        if (!found) break;
+
+        steps++;
+        if (bx != traceStartX || by != traceStartY) {
+          holeContour.add(Point(bx, by));
+        }
+      } while ((bx != traceStartX || by != traceStartY) && steps < maxSteps);
+
+      if (holeContour.length > 4) {
+        final scaled =
+            ImageProcessor._scaleContour(holeContour, w, h, strokeWidth);
+        final simplified =
+            ImageProcessor._simplifyContour(scaled, smoothness * 5 + 2);
+        if (simplified.length >= 3) {
+          var closed = ImageProcessor._ensureClosedContour(simplified);
+
+          // Ensure correct winding: inner contours should be counterclockwise
+          if (closed.length >= 3) {
+            double signedArea = 0;
+            for (int i = 0; i < closed.length - 1; i++) {
+              signedArea += (closed[i + 1].x - closed[i].x) *
+                  (closed[i + 1].y + closed[i].y);
+            }
+            if (signedArea > 0) {
+              closed = closed.reversed.toList();
+            }
+          }
+
+          final fitted = ImageProcessor._fitBezierCurves(closed, smoothness);
+          allContours.add(Contour(fitted));
+        }
+      }
+    }
+  }
+
+  return allContours.map(_serializeContour).toList();
+}
 
 /// Service for processing handwriting images into glyph data.
 class ImageProcessor {
@@ -234,277 +526,43 @@ class ImageProcessor {
 
   /// Extract contour points from a binary character image.
   /// Returns contours scaled to font units (0-1000).
-  /// [onProgress] 可选进度回调，[timeout] 超时时间（默认30秒）
+  /// 核心计算在后台 Isolate 中执行，避免阻塞 UI 线程。
+  /// [onProgress] 可选进度回调，[timeout] 超时时间（默认60秒）
   static Future<List<Contour>> extractContours(
     Uint8List imageBytes,
     ProcessingParams params, {
     ProgressCallback? onProgress,
     Duration timeout = const Duration(seconds: 60),
   }) async {
-    final stopwatch = Stopwatch()..start();
+    onProgress?.call(0.0, '正在解码图片...');
 
-    // 超时检查辅助函数
-    void checkTimeout(String stage) {
-      if (stopwatch.elapsed > timeout) {
-        throw TimeoutException('轮廓提取超时 ($stage)', timeout);
-      }
-    }
-
-    onProgress?.call(0.0, '开始解码图片...');
+    // 快速校验图片是否可解码
     final image = img.decodeImage(imageBytes);
     if (image == null) return [];
 
-    // 检查可用内存，大图进一步缩小
-    img.Image workImage = image;
-    final maxDim = workImage.width > workImage.height ? workImage.width : workImage.height;
-    final pixelCount = workImage.width * workImage.height;
+    onProgress?.call(0.1, '轮廓提取中（后台计算）...');
 
-    // 内存预估：每个像素约4字节(RGBA)，加上处理中间图像约3倍
-    final estimatedMemoryMB = (pixelCount * 4 * 3) / (1024 * 1024);
-    debugPrint('extractContours: 图片 ${workImage.width}x${workImage.height}, 预估内存 ${estimatedMemoryMB.toStringAsFixed(1)}MB');
+    // 核心计算在 Isolate 中执行，避免阻塞 UI
+    final contourDataList = await Isolate.run(
+      () => _computeContours({
+        'imageBytes': imageBytes,
+        'threshold': params.threshold,
+        'strokeWidth': params.strokeWidth,
+        'smoothness': params.smoothness,
+        'invertColors': params.invertColors,
+      }),
+    ).timeout(timeout, onTimeout: () {
+      throw TimeoutException('轮廓提取超时', timeout);
+    });
 
-    // 内存不足时进一步缩小（阈值150MB）
-    if (estimatedMemoryMB > 150) {
-      final memScale = sqrt(150.0 / estimatedMemoryMB);
-      final targetMaxDim = (maxDim * memScale).round().clamp(200, 99999);
-      final scale = targetMaxDim / maxDim;
-      final newW = (workImage.width * scale).round().clamp(1, 99999);
-      final newH = (workImage.height * scale).round().clamp(1, 99999);
-      debugPrint('extractContours: 内存不足，缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
-      workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
-    } else if (maxDim > 800) {
-      // 常规大图缩小
-      final scale = 800.0 / maxDim;
-      final newW = (workImage.width * scale).round().clamp(1, 99999);
-      final newH = (workImage.height * scale).round().clamp(1, 99999);
-      debugPrint('extractContours: 大图缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
-      workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
-    }
+    onProgress?.call(0.9, '反序列化轮廓数据...');
 
-    onProgress?.call(0.1, '图片预处理中...');
-    checkTimeout('图片预处理');
+    // 反序列化
+    final allContours = contourDataList.map(_deserializeContour).toList();
 
-    final gray = img.grayscale(workImage);
-    // Gaussian blur + adaptive threshold for contour extraction too
-    final blurred = _gaussianBlur(gray);
-    img.Image binary;
-    final adaptiveResult = _adaptiveThreshold(blurred, blockSize: 31, c: 12, invert: params.invertColors);
-    final blackRatio = _blackPixelRatio(adaptiveResult);
-    if (blackRatio > 0.80 || blackRatio < 0.01) {
-      debugPrint('extractContours: 自适应阈值结果异常 (black=${(blackRatio*100).toStringAsFixed(1)}%), 回退全局阈值');
-      if ((params.threshold - 0.5).abs() < 0.001) {
-        final otsuT = _otsuThreshold(blurred);
-        binary = _binarize(blurred, otsuT / 255.0, params.invertColors);
-      } else {
-        binary = _binarize(blurred, params.threshold, params.invertColors);
-      }
-    } else {
-      binary = adaptiveResult;
-    }
-
-    debugPrint('extractContours: 开始轮廓提取, 图片 ${binary.width}x${binary.height}');
-    onProgress?.call(0.3, '提取轮廓中...');
-    checkTimeout('轮廓提取');
-
-    // Find connected components and trace contours (outer boundaries)
-    final List<Contour> allContours = [];
-    final visited = List.generate(
-      binary.height,
-      (_) => List.filled(binary.width, false),
-    );
-
-    for (int y = 0; y < binary.height; y++) {
-      for (int x = 0; x < binary.width; x++) {
-        if (!visited[y][x] && _isBlack(binary, x, y)) {
-          final contour = _traceContour(binary, x, y, visited);
-          if (contour.length > 4) {
-            // Scale to font units (0-1000) with Y-axis flipped
-            final scaled = _scaleContour(contour, binary.width, binary.height, params.strokeWidth);
-            final simplified = _simplifyContour(scaled, params.smoothness * 5 + 2);
-            if (simplified.length >= 3) {
-              // 确保轮廓闭合：首尾点相同
-              final closed = _ensureClosedContour(simplified);
-              // 贝塞尔曲线拟合：将折线转换为平滑的二次贝塞尔曲线
-              final fitted = _fitBezierCurves(closed, params.smoothness);
-              allContours.add(Contour(fitted));
-            }
-          }
-        }
-      }
-    }
-
-    onProgress?.call(0.6, '检测空心字区域...');
-    checkTimeout('空心字检测');
-
-    // --- Hole detection: find white regions enclosed by black pixels ---
-    // Flood fill from image edges to mark all exterior white pixels.
-    // Any white pixel NOT reached is an interior hole.
-    debugPrint('extractContours: 开始空心字检测 BFS...');
-    final w = binary.width, h = binary.height;
-    final isExterior = List.generate(h, (_) => List.filled(w, false));
-    final bfsDirs4 = const [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-    // BFS from all edge pixels
-    final queue = <List<int>>[];
-    for (int x = 0; x < w; x++) {
-      if (!_isBlack(binary, x, 0)) { queue.add([x, 0]); isExterior[0][x] = true; }
-      if (!_isBlack(binary, x, h - 1)) { queue.add([x, h - 1]); isExterior[h - 1][x] = true; }
-    }
-    for (int y = 1; y < h - 1; y++) {
-      if (!_isBlack(binary, 0, y)) { queue.add([0, y]); isExterior[y][0] = true; }
-      if (!_isBlack(binary, w - 1, y)) { queue.add([w - 1, y]); isExterior[y][w - 1] = true; }
-    }
-    while (queue.isNotEmpty) {
-      final p = queue.removeAt(0);
-      for (final d in bfsDirs4) {
-        final nx = p[0] + d[0], ny = p[1] + d[1];
-        if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-            !isExterior[ny][nx] && !_isBlack(binary, nx, ny)) {
-          isExterior[ny][nx] = true;
-          queue.add([nx, ny]);
-        }
-      }
-    }
-
-    // Find interior white regions (holes) and trace their contours
-    final holeVisited = List.generate(h, (_) => List.filled(w, false));
-    int holeCount = 0;
-
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        if (_isBlack(binary, x, y) || isExterior[y][x] || holeVisited[y][x]) continue;
-
-        // Found an interior white pixel — collect the entire hole region
-        final holePixels = <Point>[];
-        int minX = x, maxX = x, minY = y, maxY = y;
-        final holeQueue = <List<int>>[];
-        holeQueue.add([x, y]);
-        holeVisited[y][x] = true;
-
-        while (holeQueue.isNotEmpty) {
-          final p = holeQueue.removeAt(0);
-          final px = p[0], py = p[1];
-          holePixels.add(Point(px, py));
-          if (px < minX) minX = px;
-          if (px > maxX) maxX = px;
-          if (py < minY) minY = py;
-          if (py > maxY) maxY = py;
-
-          for (final d in bfsDirs4) {
-            final nx = px + d[0], ny = py + d[1];
-            if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-                !holeVisited[ny][nx] && !_isBlack(binary, nx, ny) && !isExterior[ny][nx]) {
-              holeVisited[ny][nx] = true;
-              holeQueue.add([nx, ny]);
-            }
-          }
-        }
-
-        // Skip tiny holes (noise)
-        if (holePixels.length < 4) continue;
-
-        // Skip holes that span the entire component (not real holes)
-        final holeW = maxX - minX + 1;
-        final holeH = maxY - minY + 1;
-        if (holeW > w * 0.4 || holeH > h * 0.4) continue;
-
-        // Find a boundary white pixel to start tracing
-        int bx = -1, by = -1;
-        for (final p in holePixels) {
-          if (p.x > 0 && _isBlack(binary, p.x - 1, p.y)) {
-            bx = p.x;
-            by = p.y;
-            break;
-          }
-        }
-        // Fallback: find a white pixel with any black cardinal neighbor
-        if (bx < 0) {
-          for (final p in holePixels) {
-            bool hasBlackNeighbor = false;
-            for (final d in bfsDirs4) {
-              final nx = p.x + d[0], ny = p.y + d[1];
-              if (nx >= 0 && nx < w && ny >= 0 && ny < h && _isBlack(binary, nx, ny)) {
-                hasBlackNeighbor = true;
-                break;
-              }
-            }
-            if (hasBlackNeighbor) {
-              bx = p.x;
-              by = p.y;
-              break;
-            }
-          }
-        }
-        if (bx < 0) continue; // No boundary found, skip
-
-        // Trace the hole boundary using Moore neighborhood tracing
-        const tdx = [1, 1, 0, -1, -1, -1, 0, 1];
-        const tdy = [0, 1, 1, 1, 0, -1, -1, -1];
-
-        int dir = 0;
-        final traceStartX = bx, traceStartY = by;
-        final holeContour = <Point>[Point(bx, by)];
-        int maxSteps = w * h;
-        int steps = 0;
-
-        do {
-          int searchDir = (dir + 7) % 8;
-          bool found = false;
-          for (int i = 0; i < 8; i++) {
-            int d = (searchDir + i) % 8;
-            int nx = bx + tdx[d];
-            int ny = by + tdy[d];
-            if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-                _isBlack(binary, nx, ny)) {
-              bx = nx;
-              by = ny;
-              dir = d;
-              found = true;
-              break;
-            }
-          }
-          if (!found) break;
-
-          steps++;
-          if (bx != traceStartX || by != traceStartY) {
-            holeContour.add(Point(bx, by));
-          }
-        } while ((bx != traceStartX || by != traceStartY) && steps < maxSteps);
-
-        if (holeContour.length > 4) {
-          holeCount++;
-          // Scale and simplify the hole contour
-          final scaled = _scaleContour(holeContour, w, h, params.strokeWidth);
-          final simplified = _simplifyContour(scaled, params.smoothness * 5 + 2);
-          if (simplified.length >= 3) {
-            var closed = _ensureClosedContour(simplified);
-
-            // Ensure correct winding: inner contours should be counterclockwise
-            // (negative signed area). If clockwise, reverse.
-            if (closed.length >= 3) {
-              double signedArea = 0;
-              for (int i = 0; i < closed.length - 1; i++) {
-                signedArea += (closed[i + 1].x - closed[i].x) *
-                    (closed[i + 1].y + closed[i].y);
-              }
-              if (signedArea > 0) {
-                // Clockwise → reverse to counterclockwise
-                closed = closed.reversed.toList();
-              }
-            }
-
-            // 贝塞尔曲线拟合：将折线转换为平滑的二次贝塞尔曲线
-            final fitted = _fitBezierCurves(closed, params.smoothness);
-            allContours.add(Contour(fitted));
-          }
-        }
-      }
-    }
-
-    debugPrint('轮廓提取: 共 ${allContours.length} 个轮廓 (含 $holeCount 个洞), '
+    debugPrint('轮廓提取完成: 共 ${allContours.length} 个轮廓, '
         '点数=[${allContours.map((c) => c.points.length).join(", ")}]');
 
-    checkTimeout('最终检查');
     onProgress?.call(1.0, '轮廓提取完成');
     return allContours;
   }

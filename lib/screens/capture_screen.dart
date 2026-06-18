@@ -689,14 +689,35 @@ class _CaptureScreenState extends State<CaptureScreen> {
         imageQuality: 95,
       );
       if (photos.isNotEmpty) {
-        // 批量添加时跳过预览，直接添加
+        // 批量质量检测
+        int poorCount = 0;
+        for (final photo in photos) {
+          try {
+            final quality = await detectImageQuality(photo.path);
+            if (quality.level == QualityLevel.poor) poorCount++;
+          } catch (_) {
+            // 单张检测失败不影响整体添加
+          }
+        }
+
+        // 全部添加（不因质量过滤）
         setState(() {
           _selectedImages.addAll(photos);
         });
+
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已添加 ${photos.length} 张图片')),
-          );
+          if (poorCount > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('已添加 ${photos.length} 张图片，其中 $poorCount 张质量较差，可能影响识别效果'),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已添加 ${photos.length} 张图片')),
+            );
+          }
         }
       }
     } catch (e) {
