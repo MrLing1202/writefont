@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
-import '../widgets/glyph_widget.dart';
 import 'preview_screen.dart';
+import 'character_grid_screen.dart';
+
+/// 排序方式枚举
+enum SortMode {
+  nameAsc, // 按名称升序
+  nameDesc, // 按名称降序
+  createdDesc, // 按创建时间倒序
+  createdAsc, // 按创建时间正序
+  updatedDesc, // 按修改时间倒序
+  updatedAsc, // 按修改时间正序
+}
 
 /// 项目管理页面：列出所有已保存的字体项目
 class ProjectListScreen extends StatefulWidget {
@@ -15,6 +25,7 @@ class ProjectListScreen extends StatefulWidget {
 class _ProjectListScreenState extends State<ProjectListScreen> {
   List<FontProject> _projects = [];
   bool _isLoading = true;
+  SortMode _sortMode = SortMode.updatedDesc;
 
   @override
   void initState() {
@@ -31,6 +42,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         setState(() {
           _projects = projects;
           _isLoading = false;
+          _sortProjects();
         });
       }
     } catch (e) {
@@ -40,6 +52,75 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
           SnackBar(content: Text('加载项目失败: $e')),
         );
       }
+    }
+  }
+
+  /// 按当前排序模式排序项目列表
+  void _sortProjects() {
+    switch (_sortMode) {
+      case SortMode.nameAsc:
+        _projects.sort((a, b) => a.name.compareTo(b.name));
+        break;
+      case SortMode.nameDesc:
+        _projects.sort((a, b) => b.name.compareTo(a.name));
+        break;
+      case SortMode.createdDesc:
+        _projects.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case SortMode.createdAsc:
+        _projects.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        break;
+      case SortMode.updatedDesc:
+        _projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        break;
+      case SortMode.updatedAsc:
+        _projects.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
+        break;
+    }
+  }
+
+  /// 切换排序模式
+  void _toggleSortMode() {
+    setState(() {
+      switch (_sortMode) {
+        case SortMode.updatedDesc:
+          _sortMode = SortMode.updatedAsc;
+          break;
+        case SortMode.updatedAsc:
+          _sortMode = SortMode.nameAsc;
+          break;
+        case SortMode.nameAsc:
+          _sortMode = SortMode.nameDesc;
+          break;
+        case SortMode.nameDesc:
+          _sortMode = SortMode.createdDesc;
+          break;
+        case SortMode.createdDesc:
+          _sortMode = SortMode.createdAsc;
+          break;
+        case SortMode.createdAsc:
+          _sortMode = SortMode.updatedDesc;
+          break;
+      }
+      _sortProjects();
+    });
+  }
+
+  /// 获取排序图标和文字
+  (IconData, String) _getSortInfo() {
+    switch (_sortMode) {
+      case SortMode.nameAsc:
+        return (Icons.sort_by_alpha, '名称 A-Z');
+      case SortMode.nameDesc:
+        return (Icons.sort_by_alpha, '名称 Z-A');
+      case SortMode.createdDesc:
+        return (Icons.calendar_today, '创建时间↓');
+      case SortMode.createdAsc:
+        return (Icons.calendar_today, '创建时间↑');
+      case SortMode.updatedDesc:
+        return (Icons.access_time, '修改时间↓');
+      case SortMode.updatedAsc:
+        return (Icons.access_time, '修改时间↑');
     }
   }
 
@@ -148,6 +229,179 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     controller.dispose();
   }
 
+  /// 复制项目
+  Future<void> _duplicateProject(FontProject project) async {
+    try {
+      // 深拷贝 GlyphData
+      final newGlyphs = <String, GlyphData>{};
+      for (final entry in project.glyphs.entries) {
+        final original = entry.value;
+        newGlyphs[entry.key] = GlyphData(
+          character: original.character,
+          unicode: original.unicode,
+          contours: original.contours
+              .map((c) => Contour(
+                    c.points
+                        .map((p) => ContourPoint(p.x, p.y, onCurve: p.onCurve))
+                        .toList(),
+                  ))
+              .toList(),
+          advanceWidth: original.advanceWidth,
+          leftSideBearing: original.leftSideBearing,
+          xMin: original.xMin,
+          yMin: original.yMin,
+          xMax: original.xMax,
+          yMax: original.yMax,
+          sourceImagePath: original.sourceImagePath,
+        );
+      }
+
+      // 创建新项目
+      final newProject = FontProject(
+        id: StorageService.generateId(),
+        name: '${project.name}(副本)',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        glyphs: newGlyphs,
+        params: project.params.copyWith(),
+      );
+
+      await StorageService.saveProject(newProject);
+      await _loadProjects();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已创建「${newProject.name}」')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('复制失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 导出项目 TTF
+  Future<void> _exportProject(FontProject project) async {
+    try {
+      final filePath = await StorageService.exportTtf(project);
+      await StorageService.shareTtf(filePath);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导出: $filePath')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 显示项目操作底部菜单
+  void _showProjectActions(FontProject project) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 顶部拖拽指示条
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // 项目名称标题
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  project.name,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // 重命名
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('重命名'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _renameProject(project);
+                },
+              ),
+              // 复制
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('复制项目'),
+                subtitle: const Text('创建项目副本'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _duplicateProject(project);
+                },
+              ),
+              // 导出
+              ListTile(
+                leading: const Icon(Icons.ios_share),
+                title: const Text('导出字体'),
+                subtitle: const Text('导出为 TTF 文件'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportProject(project);
+                },
+              ),
+              // 字符总览
+              ListTile(
+                leading: const Icon(Icons.grid_view),
+                title: const Text('字符总览'),
+                subtitle: const Text('查看造字进度'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          CharacterGridScreen(project: project),
+                    ),
+                  ).then((_) => _loadProjects());
+                },
+              ),
+              // 删除（带危险样式）
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: colorScheme.error),
+                title: Text('删除项目',
+                    style: TextStyle(color: colorScheme.error)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _deleteProject(project);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 打开项目预览
   void _openProject(FontProject project) {
     Navigator.push(
@@ -158,15 +412,32 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     ).then((_) => _loadProjects()); // 返回时刷新列表
   }
 
+  /// 获取项目统计信息
+  (int total, int edited, double progress) _getProjectStats(FontProject project) {
+    final total = project.glyphs.length;
+    final edited = project.glyphs.values
+        .where((g) => g.contours.isNotEmpty)
+        .length;
+    final progress = total > 0 ? edited / total : 0.0;
+    return (total, edited, progress);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final sortInfo = _getSortInfo();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('我的字体'),
         centerTitle: true,
         actions: [
+          // 排序按钮
+          IconButton(
+            onPressed: _toggleSortMode,
+            icon: Icon(sortInfo.$1),
+            tooltip: '排序: ${sortInfo.$2}',
+          ),
           IconButton(
             onPressed: _loadProjects,
             icon: const Icon(Icons.refresh),
@@ -234,7 +505,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     );
   }
 
-  /// 项目列表
+  /// 项目列表（支持滑动删除）
   Widget _buildProjectList(ColorScheme colorScheme) {
     return RefreshIndicator(
       onRefresh: _loadProjects,
@@ -243,15 +514,111 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         itemCount: _projects.length,
         itemBuilder: (context, index) {
           final project = _projects[index];
-          return _buildProjectCard(project, colorScheme);
+          return _buildDismissibleCard(project, colorScheme);
         },
       ),
     );
   }
 
-  /// 单个项目卡片
+  /// 可滑动删除的项目卡片
+  Widget _buildDismissibleCard(FontProject project, ColorScheme colorScheme) {
+    return Dismissible(
+      key: Key(project.id),
+      direction: DismissDirection.endToStart,
+      // 红色删除背景
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: colorScheme.error,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.delete,
+              color: colorScheme.onError,
+              size: 32,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '删除',
+              style: TextStyle(
+                color: colorScheme.onError,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        // 二次确认
+        return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: Icon(
+              Icons.delete_forever,
+              color: Theme.of(ctx).colorScheme.error,
+              size: 48,
+            ),
+            title: const Text('确认删除'),
+            content: Text('确定要删除「${project.name}」吗？\n该操作不可撤销。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                ),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (direction) async {
+        try {
+          await StorageService.deleteProject(project.id);
+          setState(() {
+            _projects.removeWhere((p) => p.id == project.id);
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('「${project.name}」已删除'),
+                action: SnackBarAction(
+                  label: '知道了',
+                  onPressed: () {},
+                ),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('删除失败: $e')),
+            );
+          }
+          // 删除失败时重新加载
+          await _loadProjects();
+        }
+      },
+      child: _buildProjectCard(project, colorScheme),
+    );
+  }
+
+  /// 单个项目卡片（带统计信息和长按菜单）
   Widget _buildProjectCard(FontProject project, ColorScheme colorScheme) {
-    final glyphCount = project.glyphs.length;
+    final stats = _getProjectStats(project);
+    final total = stats.$1;
+    final edited = stats.$2;
+    final progress = stats.$3;
     final createdStr = _formatDate(project.createdAt);
     final updatedStr = _formatDate(project.updatedAt);
 
@@ -260,165 +627,249 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: () => _openProject(project),
+        onLongPress: () => _showProjectActions(project),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
             children: [
-              // 字体预览（显示前 3 个字符的轮廓）
-              _buildFontPreview(project, colorScheme),
-              const SizedBox(width: 16),
-
-              // 项目信息
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      project.name,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  // 项目图标
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                    child: Center(
+                      child: Text(
+                        project.glyphs.isNotEmpty
+                            ? project.glyphs.keys.first
+                            : '字',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+
+                  // 项目信息
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.text_fields,
-                          size: 14,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 4),
                         Text(
-                          '$glyphCount 个字符',
+                          project.name,
                           style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(width: 12),
-                        Icon(
-                          Icons.access_time,
-                          size: 14,
-                          color: colorScheme.onSurfaceVariant,
+                        const SizedBox(height: 4),
+                        // 统计信息
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.text_fields,
+                              size: 14,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$total 个字符',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              Icons.edit_note,
+                              size: 14,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '已编辑 $edited',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          updatedStr,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 12,
+                              color: colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '创建于 $createdStr',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.6),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              Icons.access_time,
+                              size: 12,
+                              color: colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              updatedStr,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
+                  ),
+
+                  // 操作按钮
+                  PopupMenuButton<String>(
+                    icon: Icon(
+                      Icons.more_vert,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'rename':
+                          _renameProject(project);
+                          break;
+                        case 'duplicate':
+                          _duplicateProject(project);
+                          break;
+                        case 'export':
+                          _exportProject(project);
+                          break;
+                        case 'grid':
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  CharacterGridScreen(project: project),
+                            ),
+                          ).then((_) => _loadProjects());
+                          break;
+                        case 'delete':
+                          _deleteProject(project);
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'rename',
+                        child: ListTile(
+                          leading: Icon(Icons.edit),
+                          title: Text('重命名'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'duplicate',
+                        child: ListTile(
+                          leading: Icon(Icons.copy),
+                          title: Text('复制'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'export',
+                        child: ListTile(
+                          leading: Icon(Icons.ios_share),
+                          title: Text('导出'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'grid',
+                        child: ListTile(
+                          leading: Icon(Icons.grid_view),
+                          title: Text('字符总览'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: Icon(Icons.delete_outline,
+                              color: colorScheme.error),
+                          title: Text('删除',
+                              style: TextStyle(color: colorScheme.error)),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              // 进度条
+              if (total > 0) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 6,
+                          backgroundColor: colorScheme.surfaceContainerHighest,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            progress >= 1.0
+                                ? Colors.green
+                                : colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     Text(
-                      '创建于 $createdStr',
+                      '${(progress * 100).toStringAsFixed(0)}%',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: progress >= 1.0
+                            ? Colors.green
+                            : colorScheme.primary,
                       ),
                     ),
                   ],
                 ),
-              ),
-
-              // 操作按钮
-              PopupMenuButton<String>(
-                icon: Icon(
-                  Icons.more_vert,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'rename':
-                      _renameProject(project);
-                      break;
-                    case 'delete':
-                      _deleteProject(project);
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'rename',
-                    child: ListTile(
-                      leading: Icon(Icons.edit),
-                      title: Text('重命名'),
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(Icons.delete_outline, color: colorScheme.error),
-                      title: Text('删除', style: TextStyle(color: colorScheme.error)),
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ],
           ),
         ),
       ),
-    );
-  }
-
-  /// 构建字体预览区域（显示前 3 个字符的轮廓）
-  Widget _buildFontPreview(FontProject project, ColorScheme colorScheme) {
-    final glyphEntries = project.glyphs.entries.take(3).toList();
-
-    return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: glyphEntries.isEmpty
-          ? Center(
-              child: Text(
-                '字',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onPrimaryContainer,
-                ),
-              ),
-            )
-          : Padding(
-              padding: const EdgeInsets.all(6),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: glyphEntries.map((entry) {
-                  final glyph = entry.value;
-                  return glyph.contours.isNotEmpty
-                      ? GlyphWidget(
-                          contours: glyph.contours,
-                          size: 16,
-                          color: colorScheme.onPrimaryContainer,
-                        )
-                      : Text(
-                          entry.key,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: colorScheme.onPrimaryContainer,
-                          ),
-                        );
-                }).toList(),
-              ),
-            ),
     );
   }
 

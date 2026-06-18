@@ -545,7 +545,7 @@ class RecognitionService {
           final statusCode = response.statusCode;
           if (statusCode == 401 || statusCode == 403) {
             debugPrint('云端识别认证失败 ($statusCode): API Key 无效或已过期');
-            throw const CloudAuthException('认证失败: API Key 无效或已过期，请检查后重试');
+            throw const CloudAuthException('认证失败: API Key 无效或已过期。请到「设置 → 云端识别配置」中重新填写 API Key，或切换为本地识别模式');
           }
           debugPrint('云端识别 HTTP $statusCode: ${response.body}');
         }
@@ -553,6 +553,14 @@ class RecognitionService {
         rethrow;
       } catch (e) {
         debugPrint('云端识别失败 (第${attempt + 1}次): $e');
+        // 如果是网络相关错误且是最后一次尝试，抛出让调用方感知
+        if (attempt == prompts.length - 1) {
+          if (e is SocketException || e is TimeoutException ||
+              e.toString().contains('Socket') ||
+              e.toString().contains('Connection')) {
+            throw const CloudNetworkException('网络连接失败，请检查网络或切换到本地识别');
+          }
+        }
       }
     }
 
@@ -602,6 +610,14 @@ class RecognitionService {
 class CloudAuthException implements Exception {
   final String message;
   const CloudAuthException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// 云端网络错误
+class CloudNetworkException implements Exception {
+  final String message;
+  const CloudNetworkException(this.message);
   @override
   String toString() => message;
 }

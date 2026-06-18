@@ -151,7 +151,12 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       if (cells.isEmpty) {
         setState(() {
           _hasError = true;
-          _errorMessage = '未识别到字符，请确保照片中包含清晰的手写文字';
+          _errorMessage = '未识别到字符，请尝试以下方法：\n'
+              '• 确保光线充足，避免反光和阴影\n'
+              '• 使用黑色签字笔或中性笔书写\n'
+              '• 在白色纸张上书写，字迹清晰工整\n'
+              '• 拍照时保持手机稳定，对焦清晰\n'
+              '• 调整拍摄角度，使纸张充满画面';
           _status = '分割失败';
         });
         return;
@@ -216,10 +221,32 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       });
     } catch (e) {
       if (mounted) {
+        final errorStr = e.toString();
+        String userMessage;
+        String statusText;
+
+        if (errorStr.contains('CloudAuthException') ||
+            errorStr.contains('认证失败') ||
+            errorStr.contains('401') ||
+            errorStr.contains('403')) {
+          userMessage = '云端识别认证失败：API Key 无效或已过期。\n请到「设置 → 云端识别配置」中重新填写 API Key，或切换为本地识别。';
+          statusText = '认证失败';
+        } else if (errorStr.contains('CloudNetworkException') ||
+            errorStr.contains('SocketException') ||
+            errorStr.contains('TimeoutException') ||
+            errorStr.contains('网络连接失败') ||
+            errorStr.contains('Connection')) {
+          userMessage = '网络连接失败，请检查网络连接后重试。\n您也可以切换到本地识别（无需网络）。';
+          statusText = '网络错误';
+        } else {
+          userMessage = '处理出错：$e';
+          statusText = '处理失败';
+        }
+
         setState(() {
           _hasError = true;
-          _errorMessage = '处理出错: $e';
-          _status = '处理失败';
+          _errorMessage = userMessage;
+          _status = statusText;
         });
       }
     }
@@ -422,7 +449,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         setState(() {
           _isGenerating = false;
           _hasError = true;
-          _errorMessage = '生成字体出错: $e';
+          _errorMessage = '生成字体出错：请检查字符数据是否完整，或尝试重新识别。\n错误详情：$e';
           _status = '生成失败';
         });
       }

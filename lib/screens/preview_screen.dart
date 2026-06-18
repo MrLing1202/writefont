@@ -131,8 +131,20 @@ class _PreviewScreenState extends State<PreviewScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString();
+        String userMessage;
+        if (errorMsg.contains('No such file') || errorMsg.contains('Permission')) {
+          userMessage = '导出失败：存储权限不足，请在系统设置中允许存储权限后重试';
+        } else if (errorMsg.contains('disk') || errorMsg.contains('space') || errorMsg.contains('full')) {
+          userMessage = '导出失败：存储空间不足，请清理手机空间后重试';
+        } else {
+          userMessage = '导出失败：请检查字符数据是否完整，或尝试重新生成字体';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
+          SnackBar(
+            content: Text(userMessage),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {
@@ -145,73 +157,156 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final controller = TextEditingController(text: widget.project.name);
     final formKey = GlobalKey<FormState>();
 
+    // 取前 5 个有轮廓的字符用于预览
+    final previewGlyphs = widget.project.glyphs.entries
+        .where((e) => e.value.contours.isNotEmpty)
+        .take(5)
+        .toList();
+
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
         final colorScheme = Theme.of(context).colorScheme;
-        return AlertDialog(
-          icon: Icon(Icons.font_download, color: colorScheme.primary, size: 36),
-          title: const Text('为你的字体命名'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '这个名字将作为字体文件名和项目标题',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: '字体名称',
-                    hintText: '例如：我的手写体',
-                    prefixIcon: const Icon(Icons.edit),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              icon: Icon(Icons.font_download, color: colorScheme.primary, size: 36),
+              title: const Text('为你的字体命名'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '这个名字将作为字体文件名和项目标题',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return '请输入字体名称';
-                    }
-                    // 检查非法文件名字符
-                    if (RegExp(r'[<>:"/\\|?*]').hasMatch(value)) {
-                      return '名称不能包含特殊字符';
-                    }
-                    return null;
-                  },
-                  maxLength: 30,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) {
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: controller,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: '字体名称',
+                        hintText: '例如：我的手写体',
+                        prefixIcon: const Icon(Icons.edit),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return '请输入字体名称';
+                        }
+                        // 检查非法文件名字符
+                        if (RegExp(r'[<>:"/\\|?*]').hasMatch(value)) {
+                          return '名称不能包含特殊字符';
+                        }
+                        return null;
+                      },
+                      maxLength: 30,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => setDialogState(() {}),
+                      onFieldSubmitted: (_) {
+                        if (formKey.currentState!.validate()) {
+                          Navigator.pop(context, controller.text.trim());
+                        }
+                      },
+                    ),
+                    // 字体预览区域
+                    if (previewGlyphs.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Card(
+                        elevation: 0,
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.preview, size: 16, color: colorScheme.primary),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '预览效果',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              // 字体名称预览
+                              Text(
+                                controller.text.isEmpty ? '字体名称' : controller.text,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              // 字形预览
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: previewGlyphs.map((entry) {
+                                  return Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: colorScheme.outlineVariant,
+                                      ),
+                                      color: colorScheme.surface,
+                                    ),
+                                    child: Center(
+                                      child: GlyphWidget(
+                                        contours: entry.value.contours,
+                                        size: 32,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
                     if (formKey.currentState!.validate()) {
                       Navigator.pop(context, controller.text.trim());
                     }
                   },
+                  child: const Text('导出'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  Navigator.pop(context, controller.text.trim());
-                }
-              },
-              child: const Text('导出'),
-            ),
-          ],
+            );
+          },
         );
       },
     );

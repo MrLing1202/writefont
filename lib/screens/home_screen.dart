@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../models/project.dart';
 import 'auto_generate_screen.dart';
 import 'font_preview_screen.dart';
 import 'processing_screen.dart';
 import 'project_list_screen.dart';
+import 'character_grid_screen.dart';
 import 'settings_screen.dart';
 import 'writing_tips_screen.dart';
 import '../services/storage_service.dart';
@@ -169,6 +171,10 @@ class _HomeScreenState extends State<HomeScreen> {
               // 我的字体入口卡片
               _buildMyFontsCard(context, colorScheme),
 
+              const SizedBox(height: 16),
+
+              // 字符总览入口卡片
+              _buildCharacterGridCard(context, colorScheme),
               const SizedBox(height: 16),
 
               // 字体预览入口卡片
@@ -511,6 +517,116 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 4),
                     Text(
                       '输入文字查看手迹效果',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 字符总览入口卡片（需要先选择项目）
+  Widget _buildCharacterGridCard(BuildContext context, ColorScheme colorScheme) {
+    return Card(
+      elevation: 2,
+      shadowColor: colorScheme.primaryContainer.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: () async {
+          // 加载项目列表供用户选择
+          final projects = await StorageService.loadProjects();
+          if (!context.mounted) return;
+
+          if (projects.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('请先创建并保存一个字体项目')),
+            );
+            return;
+          }
+
+          // 弹出项目选择对话框
+          final selected = await showDialog<FontProject>(
+            context: context,
+            builder: (ctx) => SimpleDialog(
+              title: const Text('选择项目'),
+              children: projects
+                  .map(
+                    (p) => SimpleDialogOption(
+                      onPressed: () => Navigator.pop(ctx, p),
+                      child: ListTile(
+                        leading: const Icon(Icons.folder),
+                        title: Text(p.name),
+                        subtitle: Text('${p.glyphs.length} 个字符'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          );
+
+          if (selected != null && context.mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CharacterGridScreen(project: selected),
+              ),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: colorScheme.primaryContainer.withValues(alpha: 0.15),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.dashboard,
+                  size: 28,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '字符总览',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '查看造字进度',
                       style: TextStyle(
                         fontSize: 14,
                         color: colorScheme.onSurfaceVariant,
