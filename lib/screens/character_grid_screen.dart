@@ -193,8 +193,6 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     return Scaffold(
       appBar: WFAppBar(
         title: _project.name,
-        centerTitle: true,
-        actions: [
           IconButton(
             onPressed: () async {
               final updated =
