@@ -96,58 +96,39 @@ class _CanvasPainter extends CustomPainter {
   bool shouldRepaint(covariant _CanvasPainter oldDelegate) => true;
 }
 
-/// 网格线绘制器
+/// 米字格绘制器（十字线 + 对角线）
 class _GridPainter extends CustomPainter {
-  final double gridSize;
   final Color gridColor;
 
-  _GridPainter({this.gridSize = 20.0, required this.gridColor});
+  _GridPainter({required this.gridColor});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final thinPaint = Paint()
+    final crossPaint = Paint()
       ..color = gridColor
-      ..strokeWidth = 0.5;
+      ..strokeWidth = 0.8;
 
-    // 垂直线
-    for (double x = 0; x <= size.width; x += gridSize) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), thinPaint);
-    }
-    // 水平线
-    for (double y = 0; y <= size.height; y += gridSize) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), thinPaint);
-    }
-
-    // 中心十字线（加粗）
-    final centerPaint = Paint()
-      ..color = gridColor.withValues(alpha: 0.6)
-      ..strokeWidth = 1.0;
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      centerPaint,
-    );
+    // 水平中线
     canvas.drawLine(
       Offset(0, size.height / 2),
       Offset(size.width, size.height / 2),
-      centerPaint,
+      crossPaint,
+    );
+    // 垂直中线
+    canvas.drawLine(
+      Offset(size.width / 2, 0),
+      Offset(size.width / 2, size.height),
+      crossPaint,
     );
 
-    // 基线（下半部 3/4 处，虚线）
-    final baselineY = size.height * 0.75;
-    final baselinePaint = Paint()
-      ..color = gridColor.withValues(alpha: 0.4)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-    const dashWidth = 6.0;
-    const dashSpace = 4.0;
-    for (double x = 0; x < size.width; x += dashWidth + dashSpace) {
-      canvas.drawLine(
-        Offset(x, baselineY),
-        Offset(x + dashWidth, baselineY),
-        baselinePaint,
-      );
-    }
+    // 对角线
+    final diagPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 0.5;
+    // 左上 → 右下
+    canvas.drawLine(Offset.zero, Offset(size.width, size.height), diagPaint);
+    // 右上 → 左下
+    canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), diagPaint);
   }
 
   @override
@@ -225,6 +206,9 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
 
   /// 画笔颜色
   final Color _penColor = Colors.black;
+
+  /// 米字格辅助线开关
+  bool _showGrid = true;
 
   /// 橡皮擦半径
   double get _eraserRadius => _strokeWidth * 2 + 5;
@@ -714,15 +698,15 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                                 ),
                               ),
                             ),
-                            // 网格线
-                            CustomPaint(
-                              size: const Size(_canvasSize, _canvasSize),
-                              painter: _GridPainter(
-                                gridSize: 20,
-                                gridColor: colorScheme.outlineVariant
-                                    .withValues(alpha: 0.5),
+                            // 米字格辅助线
+                            if (_showGrid)
+                              CustomPaint(
+                                size: const Size(_canvasSize, _canvasSize),
+                                painter: _GridPainter(
+                                  gridColor: colorScheme.outlineVariant
+                                      .withValues(alpha: 0.4),
+                                ),
                               ),
-                            ),
                             // 笔画绘制
                             CustomPaint(
                               size: const Size(_canvasSize, _canvasSize),
@@ -790,6 +774,29 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                           setState(() => _currentTool = DrawTool.eraser),
                       colorScheme: colorScheme,
                     ),
+                    // 画笔粗细
+                    _ToolButton(
+                      icon: Icons.line_weight,
+                      label: '${_strokeWidth.round()}px',
+                      isActive: false,
+                      onTap: _showBrushWidthDialog,
+                      colorScheme: colorScheme,
+                    ),
+                    // 分隔线
+                    Container(
+                      width: 1,
+                      height: 32,
+                      color: colorScheme.outlineVariant,
+                    ),
+                    // 米字格开关
+                    _ToolButton(
+                      icon: _showGrid ? Icons.grid_on : Icons.grid_off,
+                      label: '米字格',
+                      isActive: _showGrid,
+                      onTap: () =>
+                          setState(() => _showGrid = !_showGrid),
+                      colorScheme: colorScheme,
+                    ),
                     // 分隔线
                     Container(
                       width: 1,
@@ -841,6 +848,46 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 显示画笔粗细选择弹窗
+  void _showBrushWidthDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('画笔粗细'),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Slider(
+                  value: _strokeWidth,
+                  min: 1.0,
+                  max: 10.0,
+                  divisions: 9,
+                  label: '${_strokeWidth.round()}px',
+                  onChanged: (v) {
+                    setDialogState(() {});
+                    setState(() => _strokeWidth = v);
+                  },
+                ),
+                Text(
+                  '${_strokeWidth.round()}px',
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('确定'),
+          ),
+        ],
       ),
     );
   }
