@@ -236,18 +236,13 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         },
       );
 
-      // 记录识别结果（去重：如果识别出重复字符，跳过，留给 fallback 分配）
+      // 记录识别结果（允许重复字符，用户写了相同字就保留）
       _failedRecognition.clear();
       for (int i = 0; i < batchResults.length; i++) {
         if (batchResults[i] != null) {
           final char = batchResults[i]!;
-          if (!_charAssignments.containsValue(char)) {
-            _charAssignments[i] = char;
-            _aiRecognized.add(i); // 标记为 AI 识别成功
-          } else {
-            debugPrint('自动分配: 跳过重复字符 "$char" (cell $i)');
-            _failedRecognition.add(i); // 重复字符视为失败
-          }
+          _charAssignments[i] = char;
+          _aiRecognized.add(i); // 标记为 AI 识别成功
         } else {
           _failedRecognition.add(i); // 未识别到有效字符
         }
