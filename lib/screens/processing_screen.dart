@@ -7,7 +7,6 @@ import '../services/image_processor.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
 import '../services/app_config_service.dart';
-import '../data/standard_charset.dart';
 
 /// 字符识别状态
 enum CellStatus { pending, recognizing, recognized, failed }
@@ -542,7 +541,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
   Widget _buildStatsBar(ColorScheme colorScheme) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      color: colorScheme.surfaceVariant.withValues(alpha: 0.3),
       child: Row(
         children: [
           Icon(Icons.grid_view, size: 16, color: colorScheme.onSurfaceVariant),
@@ -1011,7 +1010,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
       },
       onLongPress: () => _showEditDialog(index),
       child: AnimatedBuilder(
-        animation: bounceController ?? const AlwaysStoppedAnimation(0),
+        animation: bounceController ?? const AlwaysStoppedAnimation<double>(0),
         builder: (context, child) {
           return Transform.scale(
             scale: scale,

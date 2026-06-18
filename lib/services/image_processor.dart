@@ -16,21 +16,54 @@ class ImageProcessor {
     final image = img.decodeImage(imageBytes);
     if (image == null) return [];
 
+    // --- Resolution-adaptive processing ---
+    img.Image workImage = image;
+    if (workImage.width > 2000) {
+      final scale = 1500.0 / workImage.width;
+      final newW = (workImage.width * scale).round().clamp(1, 99999);
+      final newH = (workImage.height * scale).round().clamp(1, 99999);
+      debugPrint('segmentCharacters: 大图缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
+      workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
+    }
+    final refWidth = workImage.width;
+
     // Convert to grayscale
-    final gray = img.grayscale(image);
+    final gray = img.grayscale(workImage);
 
     // Apply contrast
     final contrasted = img.adjustColor(gray, contrast: params.contrast);
 
-    // Apply threshold to create binary image
-    final binary = _binarize(contrasted, params.threshold, params.invertColors);
+    // Gaussian blur preprocessing to reduce noise
+    final blurred = _gaussianBlur(contrasted);
+
+    // Try adaptive thresholding first; fall back to global if result is too extreme
+    img.Image binary;
+    final adaptiveResult = _adaptiveThreshold(blurred, blockSize: 31, c: 12, invert: params.invertColors);
+    final blackRatio = _blackPixelRatio(adaptiveResult);
+    if (blackRatio > 0.80 || blackRatio < 0.01) {
+      debugPrint('segmentCharacters: 自适应阈值结果异常 (black=${(blackRatio*100).toStringAsFixed(1)}%), 回退全局阈值');
+      // Use Otsu auto-threshold when threshold is the default 0.5
+      if ((params.threshold - 0.5).abs() < 0.001) {
+        final otsuT = _otsuThreshold(blurred);
+        binary = _binarize(blurred, otsuT / 255.0, params.invertColors);
+        debugPrint('segmentCharacters: 使用 Otsu 自动阈值 ${otsuT}');
+      } else {
+        binary = _binarize(blurred, params.threshold, params.invertColors);
+      }
+    } else {
+      binary = adaptiveResult;
+    }
 
     // Apply morphological operations
     img.Image processed = binary;
-    for (int i = 0; i < params.erosion; i++) {
+    // Scale erosion/dilation based on resolution relative to a 1500px reference
+    final resolutionScale = refWidth / 1500.0;
+    final scaledErosion = (params.erosion * resolutionScale).round().clamp(0, 10);
+    final scaledDilation = (params.dilation * resolutionScale).round().clamp(0, 10);
+    for (int i = 0; i < scaledErosion; i++) {
       processed = _erode(processed);
     }
-    for (int i = 0; i < params.dilation; i++) {
+    for (int i = 0; i < scaledDilation; i++) {
       processed = _dilate(processed);
     }
 
@@ -38,8 +71,11 @@ class ImageProcessor {
     final w = processed.width;
     final h = processed.height;
     final totalArea = w * h;
-    final minArea = (totalArea * 0.001).toInt();   // 0.1% — filter noise
-    final maxArea = (totalArea * 0.15).toInt();     // 15%  — filter multi-char blobs (e.g. nine-grid)
+    // Resolution-adaptive area thresholds
+    final baseRef = 1500.0 * 1500.0;
+    final resolutionFactor = totalArea / baseRef;
+    final minArea = (150 * resolutionFactor).toInt().clamp(20, 999999);   // scaled from ~150px base
+    final maxArea = (totalArea * 0.15).toInt();                           // 15% — filter multi-char blobs
 
     // BFS flood fill to find connected components with bounding boxes
     final visited = List.generate(h, (_) => List.filled(w, false));
@@ -213,7 +249,22 @@ class ImageProcessor {
     }
 
     final gray = img.grayscale(workImage);
-    final binary = _binarize(gray, params.threshold, params.invertColors);
+    // Gaussian blur + adaptive threshold for contour extraction too
+    final blurred = _gaussianBlur(gray);
+    img.Image binary;
+    final adaptiveResult = _adaptiveThreshold(blurred, blockSize: 31, c: 12, invert: params.invertColors);
+    final blackRatio = _blackPixelRatio(adaptiveResult);
+    if (blackRatio > 0.80 || blackRatio < 0.01) {
+      debugPrint('extractContours: 自适应阈值结果异常 (black=${(blackRatio*100).toStringAsFixed(1)}%), 回退全局阈值');
+      if ((params.threshold - 0.5).abs() < 0.001) {
+        final otsuT = _otsuThreshold(blurred);
+        binary = _binarize(blurred, otsuT / 255.0, params.invertColors);
+      } else {
+        binary = _binarize(blurred, params.threshold, params.invertColors);
+      }
+    } else {
+      binary = adaptiveResult;
+    }
 
     debugPrint('extractContours: 开始轮廓提取, 图片 ${binary.width}x${binary.height}');
 
@@ -465,6 +516,125 @@ class ImageProcessor {
       }
     }
     return result;
+  }
+
+  /// Gaussian blur with 3x3 kernel: [1,2,1,2,4,2,1,2,1]/16
+  static img.Image _gaussianBlur(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        int sum = 0;
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            final weight = (dx == 0 && dy == 0) ? 4 : ((dx == 0 || dy == 0) ? 2 : 1);
+            sum += gray.getPixel(nx, ny).r.toInt() * weight;
+          }
+        }
+        final v = (sum / 16).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// Otsu's method: find the optimal threshold that maximizes inter-class variance.
+  /// Returns threshold as 0-255 value.
+  static int _otsuThreshold(img.Image gray) {
+    final histogram = List.filled(256, 0);
+    final total = gray.width * gray.height;
+    for (int y = 0; y < gray.height; y++) {
+      for (int x = 0; x < gray.width; x++) {
+        histogram[gray.getPixel(x, y).r.toInt()]++;
+      }
+    }
+
+    double sumAll = 0;
+    for (int i = 0; i < 256; i++) {
+      sumAll += i * histogram[i];
+    }
+
+    double sumB = 0;
+    int wB = 0;
+    double maxVariance = 0;
+    int bestThreshold = 128;
+
+    for (int t = 0; t < 256; t++) {
+      wB += histogram[t];
+      if (wB == 0) continue;
+      final wF = total - wB;
+      if (wF == 0) break;
+
+      sumB += t * histogram[t];
+      final mB = sumB / wB;
+      final mF = (sumAll - sumB) / wF;
+      final variance = wB * wF * (mB - mF) * (mB - mF);
+      if (variance > maxVariance) {
+        maxVariance = variance;
+        bestThreshold = t;
+      }
+    }
+    return bestThreshold;
+  }
+
+  /// Adaptive thresholding: divide image into blocks, compute local mean,
+  /// threshold = local_mean - c. Block size is forced odd. Uses integral image
+  /// for fast local mean computation.
+  static img.Image _adaptiveThreshold(img.Image gray, {int blockSize = 31, int c = 12, bool invert = false}) {
+    if (blockSize.isEven) blockSize++;
+    final half = blockSize ~/ 2;
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+
+    // Integral image for fast local mean
+    final integral = List.generate(h, (_) => List.filled(w, 0));
+    for (int y = 0; y < h; y++) {
+      int rowSum = 0;
+      for (int x = 0; x < w; x++) {
+        rowSum += gray.getPixel(x, y).r.toInt();
+        integral[y][x] = rowSum + (y > 0 ? integral[y - 1][x] : 0);
+      }
+    }
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final x1 = (x - half).clamp(0, w - 1);
+        final y1 = (y - half).clamp(0, h - 1);
+        final x2 = (x + half).clamp(0, w - 1);
+        final y2 = (y + half).clamp(0, h - 1);
+
+        final count = (x2 - x1 + 1) * (y2 - y1 + 1);
+        int sum = integral[y2][x2];
+        if (x1 > 0) sum -= integral[y2][x1 - 1];
+        if (y1 > 0) sum -= integral[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) sum += integral[y1 - 1][x1 - 1];
+
+        final localMean = sum / count;
+        final threshold = localMean - c;
+        final brightness = gray.getPixel(x, y).r.toInt();
+        final isBlack = invert ? brightness > threshold : brightness < threshold;
+        if (isBlack) {
+          result.setPixelRgba(x, y, 0, 0, 0, 255);
+        } else {
+          result.setPixelRgba(x, y, 255, 255, 255, 255);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Compute the ratio of black pixels in a binary image (0.0 to 1.0).
+  static double _blackPixelRatio(img.Image binary) {
+    int blackCount = 0;
+    final total = binary.width * binary.height;
+    for (int y = 0; y < binary.height; y++) {
+      for (int x = 0; x < binary.width; x++) {
+        if (_isBlack(binary, x, y)) blackCount++;
+      }
+    }
+    return blackCount / total;
   }
 
   static bool _isBlack(img.Image binary, int x, int y) {
