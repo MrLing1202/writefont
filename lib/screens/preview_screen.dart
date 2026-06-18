@@ -342,6 +342,32 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
+  /// 导出项目备份（JSON 格式，含源图片 base64）
+  Future<void> _exportProjectBackup() async {
+    try {
+      final filePath = await StorageService.exportProject(widget.project);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('备份已导出: ${widget.project.name}_backup.json'),
+            action: SnackBarAction(
+              label: '分享',
+              onPressed: () {
+                StorageService.shareTtf(filePath);
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('备份导出失败: $e')),
+        );
+      }
+    }
+  }
+
   /// 打开字符编辑对话框
   void _editCharacter(String character, GlyphData glyph) {
     CharacterEditDialog.show(
@@ -574,26 +600,43 @@ class _PreviewScreenState extends State<PreviewScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 保存项目按钮
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _isSaving ? null : _saveProject,
-                  icon: _isSaving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save),
-                  label: Text(_isSaving ? '保存中...' : '保存项目'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              // 保存项目 + 导出备份按钮
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _isSaving ? null : _saveProject,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save),
+                      label: Text(_isSaving ? '保存中...' : '保存项目'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _exportProjectBackup,
+                      icon: const Icon(Icons.backup),
+                      label: const Text('导出备份'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               // 底部操作按钮

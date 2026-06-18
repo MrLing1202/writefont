@@ -859,6 +859,9 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         case 'export':
                           _exportProject(project);
                           break;
+                        case 'exportBackup':
+                          _exportProjectBackup(project);
+                          break;
                         case 'grid':
                           Navigator.push(
                             context,
@@ -897,6 +900,15 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                         child: ListTile(
                           leading: Icon(Icons.ios_share),
                           title: Text('导出'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'exportBackup',
+                        child: ListTile(
+                          leading: Icon(Icons.backup),
+                          title: Text('导出备份'),
                           dense: true,
                           contentPadding: EdgeInsets.zero,
                         ),

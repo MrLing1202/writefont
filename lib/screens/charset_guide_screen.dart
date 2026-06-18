@@ -54,6 +54,20 @@ class CharsetGuideScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 标准 40 字字表网格预览（4x10）
+                  _buildSectionTitle('标准字表预览', colorScheme),
+                  const SizedBox(height: 4),
+                  Text(
+                    '来源：GB2312 常用字',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStandardGrid(colorScheme),
+                  const SizedBox(height: 24),
+
                   // 基础30字标题
                   _buildSectionTitle('基础 30 字（必写）', colorScheme),
                   const SizedBox(height: 12),
@@ -132,6 +146,44 @@ class CharsetGuideScreen extends StatelessWidget {
         fontWeight: FontWeight.w600,
         color: colorScheme.onSurface,
       ),
+    );
+  }
+
+  /// 构建标准 40 字字表的 4x10 网格预览
+  Widget _buildStandardGrid(ColorScheme colorScheme) {
+    final allChars = StandardCharset.allChars;
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        crossAxisSpacing: 6,
+        mainAxisSpacing: 6,
+        childAspectRatio: 1,
+      ),
+      itemCount: allChars.length,
+      itemBuilder: (context, index) {
+        final char = allChars[index];
+        return Container(
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Center(
+            child: Text(
+              char.char,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
