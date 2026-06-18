@@ -9,18 +9,51 @@ class TtfBuilder {
   final String familyName;
   final int unitsPerEm;
 
+  // 自定义元数据（可选）
+  final String? customFamilyName;
+  final String? customSubfamilyName;
+  final String? customVersion;
+  final String? customCopyright;
+  final String? customDescription;
+
   late final ByteData _buffer;
   final List<int> _tableOffsets = [];
   final Map<String, List<int>> _tables = {};
+
+  // 构建过程中的实际元数据（由 build() 赋值）
+  late final String _buildFamilyName;
+  late final String _buildSubfamilyName;
+  late final String _buildVersion;
+  late final String _buildCopyright;
+  late final String _buildDescription;
 
   TtfBuilder({
     required this.glyphs,
     this.familyName = 'WriteFont',
     this.unitsPerEm = 1000,
+    this.customFamilyName,
+    this.customSubfamilyName,
+    this.customVersion,
+    this.customCopyright,
+    this.customDescription,
   });
 
   /// Build a complete TTF file and return the bytes.
-  Uint8List build() {
+  ///
+  /// 支持通过 [customFamilyName] 等参数覆盖默认元数据。
+  Uint8List build({
+    String? familyName,
+    String? subfamilyName,
+    String? version,
+    String? copyright,
+    String? description,
+  }) {
+    // 参数优先级：build() 传入 > 构造函数 > 默认值
+    _buildFamilyName = familyName ?? customFamilyName ?? this.familyName;
+    _buildSubfamilyName = subfamilyName ?? customSubfamilyName ?? 'Regular';
+    _buildVersion = version ?? customVersion ?? 'Version 1.0';
+    _buildCopyright = copyright ?? customCopyright ?? '';
+    _buildDescription = description ?? customDescription ?? '';
     // Ensure .notdef glyph exists at index 0
     _ensureNotdefGlyph();
 
@@ -35,6 +68,8 @@ class TtfBuilder {
     _buildName();
     _buildOs2();
     _buildPost();
+    _buildFpgm();
+    _buildPrep();
 
     // Calculate total size
     final numTables = _tables.length;
@@ -485,14 +520,33 @@ class TtfBuilder {
 
   // --- name table ---
   void _buildName() {
+    // 使用 build() 中设置的元数据字段
+    final fn = _buildFamilyName;
+    final sf = _buildSubfamilyName;
+    final ver = _buildVersion;
+    final cr = _buildCopyright;
+    final fullName = '$fn $sf';
+
+    // PostScript 名称：只允许 ASCII，空格替换为连字符
+    final psName = '${fn.replaceAll(RegExp(r'[^A-Za-z0-9]'), '')}-$sf';
+
     final records = <_NameRecord>[
-      _NameRecord(1, 0, 0, 0, familyName), // Font Family
-      _NameRecord(2, 0, 0, 0, 'Regular'), // Font Subfamily
-      _NameRecord(3, 0, 0, 0, 'WriteFont:$familyName:Regular'), // Unique ID
-      _NameRecord(4, 0, 0, 0, '$familyName Regular'), // Full Name
-      _NameRecord(5, 0, 0, 0, 'Version 1.0'), // Version
-      _NameRecord(6, 0, 0, 0, 'WriteFont-$familyName'), // PostScript Name
+      _NameRecord(1, 0, 0, 0, fn),        // Family Name (nameID 1)
+      _NameRecord(2, 0, 0, 0, sf),        // Subfamily Name (nameID 2)
+      _NameRecord(3, 0, 0, 0, '$fn:$sf'), // Unique ID (nameID 3)
+      _NameRecord(4, 0, 0, 0, fullName),   // Full Name (nameID 4)
+      _NameRecord(5, 0, 0, 0, ver),        // Version (nameID 5)
+      _NameRecord(6, 0, 0, 0, psName),     // PostScript Name (nameID 6)
     ];
+
+    // 可选字段：版权信息 (nameID 0)
+    if (cr.isNotEmpty) {
+      records.add(_NameRecord(0, 0, 0, 0, cr));
+    }
+    // 可选字段：描述 (nameID 10)
+    if (_buildDescription.isNotEmpty) {
+      records.add(_NameRecord(10, 0, 0, 0, _buildDescription));
+    }
 
     final nameData = _Writer();
     int stringOffset = 6 + records.length * 12; // header + records
@@ -611,6 +665,23 @@ class TtfBuilder {
     w.writeUint32(0);   // minMemType1
     w.writeUint32(0);   // maxMemType1
     _tables['post'] = w.toBytes();
+  }
+
+  // --- fpgm table (Font Program) ---
+  // 基本 hinting 字体程序，标记字体支持 hinting
+  void _buildFpgm() {
+    // 最小 Font Program：定义函数 0（空函数）
+    final w = _Writer();
+    w.writeUint8(0x2D); // ENDF — 定义空函数
+    _tables['fpgm'] = w.toBytes();
+  }
+
+  // --- prep table (CVT Program) ---
+  // 控制值程序，在字体加载时执行
+  void _buildPrep() {
+    // 空的 prep 表即可标记 hinting 支持
+    // 渲染引擎会使用默认的 hinting 行为
+    _tables['prep'] = [];
   }
 
   /// Calculate checksum for a table.

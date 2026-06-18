@@ -6,6 +6,7 @@ import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glyph_widget.dart';
 import 'character_edit_screen.dart';
+import 'font_metadata_screen.dart';
 
 /// 预览导出页面
 /// 使用 WFCard / WFAppBar / WFPrimaryButton / WFDialog 统一设计风格
@@ -25,6 +26,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
   final TextEditingController _textController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+
+  // 字体元数据（从 FontMetadataScreen 编辑后回传）
+  FontMetadata? _fontMetadata;
 
   // Auto-save debounce
   Timer? _autoSaveTimer;
@@ -54,11 +58,37 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   /// 导出 TTF 字体 — 先弹出确认对话框，再弹命名框
   Future<void> _exportFont() async {
-    // 显示字体信息确认对话框
+    // 如果已编辑元数据，直接使用；否则弹出旧版确认框
+    if (_fontMetadata != null) {
+      setState(() => _isExporting = true);
+      try {
+        final meta = _fontMetadata!;
+        widget.project.name = meta.familyName;
+        final filePath = await StorageService.exportTtf(
+          widget.project,
+          familyName: meta.familyName,
+          subfamilyName: meta.subfamilyName,
+          version: meta.version,
+          copyright: meta.copyright,
+          description: meta.description,
+        );
+        if (mounted) _showExportSuccessDialog(filePath);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('导出失败：请检查字符数据是否完整')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isExporting = false);
+      }
+      return;
+    }
+
+    // 未编辑元数据 — 走旧流程
     final confirmed = await _showExportConfirmDialog();
     if (confirmed != true) return;
 
-    // 弹出字体命名对话框
     final fontName = await _showFontNameDialog();
     if (fontName == null || fontName.isEmpty) return;
 
@@ -69,7 +99,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
       final filePath = await StorageService.exportTtf(widget.project);
 
       if (mounted) {
-        // 导出成功后显示分享选项
         _showExportSuccessDialog(filePath);
       }
     } catch (e) {
@@ -92,6 +121,22 @@ class _PreviewScreenState extends State<PreviewScreen> {
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  /// 跳转到元数据编辑页面
+  Future<void> _editMetadata() async {
+    final result = await Navigator.push<FontMetadata>(
+      context,
+      WFAnimations.slideRoute(FontMetadataScreen(project: widget.project)),
+    );
+    if (result != null) {
+      setState(() => _fontMetadata = result);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('元数据已更新，可直接导出字体')),
+        );
+      }
     }
   }
 
@@ -990,14 +1035,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ],
             ),
             const SizedBox(height: 10),
-            // 返回编辑 + 导出 TTF
+            // 编辑元数据 + 导出 TTF
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.edit),
-                    label: const Text('返回编辑'),
+                    onPressed: _editMetadata,
+                    icon: const Icon(Icons.tune),
+                    label: const Text('编辑元数据'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1015,6 +1060,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 ),
               ],
             ),
+            // 元数据状态提示
+            if (_fontMetadata != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '已设置元数据：${_fontMetadata!.familyName} ${_fontMetadata!.subfamilyName}',
+                style: const TextStyle(fontSize: 12, color: WFColors.success),
+              ),
+            ],
           ],
         ),
       ),

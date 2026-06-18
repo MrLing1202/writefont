@@ -74,17 +74,33 @@ class StorageService {
 
   /// Build and export a TTF font file.
   /// Returns the file path of the exported font.
-  static Future<String> exportTtf(FontProject project) async {
+  ///
+  /// 可选参数 [familyName] / [subfamilyName] / [version] / [copyright] / [description]
+  /// 用于覆盖默认的字体元数据。
+  static Future<String> exportTtf(
+    FontProject project, {
+    String? familyName,
+    String? subfamilyName,
+    String? version,
+    String? copyright,
+    String? description,
+  }) async {
+    final effectiveName = familyName ?? project.name;
     final expDir = await _exportsDir;
-    final fileName = '${project.name.replaceAll(RegExp(r'[^\w]'), '_')}.ttf';
+    final fileName = '${effectiveName.replaceAll(RegExp(r'[^\w]'), '_')}.ttf';
     final filePath = p.join(expDir.path, fileName);
 
-    // Build the TTF
+    // Build the TTF with optional metadata
     final glyphs = project.glyphs.values.toList();
     final builder = TtfBuilder(
       glyphs: glyphs,
       familyName: project.name,
       unitsPerEm: 1000,
+      customFamilyName: familyName,
+      customSubfamilyName: subfamilyName,
+      customVersion: version,
+      customCopyright: copyright,
+      customDescription: description,
     );
 
     final ttfBytes = builder.build();
