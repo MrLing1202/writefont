@@ -210,6 +210,9 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
   /// 米字格辅助线开关
   bool _showGrid = true;
 
+  /// 原始手写参考图显示开关
+  bool _showSourceImage = false;
+
   /// 橡皮擦半径（10-50px，独立可调）
   double _eraserRadius = 20.0;
 
@@ -740,6 +743,17 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                                       .withValues(alpha: 0.4),
                                 ),
                               ),
+                            // 原始手写参考图（半透明）
+                            if (_showSourceImage && _sourceImage != null)
+                              Positioned.fill(
+                                child: Opacity(
+                                  opacity: 0.3,
+                                  child: Image.memory(
+                                    _sourceImage!,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
                             // 笔画绘制
                             CustomPaint(
                               size: const Size(_canvasSize, _canvasSize),
@@ -830,6 +844,16 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                           setState(() => _showGrid = !_showGrid),
                       colorScheme: colorScheme,
                     ),
+                    // 原始手写参考图开关
+                    if (_sourceImage != null)
+                      _ToolButton(
+                        icon: _showSourceImage ? Icons.visibility : Icons.visibility_off,
+                        label: '参考图',
+                        isActive: _showSourceImage,
+                        onTap: () =>
+                            setState(() => _showSourceImage = !_showSourceImage),
+                        colorScheme: colorScheme,
+                      ),
                     // 分隔线
                     Container(
                       width: 1,
