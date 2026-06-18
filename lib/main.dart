@@ -36,6 +36,15 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   bool _onboardingSeen = false;
   bool _onboardingChecked = false;
 
+  /// SharedPreferences 缓存，避免重复同步 I/O
+  static SharedPreferences? _prefsCache;
+
+  /// 获取 SharedPreferences 实例（带缓存）
+  static Future<SharedPreferences> getPrefs() async {
+    _prefsCache ??= await SharedPreferences.getInstance();
+    return _prefsCache!;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -46,7 +55,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   /// 检查是否已看过新手引导
   Future<void> _checkOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await getPrefs();
     final seen = prefs.getBool('onboarding_seen') ?? false;
     if (mounted) {
       setState(() {

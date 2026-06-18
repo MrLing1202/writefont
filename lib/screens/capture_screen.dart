@@ -140,7 +140,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
   final List<XFile> _selectedImages = [];
   bool _isLoading = false;
   bool _showGridGuide = false; // 是否显示网格引导
-  CaptureFlashMode _flashMode = CaptureFlashMode.auto; // 闪光灯模式
 
   /// 计算网格行列数
   (int rows, int cols) _calculateGridSize() {
@@ -303,26 +302,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
               ),
               tooltip: _showGridGuide ? '关闭网格引导' : '显示网格引导',
             ),
-          // 闪光灯切换
-          IconButton(
-            onPressed: () {
-              setState(() {
-                switch (_flashMode) {
-                  case CaptureFlashMode.auto:
-                    _flashMode = CaptureFlashMode.always;
-                    break;
-                  case CaptureFlashMode.always:
-                    _flashMode = CaptureFlashMode.off;
-                    break;
-                  case CaptureFlashMode.off:
-                    _flashMode = CaptureFlashMode.auto;
-                    break;
-                }
-              });
-            },
-            icon: Icon(_getFlashIcon()),
-            tooltip: _getFlashTooltip(),
-          ),
           if (_selectedImages.isNotEmpty)
             TextButton.icon(
               onPressed: _proceed,
@@ -729,28 +708,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
-  IconData _getFlashIcon() {
-    switch (_flashMode) {
-      case CaptureFlashMode.auto:
-        return Icons.flash_auto;
-      case CaptureFlashMode.always:
-        return Icons.flash_on;
-      case CaptureFlashMode.off:
-        return Icons.flash_off;
-    }
-  }
-
-  String _getFlashTooltip() {
-    switch (_flashMode) {
-      case CaptureFlashMode.auto:
-        return '闪光灯: 自动';
-      case CaptureFlashMode.always:
-        return '闪光灯: 开启';
-      case CaptureFlashMode.off:
-        return '闪光灯: 关闭';
-    }
-  }
-
   Widget _buildEmptyState(ColorScheme colorScheme) {
     return Center(
       child: Column(
@@ -830,9 +787,6 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 }
-
-/// 闪光灯模式枚举（应用内偏好，非 image_picker 直接控制）
-enum CaptureFlashMode { auto, always, off }
 
 /// 图片预览页面
 class _ImagePreviewScreen extends StatelessWidget {
