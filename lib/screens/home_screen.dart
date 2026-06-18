@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'auto_generate_screen.dart';
 import 'processing_screen.dart';
 import 'writing_tips_screen.dart';
 
@@ -72,6 +73,16 @@ class HomeScreen extends StatelessWidget {
                     ),
                   );
                 },
+              ),
+              const SizedBox(height: 16),
+
+              // 一键生成卡片（醒目主按钮）
+              _buildPrimaryCard(
+                context,
+                icon: Icons.auto_awesome,
+                title: '一键生成',
+                description: '拍照即生成，全自动无需手动操作',
+                onTap: () => _quickCapture(context),
               ),
               const SizedBox(height: 16),
 
@@ -183,6 +194,60 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  /// 一键生成：拍照或选图后直接进入自动处理
+  Future<void> _quickCapture(BuildContext context) async {
+    final picker = ImagePicker();
+
+    // 弹出选择：拍照 or 从相册选
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('拍照'),
+                subtitle: const Text('拍摄手写内容'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('从相册选择'),
+                subtitle: const Text('选择已有的手写照片'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null || !context.mounted) return;
+
+    XFile? image;
+    if (source == ImageSource.camera) {
+      image = await picker.pickImage(source: ImageSource.camera, imageQuality: 95);
+    } else {
+      image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 95);
+    }
+
+    if (image == null || !context.mounted) return;
+
+    final imageBytes = await image.readAsBytes();
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AutoGenerateScreen(imageBytes: imageBytes),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickImages(BuildContext context) async {
     final picker = ImagePicker();
     final images = await picker.pickMultiImage(imageQuality: 95);
@@ -204,5 +269,86 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
+  }
+
+  /// 一键生成的醒目主按钮
+  Widget _buildPrimaryCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      elevation: 6,
+      shadowColor: colorScheme.primary.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                colorScheme.primary,
+                colorScheme.primary.withValues(alpha: 0.8),
+              ],
+            ),
+          ),
+          child: Row(
+            children: [
+              // 图标
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, size: 32, color: Colors.white),
+              ),
+              const SizedBox(width: 20),
+
+              // 文字
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withValues(alpha: 0.85),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 箭头
+              Icon(
+                Icons.arrow_forward_ios,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

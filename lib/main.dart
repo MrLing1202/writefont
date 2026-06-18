@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'models/project.dart';
 import 'screens/home_screen.dart';
+import 'screens/auto_generate_screen.dart';
 import 'screens/capture_screen.dart';
 import 'screens/processing_screen.dart';
 import 'screens/preview_screen.dart';
@@ -112,6 +113,14 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             return MaterialPageRoute(
               builder: (_) => const OcrSettingsScreen(),
             );
+          case '/auto-generate':
+            final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;
+            if (imageBytes != null) {
+              return MaterialPageRoute(
+                builder: (_) => AutoGenerateScreen(imageBytes: imageBytes),
+              );
+            }
+            return MaterialPageRoute(builder: (_) => const HomeScreen());
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
             return MaterialPageRoute(
