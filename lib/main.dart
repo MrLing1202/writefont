@@ -55,13 +55,22 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   /// 检查是否已看过新手引导
   Future<void> _checkOnboarding() async {
-    final prefs = await getPrefs();
-    final seen = prefs.getBool('onboarding_seen') ?? false;
-    if (mounted) {
-      setState(() {
-        _onboardingSeen = seen;
-        _onboardingChecked = true;
-      });
+    try {
+      final prefs = await getPrefs();
+      final seen = prefs.getBool('onboarding_seen') ?? false;
+      if (mounted) {
+        setState(() {
+          _onboardingSeen = seen;
+        });
+      }
+    } catch (e) {
+      debugPrint('检查新手引导状态失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _onboardingChecked = true;
+        });
+      }
     }
   }
 
@@ -81,9 +90,13 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   /// 加载主题模式设置
   Future<void> _loadThemeMode() async {
-    final themeMode = await AppConfigService.instance.getThemeMode();
-    if (mounted) {
-      setState(() => _themeModeStr = themeMode);
+    try {
+      final themeMode = await AppConfigService.instance.getThemeMode();
+      if (mounted) {
+        setState(() => _themeModeStr = themeMode);
+      }
+    } catch (e) {
+      debugPrint('加载主题模式失败: $e');
     }
   }
 
