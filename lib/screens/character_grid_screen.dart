@@ -4,6 +4,7 @@ import '../data/standard_charset.dart';
 import '../services/storage_service.dart';
 import 'character_edit_screen.dart';
 import 'capture_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 筛选模式枚举
 enum FilterMode {
@@ -86,33 +87,33 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     final glyph = _project.glyphs[char];
     if (glyph == null) {
       // 未开始 - 灰色
-      return colorScheme.surfaceContainerHighest;
+      return WFColors.textLight.withValues(alpha: 0.3);
     }
     if (glyph.contours.isNotEmpty) {
       // 已书写有轮廓数据 - 绿色
-      return Colors.green.shade100;
+      return WFColors.success.withValues(alpha: 0.15);
     }
     if (glyph.sourceImagePath != null) {
       // 已拍照识别但未编辑 - 黄色
-      return Colors.amber.shade100;
+      return WFColors.warning.withValues(alpha: 0.15);
     }
     // 未开始 - 灰色
-    return colorScheme.surfaceContainerHighest;
+    return WFColors.textLight.withValues(alpha: 0.3);
   }
 
   /// 获取字符状态图标颜色
   Color _getCharacterIconColor(String char, ColorScheme colorScheme) {
     final glyph = _project.glyphs[char];
     if (glyph == null) {
-      return colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+      return WFColors.textSecondary.withValues(alpha: 0.4);
     }
     if (glyph.contours.isNotEmpty) {
-      return Colors.green.shade700;
+      return WFColors.success;
     }
     if (glyph.sourceImagePath != null) {
-      return Colors.amber.shade700;
+      return WFColors.warning;
     }
-    return colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+    return WFColors.textSecondary.withValues(alpha: 0.4);
   }
 
   /// 获取字符状态文字
@@ -190,8 +191,8 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     final filteredChars = _getFilteredCharacters();
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_project.name),
+      appBar: WFAppBar(
+        title: _project.name,
         centerTitle: true,
         actions: [
           IconButton(
@@ -223,7 +224,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                       _searchQuery.isNotEmpty ? '未找到匹配的字符' : '暂无字符数据',
                       style: TextStyle(
                         fontSize: 16,
-                        color: colorScheme.onSurfaceVariant,
+                        color: WFColors.textSecondary,
                       ),
                     ),
                   )
@@ -241,16 +242,9 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     final completed = stats.$2;
     final progress = stats.$3;
 
-    return Container(
+    return WFCard(
+      accentColor: WFColors.primary,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
       child: Row(
         children: [
           // 圆形进度指示器
@@ -263,9 +257,9 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                 CircularProgressIndicator(
                   value: progress,
                   strokeWidth: 6,
-                  backgroundColor: colorScheme.surfaceContainerHighest,
+                  backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
                   valueColor: AlwaysStoppedAnimation<Color>(
-                    progress >= 1.0 ? Colors.green : colorScheme.primary,
+                    progress >= 1.0 ? WFColors.success : WFColors.primary,
                   ),
                 ),
                 Text(
@@ -274,8 +268,8 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: progress >= 1.0
-                        ? Colors.green
-                        : colorScheme.primary,
+                        ? WFColors.success
+                        : WFColors.primary,
                   ),
                 ),
               ],
@@ -292,7 +286,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
+                    color: WFColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -300,7 +294,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   '已完成 $completed / $total 个字符',
                   style: TextStyle(
                     fontSize: 14,
-                    color: colorScheme.onSurfaceVariant,
+                    color: WFColors.textSecondary,
                   ),
                 ),
               ],
@@ -310,14 +304,14 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _buildLegendItem(Colors.green.shade100, Colors.green.shade700,
+              _buildLegendItem(WFColors.success.withValues(alpha: 0.15), WFColors.success,
                   '已完成'),
               const SizedBox(height: 4),
               _buildLegendItem(
-                  Colors.amber.shade100, Colors.amber.shade700, '已识别'),
+                  WFColors.warning.withValues(alpha: 0.15), WFColors.warning, '已识别'),
               const SizedBox(height: 4),
-              _buildLegendItem(colorScheme.surfaceContainerHighest,
-                  colorScheme.onSurfaceVariant, '未开始'),
+              _buildLegendItem(WFColors.textLight.withValues(alpha: 0.3),
+                  WFColors.textSecondary, '未开始'),
             ],
           ),
         ],
@@ -404,8 +398,8 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
       onSelected: (selected) {
         setState(() => _filterMode = mode);
       },
-      selectedColor: colorScheme.primaryContainer,
-      checkmarkColor: colorScheme.onPrimaryContainer,
+      selectedColor: WFColors.primary.withValues(alpha: 0.15),
+      checkmarkColor: WFColors.primary,
     );
   }
 
@@ -446,8 +440,8 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isCompleted
-                ? Colors.green.withValues(alpha: 0.5)
-                : colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ? WFColors.success.withValues(alpha: 0.5)
+                : WFColors.textLight.withValues(alpha: 0.3),
           ),
         ),
         child: Stack(
@@ -470,8 +464,8 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                 child: Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
+                  decoration: BoxDecoration(
+                    color: WFColors.success,
                     shape: BoxShape.circle,
                   ),
                 ),

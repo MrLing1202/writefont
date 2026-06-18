@@ -5,6 +5,7 @@ import '../models/project.dart';
 import '../services/storage_service.dart';
 import 'preview_screen.dart';
 import 'character_grid_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 排序方式枚举
 enum SortMode {
@@ -128,30 +129,23 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
 
   /// 删除项目
   Future<void> _deleteProject(FontProject project) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(
-          Icons.delete_forever,
-          color: Theme.of(ctx).colorScheme.error,
-          size: 48,
+    final confirmed = await WFDialog.show<bool>(
+      context,
+      title: '删除项目',
+      content: Text('确定要删除「${project.name}」吗？\n该操作不可撤销。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
         ),
-        title: const Text('删除项目'),
-        content: Text('确定要删除「${project.name}」吗？\n该操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: FilledButton.styleFrom(
+            backgroundColor: WFColors.error,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+          child: const Text('删除'),
+        ),
+      ],
     );
 
     if (confirmed == true) {
@@ -182,37 +176,35 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   /// 重命名项目
   Future<void> _renameProject(FontProject project) async {
     final controller = TextEditingController(text: project.name);
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('重命名项目'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: '项目名称',
-            hintText: '输入新的项目名称',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+    final newName = await WFDialog.show<String>(
+      context,
+      title: '重命名项目',
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: InputDecoration(
+          labelText: '项目名称',
+          hintText: '输入新的项目名称',
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) {
-                Navigator.pop(ctx, name);
-              }
-            },
-            child: const Text('确认'),
-          ),
-        ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final name = controller.text.trim();
+            if (name.isNotEmpty) {
+              Navigator.pop(context, name);
+            }
+          },
+          child: const Text('确认'),
+        ),
+      ],
     );
 
     if (newName != null && newName != project.name) {
@@ -515,9 +507,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     final sortInfo = _getSortInfo();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('我的字体'),
-        centerTitle: true,
+      appBar: WFAppBar(
+        title: '我的字体',
         actions: [
           // 导入备份按钮
           IconButton(
@@ -649,30 +640,23 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       ),
       confirmDismiss: (direction) async {
         // 二次确认
-        return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            icon: Icon(
-              Icons.delete_forever,
-              color: Theme.of(ctx).colorScheme.error,
-              size: 48,
+        return await WFDialog.show<bool>(
+          context,
+          title: '确认删除',
+          content: Text('确定要删除「${project.name}」吗？\n该操作不可撤销。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
             ),
-            title: const Text('确认删除'),
-            content: Text('确定要删除「${project.name}」吗？\n该操作不可撤销。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消'),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: WFColors.error,
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(ctx).colorScheme.error,
-                ),
-                child: const Text('删除'),
-              ),
-            ],
-          ),
+              child: const Text('删除'),
+            ),
+          ],
         );
       },
       onDismissed: (direction) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../data/standard_charset.dart';
 import 'processing_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 标准字表引导页面
 class CharsetGuideScreen extends StatelessWidget {
@@ -12,8 +13,8 @@ class CharsetGuideScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('标准字表'),
+      appBar: WFAppBar(
+        title: '标准字表',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -22,9 +23,8 @@ class CharsetGuideScreen extends StatelessWidget {
       body: Column(
         children: [
           // 提示文字
-          Container(
+          WFCard(
             padding: const EdgeInsets.all(16),
-            color: colorScheme.surfaceVariant.withValues(alpha: 0.3),
             child: Column(
               children: [
                 Text(
@@ -32,7 +32,7 @@ class CharsetGuideScreen extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
+                    color: WFColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -40,7 +40,7 @@ class CharsetGuideScreen extends StatelessWidget {
                   '最少写30字，写得越多生成的字体越像',
                   style: TextStyle(
                     fontSize: 14,
-                    color: colorScheme.primary,
+                    color: WFColors.primary,
                   ),
                 ),
               ],
@@ -84,7 +84,7 @@ class CharsetGuideScreen extends StatelessWidget {
                     '写得越多，生成的字体越完整',
                     style: TextStyle(
                       fontSize: 13,
-                      color: colorScheme.onSurfaceVariant,
+                      color: WFColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -109,25 +109,16 @@ class CharsetGuideScreen extends StatelessWidget {
                     '写完后点击下方按钮拍照上传',
                     style: TextStyle(
                       fontSize: 13,
-                      color: colorScheme.onSurfaceVariant,
+                      color: WFColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
 
                   // 按钮
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () => _pickImageAndProcess(context),
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('写完了，去拍照'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
+                  WFPrimaryButton(
+                    text: '写完了，去拍照',
+                    icon: Icons.camera_alt,
+                    onPressed: () => _pickImageAndProcess(context),
                   ),
                 ],
               ),
@@ -144,7 +135,7 @@ class CharsetGuideScreen extends StatelessWidget {
       style: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w600,
-        color: colorScheme.onSurface,
+        color: WFColors.textPrimary,
       ),
     );
   }
@@ -178,7 +169,7 @@ class CharsetGuideScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w500,
-                color: colorScheme.onSurface,
+                color: WFColors.textPrimary,
               ),
             ),
           ),
@@ -208,7 +199,7 @@ class CharsetGuideScreen extends StatelessWidget {
   Widget _buildCharCell(StandardChar char, ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceVariant,
+        color: WFColors.bgPrimary,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Stack(
@@ -221,7 +212,7 @@ class CharsetGuideScreen extends StatelessWidget {
               '${char.index}',
               style: TextStyle(
                 fontSize: 10,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                color: WFColors.textSecondary.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -233,7 +224,7 @@ class CharsetGuideScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w500,
-                color: colorScheme.onSurface,
+                color: WFColors.textPrimary,
               ),
             ),
           ),
@@ -248,7 +239,7 @@ class CharsetGuideScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 9,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                color: WFColors.textSecondary.withValues(alpha: 0.5),
               ),
             ),
           ),

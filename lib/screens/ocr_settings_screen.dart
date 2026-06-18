@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../services/recognition_service.dart';
+import '../theme/app_theme.dart';
 
 /// OCR 识别设置页面
 class OcrSettingsScreen extends StatefulWidget {
@@ -110,7 +111,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result != null ? '$mode识别成功！识别到: $result' : '$mode识别成功（返回空结果）'),
-            backgroundColor: Colors.green,
+            backgroundColor: WFColors.success,
           ),
         );
       }
@@ -119,7 +120,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('测试失败: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: WFColors.error,
           ),
         );
       }
@@ -141,8 +142,8 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('识别设置'),
+      appBar: WFAppBar(
+        title: '识别设置',
         actions: [
           TextButton.icon(
             onPressed: _saveSettings,
@@ -157,22 +158,21 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 // 本地识别说明
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+                WFCard(
+                  accentColor: WFColors.info,
+                  child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.phone_android, color: colorScheme.primary),
+                            Icon(Icons.phone_android, color: WFColors.primary),
                             const SizedBox(width: 12),
                             Text(
                               '本地识别（默认）',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
+                                color: WFColors.textPrimary,
                               ),
                             ),
                           ],
@@ -182,7 +182,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           '使用本地离线识别中文手写字符，无需网络，完全免费。',
                           style: TextStyle(
                             fontSize: 14,
-                            color: colorScheme.onSurfaceVariant,
+                            color: WFColors.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -194,14 +194,14 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           ),
                           child: Row(
                             children: [
-                              Icon(Icons.check_circle, color: colorScheme.primary, size: 20),
+                              Icon(Icons.check_circle, color: WFColors.success, size: 20),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   '当前为默认模式，安装即可使用',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: colorScheme.onSurfaceVariant,
+                                    color: WFColors.textSecondary,
                                   ),
                                 ),
                               ),
@@ -210,28 +210,26 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         ),
                       ],
                     ),
-                  ),
                 ),
 
                 const SizedBox(height: 16),
 
                 // 云端识别选项
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+                WFCard(
+                  accentColor: WFColors.accent,
+                  child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.cloud_upload, color: colorScheme.secondary),
+                            Icon(Icons.cloud_upload, color: WFColors.accent),
                             const SizedBox(width: 12),
                             Text(
                               RecognitionService.cloudDisplayName,
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: colorScheme.onSurface,
+                                color: WFColors.textPrimary,
                               ),
                             ),
                           ],
@@ -241,7 +239,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           'DeepSeek 开源 3B 视觉 OCR 模型，通过硅基流动免费 API 调用，仅需填写 API Key。',
                           style: TextStyle(
                             fontSize: 14,
-                            color: colorScheme.onSurfaceVariant,
+                            color: WFColors.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -360,17 +358,14 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         ],
                       ],
                     ),
-                  ),
                 ),
 
                 const SizedBox(height: 16),
 
                 // 使用说明
-                Card(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+                WFCard(
+                  accentColor: WFColors.success,
+                  child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -378,7 +373,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurfaceVariant,
+                            color: WFColors.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -390,12 +385,11 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           '也可替换为其他兼容 OpenAI 格式的云端 API。',
                           style: TextStyle(
                             fontSize: 13,
-                            color: colorScheme.onSurfaceVariant,
+                            color: WFColors.textSecondary,
                           ),
                         ),
                       ],
                     ),
-                  ),
                 ),
               ],
             ),

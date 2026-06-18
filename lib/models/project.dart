@@ -181,7 +181,7 @@ class ProcessingParams {
 
 /// Represents a font project containing all glyph data.
 class FontProject {
-  final String id;
+  String id;
   String name;
   DateTime createdAt;
   DateTime updatedAt;

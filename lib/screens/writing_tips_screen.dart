@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'charset_guide_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 书写规范提示页面
 class WritingTipsScreen extends StatelessWidget {
@@ -10,8 +11,8 @@ class WritingTipsScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('书写规范'),
+      appBar: WFAppBar(
+        title: '书写规范',
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -106,14 +107,8 @@ class WritingTipsScreen extends StatelessWidget {
             // 格子大小建议
             _buildSectionHeader(context, icon: Icons.grid_4x4, title: '格子大小建议', colorScheme: colorScheme),
             const SizedBox(height: 12),
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: colorScheme.outlineVariant),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+            WFCard(
+              padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
                     Container(
@@ -160,7 +155,6 @@ class WritingTipsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
             ),
 
             const SizedBox(height: 24),
@@ -274,7 +268,7 @@ class WritingTipsScreen extends StatelessWidget {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: colorScheme.onSurface,
+            color: WFColors.textPrimary,
           ),
         ),
       ],
@@ -289,14 +283,8 @@ class WritingTipsScreen extends StatelessWidget {
     required String description,
     required ColorScheme colorScheme,
   }) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    return WFCard(
+      padding: const EdgeInsets.all(14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -335,7 +323,6 @@ class WritingTipsScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -347,17 +334,9 @@ class WritingTipsScreen extends StatelessWidget {
     required String description,
     required ColorScheme colorScheme,
   }) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: colorScheme.errorContainer.withValues(alpha: 0.5),
-        ),
-      ),
-      color: colorScheme.errorContainer.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+    return WFCard(
+      accentColor: WFColors.error,
+      padding: const EdgeInsets.all(14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -396,7 +375,6 @@ class WritingTipsScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -408,11 +386,8 @@ class WritingTipsScreen extends StatelessWidget {
     required String description,
     required ColorScheme colorScheme,
   }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+    return WFCard(
+      padding: const EdgeInsets.all(20),
         child: Row(
           children: [
             // 步骤编号
@@ -474,7 +449,6 @@ class WritingTipsScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }

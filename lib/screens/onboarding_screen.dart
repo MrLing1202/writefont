@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 新手引导页面 — 3步引导 + 1步开始
 /// 首次使用时自动显示，完成后记住状态
@@ -76,6 +77,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: WFColors.bgPrimary,
       body: SafeArea(
         child: Column(
           children: [
@@ -90,7 +92,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         child: Text(
                           '跳过',
                           style: TextStyle(
-                            color: colorScheme.onSurfaceVariant,
+                            color: WFColors.textSecondary,
                             fontSize: 16,
                           ),
                         ),
@@ -157,8 +159,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           height: 8,
                           decoration: BoxDecoration(
                             color: isActive
-                                ? colorScheme.primary
-                                : colorScheme.outlineVariant,
+                                ? WFColors.primary
+                                : WFColors.textLight,
                             borderRadius: BorderRadius.circular(4),
                           ),
                         );
@@ -215,7 +217,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: Icon(
                   Icons.font_download,
                   size: 60,
-                  color: colorScheme.primary,
+                  color: WFColors.primary,
                 ),
               ),
             ),
@@ -240,15 +242,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
             const SizedBox(height: 48),
-            FilledButton(
+            WFPrimaryButton(
+              text: '开始',
               onPressed: _nextPage,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(200, 52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text('开始', style: TextStyle(fontSize: 18)),
             ),
           ],
         ),
@@ -286,12 +282,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: colorScheme.primary,
+                  color: WFColors.primary,
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            Icon(icon, size: 48, color: colorScheme.primary),
+            Icon(icon, size: 48, color: WFColors.primary),
             const SizedBox(height: 20),
             Text(
               title,
@@ -342,12 +338,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: colorScheme.primary,
+                  color: WFColors.primary,
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            Icon(Icons.auto_awesome, size: 48, color: colorScheme.primary),
+            Icon(Icons.auto_awesome, size: 48, color: WFColors.primary),
             const SizedBox(height: 20),
             Text(
               '一键生成',
@@ -368,19 +364,10 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               ),
             ),
             const SizedBox(height: 48),
-            FilledButton.icon(
+            WFPrimaryButton(
+              text: '立即开始造字！',
+              icon: Icons.rocket_launch,
               onPressed: _completeOnboarding,
-              icon: const Icon(Icons.rocket_launch, size: 22),
-              label: const Text(
-                '立即开始造字！',
-                style: TextStyle(fontSize: 18),
-              ),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(240, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
             ),
           ],
         ),
@@ -429,13 +416,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.camera_alt, size: 20, color: colorScheme.primary),
+              Icon(Icons.camera_alt, size: 20, color: WFColors.primary),
               const SizedBox(width: 6),
               Text(
                 '拍照上传',
                 style: TextStyle(
                   fontSize: 14,
-                  color: colorScheme.primary,
+                  color: WFColors.primary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -492,13 +479,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.check_circle, size: 18, color: colorScheme.primary),
+              Icon(Icons.check_circle, size: 18, color: WFColors.success),
               const SizedBox(width: 6),
               Text(
                 'AI识别 + 手动修正',
                 style: TextStyle(
                   fontSize: 13,
-                  color: colorScheme.onSurfaceVariant,
+                  color: WFColors.textSecondary,
                 ),
               ),
             ],
