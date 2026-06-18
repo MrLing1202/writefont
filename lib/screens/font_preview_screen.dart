@@ -28,6 +28,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
   FontProject? _project;
   bool _isLoading = true;
   bool _isFullscreen = false;
+  bool _isExporting = false;
   double _fontSize = 48;
   double _lineHeight = 1.5;
 
@@ -112,6 +113,50 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('分享失败: $e')),
         );
+      }
+    }
+  }
+
+  /// 导出 TTF 字体文件并分享
+  Future<void> _exportAndShareTtf() async {
+    if (_project == null || _isExporting) return;
+
+    setState(() => _isExporting = true);
+    try {
+      // 统计已编辑字符数
+      final editedCount = _project!.glyphs.values
+          .where((g) => g.contours.isNotEmpty)
+          .length;
+
+      if (editedCount == 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('没有可导出的字符，请先编辑字符轮廓')),
+          );
+        }
+        return;
+      }
+
+      // 生成 TTF 文件
+      final filePath = await StorageService.exportTtf(_project!);
+
+      // 分享 TTF 文件
+      await StorageService.shareTtf(filePath);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导出 $editedCount 个字符的字体文件')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
       }
     }
   }
@@ -497,7 +542,21 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
               ),
               const SizedBox(width: 8),
 
-              // 分享按钮
+              // 导出字体按钮
+              _isExporting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : FilledButton.tonalIcon(
+                      onPressed: _exportAndShareTtf,
+                      icon: const Icon(Icons.font_download, size: 18),
+                      label: const Text('导出'),
+                    ),
+              const SizedBox(width: 8),
+
+              // 分享预览图按钮
               FilledButton.icon(
                 onPressed: _sharePreview,
                 icon: const Icon(Icons.share, size: 18),
