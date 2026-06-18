@@ -32,6 +32,15 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
   bool _isExporting = false;
   double _fontSize = 48;
   double _lineHeight = 1.5;
+  int _bgColorIndex = 0; // 0=白, 1=黑, 2=灰
+
+  /// 预览背景色选项
+  static const _bgColors = [
+    Colors.white,
+    Color(0xFF1A1A1A),
+    Color(0xFFE0E0E0),
+  ];
+  static const _bgLabels = ['白', '黑', '灰'];
 
   /// 快捷预设文本
   static const _presets = [
@@ -270,7 +279,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
           child: RepaintBoundary(
             key: _previewKey,
             child: Container(
-              color: colorScheme.surface,
+              color: _bgColors[_bgColorIndex],
               child: InteractiveViewer(
                 transformationController: _transformController,
                 panEnabled: true,
@@ -409,17 +418,27 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
 
   /// 构建单个字符的渲染部件
   Widget _buildGlyphWidget(String char, ColorScheme colorScheme) {
+    // 根据背景色决定前景色
+    final bool isDarkBg = _bgColorIndex == 1;
+    final Color fgColor = isDarkBg ? Colors.white : colorScheme.onSurface;
+    final Color placeholderBg = isDarkBg
+        ? Colors.white.withValues(alpha: 0.1)
+        : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
+    final Color placeholderFg = isDarkBg
+        ? Colors.white.withValues(alpha: 0.3)
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.3);
+
     // 查找对应的 GlyphData
     final glyph = _project!.glyphs[char];
 
     if (glyph == null || glyph.contours.isEmpty) {
-      // 没有轮廓数据，显示灰色占位方块
+      // 没有轮廓数据，显示占位方块
       return Container(
         width: _fontSize,
         height: _fontSize,
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          color: placeholderBg,
           borderRadius: BorderRadius.circular(4),
         ),
         alignment: Alignment.center,
@@ -427,7 +446,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
           char,
           style: TextStyle(
             fontSize: _fontSize * 0.6,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+            color: placeholderFg,
           ),
         ),
       );
@@ -440,7 +459,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
       child: CustomPaint(
         painter: _GlyphPainter(
           glyph: glyph,
-          fillColor: colorScheme.onSurface,
+          fillColor: fgColor,
         ),
       ),
     );
@@ -448,6 +467,12 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
 
   /// 构建底部工具栏
   Widget _buildToolbar(ColorScheme colorScheme) {
+    final text = _textController.text;
+    final charCount = text.replaceAll(RegExp(r'\s'), '').length;
+    final glyphCount = _project != null
+        ? text.split('').where((c) => _project!.glyphs[c]?.contours.isNotEmpty == true).length
+        : 0;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       decoration: BoxDecoration(
@@ -461,17 +486,14 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 字号调节
+          // 字号调节 + 预设按钮
           Row(
             children: [
               Icon(Icons.format_size, size: 20, color: colorScheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Text(
                 '字号',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
               ),
               Expanded(
                 child: Slider(
@@ -483,31 +505,53 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
                   onChanged: (v) => setState(() => _fontSize = v),
                 ),
               ),
-              SizedBox(
-                width: 48,
-                child: Text(
-                  '${_fontSize.round()}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurfaceVariant,
+              // 字号预设按钮
+              ...([24, 48, 72, 96].map((size) {
+                final isSelected = _fontSize.round() == size;
+                return Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => setState(() => _fontSize = size.toDouble()),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? colorScheme.primary.withValues(alpha: 0.15)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                          width: isSelected ? 1.5 : 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        '$size',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
+                );
+              })),
             ],
           ),
 
-          // 行距调节
+          // 行距调节 + 背景色切换 + 字符统计
           Row(
             children: [
               Icon(Icons.format_line_spacing, size: 20, color: colorScheme.onSurfaceVariant),
               const SizedBox(width: 8),
               Text(
                 '行距',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
               ),
               Expanded(
                 child: Slider(
@@ -523,15 +567,98 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
                 width: 48,
                 child: Text(
                   _lineHeight.toStringAsFixed(1),
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ),
             ],
           ),
+
+          // 背景色切换 + 字符统计
+          Row(
+            children: [
+              // 背景色切换
+              Icon(Icons.palette_outlined, size: 18, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 8),
+              ...List.generate(3, (i) {
+                final isSelected = _bgColorIndex == i;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => setState(() => _bgColorIndex = i),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? colorScheme.primary.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                          width: isSelected ? 1.5 : 0.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: _bgColors[i],
+                              borderRadius: BorderRadius.circular(3),
+                              border: Border.all(
+                                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _bgLabels[i],
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              color: isSelected
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              const Spacer(),
+              // 字符统计
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.text_fields, size: 14, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$charCount 字 · $glyphCount 有字形',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
 
           // 操作按钮
           Row(
