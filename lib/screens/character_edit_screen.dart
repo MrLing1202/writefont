@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../data/standard_charset.dart';
@@ -202,6 +203,10 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
   Uint8List? _sourceImage;
   bool _isLoadingImage = false;
 
+  // === 自动保存 ===
+  static const Duration _autoSaveInterval = Duration(seconds: 30);
+  Timer? _autoSaveTimer;
+
   // === 绘画相关状态 ===
   /// 当前工具模式
   DrawTool _currentTool = DrawTool.pencil;
@@ -243,13 +248,25 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
     _charController = TextEditingController(text: widget.character);
     _loadSourceImage();
     _loadContoursToStrokes();
+    // 启动30秒自动保存定时器
+    _autoSaveTimer = Timer.periodic(_autoSaveInterval, (_) => _autoSave());
   }
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
+    // 退出前执行最后一次保存
+    _autoSave();
     _charController.dispose();
     _transformController.dispose();
     super.dispose();
+  }
+
+  /// 自动保存：将当前笔画同步到 GlyphData 轮廓
+  void _autoSave() {
+    if (_strokes.isEmpty) return;
+    _saveStrokesToContours();
+    debugPrint('自动保存: 已保存 ${_strokes.length} 个笔画到轮廓');
   }
 
   /// 从 GlyphData 轮廓加载已有笔画
