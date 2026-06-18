@@ -578,8 +578,32 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                 color: isSelected ? WFColors.primary : iconColor,
               ),
             ),
-            // 状态指示器（右下角小圆点）
-            if (isCompleted && !isSelected)
+            // 置信度指示器（右下角）
+            if (!isSelected && glyph?.confidence != null)
+              Positioned(
+                right: 1,
+                bottom: 1,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: (glyph!.confidence! < 0.5)
+                        ? WFColors.error.withValues(alpha: 0.85)
+                        : (glyph.confidence! > 0.8)
+                            ? WFColors.success.withValues(alpha: 0.85)
+                            : WFColors.warning.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${(glyph.confidence! * 100).toInt()}%',
+                    style: const TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              )
+            else if (isCompleted && !isSelected)
               Positioned(
                 right: 2,
                 bottom: 2,
