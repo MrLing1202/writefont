@@ -287,28 +287,12 @@ class TtfBuilder {
         w.writeInt16(0); // xMax
         w.writeInt16(0); // yMax
       } else {
-        // Calculate bounds
-        int xMin = 99999, yMin = 99999, xMax = -99999, yMax = -99999;
-        for (final contour in glyph.contours) {
-          for (final p in contour.points) {
-            if (p.x < xMin) xMin = p.x;
-            if (p.y < yMin) yMin = p.y;
-            if (p.x > xMax) xMax = p.x;
-            if (p.y > yMax) yMax = p.y;
-          }
-        }
-
-        // Update glyph bounds
-        glyph.xMin = xMin;
-        glyph.yMin = yMin;
-        glyph.xMax = xMax;
-        glyph.yMax = yMax;
-
+        // 直接使用 _precomputeGlyphMetrics 已缓存的边界框
         w.writeInt16(glyph.contours.length); // numberOfContours
-        w.writeInt16(xMin);
-        w.writeInt16(yMin);
-        w.writeInt16(xMax);
-        w.writeInt16(yMax);
+        w.writeInt16(glyph.xMin);
+        w.writeInt16(glyph.yMin);
+        w.writeInt16(glyph.xMax);
+        w.writeInt16(glyph.yMax);
 
         // End points of contours
         int pointIndex = 0;
