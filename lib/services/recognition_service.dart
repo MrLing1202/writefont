@@ -472,94 +472,115 @@ class RecognitionService {
     ];
 
     for (int attempt = 0; attempt < prompts.length; attempt++) {
-      try {
-        final base64Image = base64Encode(compressedBytes);
+      final base64Image = base64Encode(compressedBytes);
+      debugPrint('云端识别: 第${attempt + 1}次请求（prompt轮次）');
 
-        debugPrint('云端识别: 第${attempt + 1}次请求');
+      // 网络重试：同一 prompt 最多重试 3 次（含首次）
+      const int maxNetworkRetries = 3;
+      for (int retry = 0; retry < maxNetworkRetries; retry++) {
+        try {
+          if (retry > 0) {
+            debugPrint('云端识别: 网络重试第$retry次（等待 ${retry * 2} 秒）');
+            await Future.delayed(Duration(seconds: retry * 2));
+          }
 
-        final response = await http.post(
-          Uri.parse(cloudUrl),
-          headers: {
-            'Content-Type': 'application/json',
-            if (cloudKey != null && cloudKey.isNotEmpty) 'Authorization': 'Bearer $cloudKey',
-          },
-          body: jsonEncode({
-            'model': modelName,
-            'messages': [
-              {
-                'role': 'user',
-                'content': [
-                  {
-                    'type': 'image_url',
-                    'image_url': {
-                      'url': 'data:image/jpeg;base64,$base64Image',
+          final response = await http.post(
+            Uri.parse(cloudUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              if (cloudKey != null && cloudKey.isNotEmpty) 'Authorization': 'Bearer $cloudKey',
+            },
+            body: jsonEncode({
+              'model': modelName,
+              'messages': [
+                {
+                  'role': 'user',
+                  'content': [
+                    {
+                      'type': 'image_url',
+                      'image_url': {
+                        'url': 'data:image/jpeg;base64,$base64Image',
+                      },
                     },
-                  },
-                  {
-                    'type': 'text',
-                    'text': prompts[attempt],
-                  },
-                ],
-              },
-            ],
-            'max_tokens': 10,
-          }),
-        ).timeout(_timeout);
+                    {
+                      'type': 'text',
+                      'text': prompts[attempt],
+                    },
+                  ],
+                },
+              ],
+              'max_tokens': 10,
+            }),
+          ).timeout(_timeout);
 
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
 
-          // OpenAI 格式: choices[0].message.content
-          if (data is Map && data['choices'] is List) {
-            final choices = data['choices'] as List;
-            if (choices.isNotEmpty) {
-              final message = choices[0]['message'];
-              if (message is Map) {
-                final content = message['content'] as String?;
-                debugPrint('云端识别: API 原始返回 "$content"');
+            // OpenAI 格式: choices[0].message.content
+            if (data is Map && data['choices'] is List) {
+              final choices = data['choices'] as List;
+              if (choices.isNotEmpty) {
+                final message = choices[0]['message'];
+                if (message is Map) {
+                  final content = message['content'] as String?;
+                  debugPrint('云端识别: API 原始返回 "$content"');
 
-                if (content != null && content.isNotEmpty && content.runes.isNotEmpty) {
-                  // 优先提取第一个中文字符
-                  final chineseMatch = RegExp(r'[一-鿿]').firstMatch(content);
-                  if (chineseMatch != null) {
-                    final result = chineseMatch.group(0);
-                    debugPrint('云端识别: ✓ 提取中文字符 "$result" (第${attempt + 1}次)');
-                    return result;
-                  }
-                  // 否则遍历所有字符，取第一个有效字符
-                  for (final rune in content.runes) {
-                    final ch = String.fromCharCode(rune);
-                    if (_isValidChar(ch)) {
-                      debugPrint('云端识别: ✓ 提取有效字符 "$ch" (第${attempt + 1}次)');
-                      return ch;
+                  if (content != null && content.isNotEmpty && content.runes.isNotEmpty) {
+                    // 优先提取第一个中文字符
+                    final chineseMatch = RegExp(r'[一-鿿]').firstMatch(content);
+                    if (chineseMatch != null) {
+                      final result = chineseMatch.group(0);
+                      debugPrint('云端识别: ✓ 提取中文字符 "$result" (第${attempt + 1}次)');
+                      return result;
                     }
+                    // 否则遍历所有字符，取第一个有效字符
+                    for (final rune in content.runes) {
+                      final ch = String.fromCharCode(rune);
+                      if (_isValidChar(ch)) {
+                        debugPrint('云端识别: ✓ 提取有效字符 "$ch" (第${attempt + 1}次)');
+                        return ch;
+                      }
+                    }
+                    debugPrint('云端识别: 内容 "$content" 中无有效字符，已过滤 (第${attempt + 1}次)');
+                  } else {
+                    debugPrint('云端识别: API 返回空内容 (第${attempt + 1}次)');
                   }
-                  debugPrint('云端识别: 内容 "$content" 中无有效字符，已过滤 (第${attempt + 1}次)');
-                } else {
-                  debugPrint('云端识别: API 返回空内容 (第${attempt + 1}次)');
                 }
               }
             }
+            // 成功响应但无有效结果，跳出重试循环，进入下一轮 prompt
+            break;
+          } else {
+            final statusCode = response.statusCode;
+            if (statusCode == 401 || statusCode == 403) {
+              debugPrint('云端识别认证失败 ($statusCode): API Key 无效或已过期');
+              throw const CloudAuthException('认证失败: API Key 无效或已过期。请到「设置 → 云端识别配置」中重新填写 API Key，或切换为本地识别模式');
+            }
+            // 5xx 服务端错误可重试，4xx 客户端错误不重试
+            if (statusCode >= 500 && retry < maxNetworkRetries - 1) {
+              debugPrint('云端识别: 服务端错误 $statusCode，将重试');
+              continue;
+            }
+            debugPrint('云端识别 HTTP $statusCode: ${response.body}');
+            break; // 4xx 错误不重试
           }
-        } else {
-          final statusCode = response.statusCode;
-          if (statusCode == 401 || statusCode == 403) {
-            debugPrint('云端识别认证失败 ($statusCode): API Key 无效或已过期');
-            throw const CloudAuthException('认证失败: API Key 无效或已过期。请到「设置 → 云端识别配置」中重新填写 API Key，或切换为本地识别模式');
-          }
-          debugPrint('云端识别 HTTP $statusCode: ${response.body}');
-        }
-      } on CloudAuthException {
-        rethrow;
-      } catch (e) {
-        debugPrint('云端识别失败 (第${attempt + 1}次): $e');
-        // 如果是网络相关错误且是最后一次尝试，抛出让调用方感知
-        if (attempt == prompts.length - 1) {
-          if (e is SocketException || e is TimeoutException ||
+        } on CloudAuthException {
+          rethrow;
+        } catch (e) {
+          debugPrint('云端识别异常 (第${attempt + 1}次, 网络重试${retry + 1}/$maxNetworkRetries): $e');
+          final isNetworkError = e is SocketException || e is TimeoutException ||
               e.toString().contains('Socket') ||
-              e.toString().contains('Connection')) {
-            throw const CloudNetworkException('网络连接失败，请检查网络或切换到本地识别');
+              e.toString().contains('Connection') ||
+              e.toString().contains('timeout');
+          if (isNetworkError && retry < maxNetworkRetries - 1) {
+            continue; // 网络错误继续重试
           }
+          // 最后一次重试仍失败
+          if (isNetworkError && attempt == prompts.length - 1 && retry == maxNetworkRetries - 1) {
+            debugPrint('云端识别: 网络重试全部失败，返回 null');
+            return null;
+          }
+          break; // 非网络错误或还有 prompt 轮次，跳出重试循环
         }
       }
     }
