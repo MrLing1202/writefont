@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../models/project.dart';
 
@@ -93,6 +94,8 @@ class ImageProcessor {
         bboxes.add([minX, minY, maxX, maxY, area]);
       }
     }
+
+    debugPrint('轮廓提取: 找到 ${bboxes.length} 个连通区域 (图片 ${w}x$h)');
 
     if (bboxes.isEmpty) return [];
 
@@ -217,12 +220,17 @@ class ImageProcessor {
             final scaled = _scaleContour(contour, binary.width, binary.height, params.strokeWidth);
             final simplified = _simplifyContour(scaled, params.smoothness * 3 + 1);
             if (simplified.length >= 3) {
-              allContours.add(Contour(simplified));
+              // 确保轮廓闭合：首尾点相同
+              final closed = _ensureClosedContour(simplified);
+              allContours.add(Contour(closed));
             }
           }
         }
       }
     }
+
+    debugPrint('轮廓提取: 共 ${allContours.length} 个轮廓, '
+        '点数=[${allContours.map((c) => c.points.length).join(", ")}]');
 
     return allContours;
   }
@@ -520,6 +528,15 @@ class ImageProcessor {
     } else {
       return [first, last];
     }
+  }
+
+  /// 确保轮廓闭合：如果首尾点不同，则追加首点到末尾
+  static List<ContourPoint> _ensureClosedContour(List<ContourPoint> points) {
+    if (points.length < 3) return points;
+    final first = points.first;
+    final last = points.last;
+    if (first.x == last.x && first.y == last.y) return points;
+    return [...points, ContourPoint(first.x, first.y)];
   }
 
   static double _pointToLineDistance(ContourPoint p, ContourPoint lineStart, ContourPoint lineEnd) {

@@ -116,10 +116,15 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         },
       );
 
-      // 记录识别结果
+      // 记录识别结果（去重：如果识别出重复字符，跳过，留给 fallback 分配）
       for (int i = 0; i < batchResults.length; i++) {
         if (batchResults[i] != null) {
-          _charAssignments[i] = batchResults[i]!;
+          final char = batchResults[i]!;
+          if (!_charAssignments.containsValue(char)) {
+            _charAssignments[i] = char;
+          } else {
+            debugPrint('自动分配: 跳过重复字符 "$char" (cell $i)');
+          }
         }
       }
 
