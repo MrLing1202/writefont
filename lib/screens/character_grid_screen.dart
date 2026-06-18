@@ -29,6 +29,10 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  // 批量选择模式
+  bool _isSelectionMode = false;
+  final Set<String> _selectedChars = {};
+
   @override
   void initState() {
     super.initState();
@@ -165,6 +169,65 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     }
   }
 
+  /// 进入/退出选择模式
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelectionMode = !_isSelectionMode;
+      if (!_isSelectionMode) {
+        _selectedChars.clear();
+      }
+    });
+  }
+
+  /// 切换字符选中状态
+  void _toggleCharSelection(String char) {
+    setState(() {
+      if (_selectedChars.contains(char)) {
+        _selectedChars.remove(char);
+        if (_selectedChars.isEmpty) {
+          _isSelectionMode = false;
+        }
+      } else {
+        _selectedChars.add(char);
+      }
+    });
+  }
+
+  /// 批量删除选中字符
+  void _batchDelete() {
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除'),
+        content: Text('确定要删除已选的 ${_selectedChars.length} 个字符吗？\n删除后不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) {
+        setState(() {
+          for (final char in _selectedChars) {
+            _project.glyphs.remove(char);
+          }
+          _selectedChars.clear();
+          _isSelectionMode = false;
+        });
+        _saveProject();
+      }
+    });
+  }
+
   /// 保存项目
   Future<void> _saveProject() async {
     try {
@@ -191,22 +254,37 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     final filteredChars = _getFilteredCharacters();
 
     return Scaffold(
-      appBar: WFAppBar(
-        title: _project.name,
-        actions: [
-          IconButton(
-            onPressed: () async {
-              final updated =
-                  await StorageService.loadProject(_project.id);
-              if (updated != null && mounted) {
-                setState(() => _project = updated);
-              }
-            },
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新',
-          ),
-        ],
-      ),
+      appBar: _isSelectionMode
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _toggleSelectionMode,
+              ),
+              title: Text('已选 ${_selectedChars.length} 个'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: '批量删除',
+                  onPressed: _selectedChars.isNotEmpty ? _batchDelete : null,
+                ),
+              ],
+            )
+          : WFAppBar(
+              title: _project.name,
+              actions: [
+                IconButton(
+                  onPressed: () async {
+                    final updated =
+                        await StorageService.loadProject(_project.id);
+                    if (updated != null && mounted) {
+                      setState(() => _project = updated);
+                    }
+                  },
+                  icon: const Icon(Icons.refresh),
+                  tooltip: '刷新',
+                ),
+              ],
+            ),
       body: Column(
         children: [
           // 顶部统计栏
@@ -427,20 +505,39 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     final iconColor = _getCharacterIconColor(char, colorScheme);
     final glyph = _project.glyphs[char];
     final isCompleted = glyph != null && glyph.contours.isNotEmpty;
+    final isSelected = _selectedChars.contains(char);
 
-    return InkWell(
-      onTap: () => _onCharacterTap(char),
-      borderRadius: BorderRadius.circular(8),
+    return GestureDetector(
+      onTap: () {
+        if (_isSelectionMode) {
+          _toggleCharSelection(char);
+        } else {
+          _onCharacterTap(char);
+        }
+      },
+      onLongPress: () {
+        if (!_isSelectionMode) {
+          _toggleSelectionMode();
+          _selectedChars.add(char);
+          // setState 已在 _toggleSelectionMode 中调用
+          setState(() {});
+        }
+      },
       child: Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: bgColor,
+          color: isSelected
+              ? WFColors.primary.withValues(alpha: 0.2)
+              : bgColor,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isCompleted
-                ? WFColors.success.withValues(alpha: 0.5)
-                : WFColors.textLight.withValues(alpha: 0.3),
+            color: isSelected
+                ? WFColors.primary
+                : isCompleted
+                    ? WFColors.success.withValues(alpha: 0.5)
+                    : WFColors.textLight.withValues(alpha: 0.3),
+            width: isSelected ? 2.0 : 1.0,
           ),
         ),
         child: Stack(
@@ -452,11 +549,11 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
-                color: iconColor,
+                color: isSelected ? WFColors.primary : iconColor,
               ),
             ),
             // 状态指示器（右下角小圆点）
-            if (isCompleted)
+            if (isCompleted && !isSelected)
               Positioned(
                 right: 2,
                 bottom: 2,
@@ -466,6 +563,25 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   decoration: BoxDecoration(
                     color: WFColors.success,
                     shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            // 选中勾选标记
+            if (isSelected)
+              Positioned(
+                right: 2,
+                bottom: 2,
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: WFColors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    size: 10,
+                    color: Colors.white,
                   ),
                 ),
               ),
