@@ -39,6 +39,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   bool _isGenerating = false; // 是否正在生成字体
   final Map<int, String> _editedAssignments = {}; // 用户修正过的字符
   final Set<int> _aiRecognized = {}; // AI 原始识别成功的索引
+  final Set<int> _failedRecognition = {}; // 识别失败的索引
 
   // 处理参数（从用户设置加载）
   ProcessingParams _params = ProcessingParams();
@@ -95,6 +96,55 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
     return _editedAssignments.containsKey(index);
   }
 
+  /// 判断某索引是否识别失败（未被 AI 识别且未被用户修正）
+  bool _isFailedRecognition(int index) {
+    return _failedRecognition.contains(index) && !_editedAssignments.containsKey(index);
+  }
+
+  /// 重试单个字符的识别
+  Future<void> _retryRecognition(int index) async {
+    if (index >= _cells.length) return;
+
+    setState(() {
+      _status = '正在重新识别第 ${index + 1} 个字符...';
+    });
+
+    try {
+      final recognitionService = RecognitionService.instance;
+      final result = await recognitionService.recognizeCharacter(_cells[index]);
+
+      if (!mounted) return;
+
+      if (result != null && result.isNotEmpty) {
+        setState(() {
+          _charAssignments[index] = result;
+          _aiRecognized.add(index);
+          _failedRecognition.remove(index);
+          _editedAssignments.remove(index);
+          _status = '识别完成';
+        });
+      } else {
+        setState(() {
+          _status = '识别完成';
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未能识别该字符，请手动修改')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _status = '识别完成';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('重试失败: $e')),
+        );
+      }
+    }
+  }
+
   /// 获取识别统计信息
   Map<String, int> _getStats() {
     int aiRecognized = 0;
@@ -138,6 +188,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         _isGenerating = false;
         _editedAssignments.clear();
         _aiRecognized.clear();
+        _failedRecognition.clear();
       });
 
       // 短暂延迟让 UI 更新
@@ -186,6 +237,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       );
 
       // 记录识别结果（去重：如果识别出重复字符，跳过，留给 fallback 分配）
+      _failedRecognition.clear();
       for (int i = 0; i < batchResults.length; i++) {
         if (batchResults[i] != null) {
           final char = batchResults[i]!;
@@ -194,7 +246,10 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
             _aiRecognized.add(i); // 标记为 AI 识别成功
           } else {
             debugPrint('自动分配: 跳过重复字符 "$char" (cell $i)');
+            _failedRecognition.add(i); // 重复字符视为失败
           }
+        } else {
+          _failedRecognition.add(i); // 未识别到有效字符
         }
       }
 
@@ -674,6 +729,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         final char = _getCharAt(index) ?? '';
         final isRecognized = _isAiRecognized(index);
         final isEdited = _isUserEdited(index);
+        final isFailed = _isFailedRecognition(index);
 
         return _buildCharacterCell(
           colorScheme: colorScheme,
@@ -681,6 +737,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
           char: char,
           isRecognized: isRecognized,
           isEdited: isEdited,
+          isFailed: isFailed,
           isGenerating: isGenerating,
         );
       },
@@ -694,6 +751,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
     required String char,
     required bool isRecognized,
     required bool isEdited,
+    required bool isFailed,
     required bool isGenerating,
   }) {
     // 根据状态确定边框颜色
@@ -783,27 +841,54 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
               ),
             ),
 
-            // 索引编号（左上角）
-            Positioned(
-              top: 2,
-              left: 2,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${index + 1}',
-                  style: const TextStyle(
-                    fontSize: 9,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    height: 1.0,
+            // 重试按钮（识别失败时显示）
+            if (isFailed && !isGenerating)
+              Positioned(
+                top: 0,
+                left: 0,
+                child: GestureDetector(
+                  onTap: () => _retryRecognition(index),
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade400.withValues(alpha: 0.9),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.refresh,
+                      size: 14,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
-            ),
+
+            // 索引编号（左上角，无重试按钮时显示）
+            if (!isFailed || isGenerating)
+              Positioned(
+                top: 2,
+                left: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -883,6 +968,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                             _charAssignments.clear();
                             _editedAssignments.clear();
                             _aiRecognized.clear();
+                            _failedRecognition.clear();
                             _isConfirming = false;
                             _hasError = false;
                             _errorMessage = null;
