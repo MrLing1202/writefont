@@ -279,6 +279,66 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
+
+                // 字符网格预览
+                if (_cells.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 8,
+                        mainAxisSpacing: 4,
+                        crossAxisSpacing: 4,
+                      ),
+                      itemCount: _cells.length,
+                      itemBuilder: (context, index) {
+                        final label = _charAssignments[index] ?? '';
+                        return Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
+                              width: 0.5,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.memory(
+                                _cells[index],
+                                fit: BoxFit.contain,
+                                gaplessPlayback: true,
+                              ),
+                              if (label.isNotEmpty)
+                                Positioned(
+                                  right: 1,
+                                  bottom: 1,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 3, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      label,
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        color: Colors.white,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
 
               // 错误状态
