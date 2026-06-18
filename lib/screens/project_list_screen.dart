@@ -30,6 +30,14 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   List<FontProject> _projects = [];
   bool _isLoading = true;
   SortMode _sortMode = SortMode.updatedDesc;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -81,6 +89,13 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         _projects.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
         break;
     }
+  }
+
+  /// 根据搜索关键词过滤项目
+  List<FontProject> get _filteredProjects {
+    if (_searchQuery.isEmpty) return _projects;
+    final query = _searchQuery.toLowerCase();
+    return _projects.where((p) => p.name.toLowerCase().contains(query)).toList();
   }
 
   /// 切换排序模式
@@ -545,11 +560,92 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _projects.isEmpty
               ? _buildEmptyState(colorScheme)
-              : _buildProjectList(colorScheme),
+              : Column(
+                  children: [
+                    // 搜索框
+                    _buildSearchBar(colorScheme),
+                    // 项目列表或搜索空状态
+                    Expanded(
+                      child: _filteredProjects.isEmpty
+                          ? _buildSearchEmptyState(colorScheme)
+                          : _buildProjectList(colorScheme),
+                    ),
+                  ],
+                ),
     );
   }
 
-  /// 空状态提示
+  /// 搜索框
+  Widget _buildSearchBar(ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) => setState(() => _searchQuery = value.trim()),
+        decoration: InputDecoration(
+          hintText: '搜索项目名称...',
+          hintStyle: TextStyle(
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          ),
+          prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+        ),
+      ),
+    );
+  }
+
+  /// 搜索无结果提示
+  Widget _buildSearchEmptyState(ColorScheme colorScheme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(48),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 56,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '没有找到匹配的项目',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '试试其他关键词',
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 空状态提示（无项目时）
   Widget _buildEmptyState(ColorScheme colorScheme) {
     return Center(
       child: Padding(
@@ -603,13 +699,14 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
 
   /// 项目列表（支持滑动删除）
   Widget _buildProjectList(ColorScheme colorScheme) {
+    final projects = _filteredProjects;
     return RefreshIndicator(
       onRefresh: _loadProjects,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: _projects.length,
+        itemCount: projects.length,
         itemBuilder: (context, index) {
-          final project = _projects[index];
+          final project = projects[index];
           return _buildDismissibleCard(project, colorScheme);
         },
       ),
@@ -754,16 +851,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          project.name,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        _buildHighlightedName(project.name, colorScheme),
                         const SizedBox(height: 4),
                         // 统计信息
                         Row(
@@ -991,5 +1079,70 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     if (diff.inDays < 7) return '${diff.inDays} 天前';
 
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// 构建带搜索高亮的项目名称
+  Widget _buildHighlightedName(String name, ColorScheme colorScheme) {
+    if (_searchQuery.isEmpty) {
+      return Text(
+        name,
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.onSurface,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    final lowerName = name.toLowerCase();
+    final lowerQuery = _searchQuery.toLowerCase();
+    final spans = <TextSpan>[];
+    int start = 0;
+
+    while (true) {
+      final index = lowerName.indexOf(lowerQuery, start);
+      if (index == -1) {
+        // 剩余未匹配部分
+        spans.add(TextSpan(
+          text: name.substring(start),
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
+          ),
+        ));
+        break;
+      }
+      // 匹配前的部分
+      if (index > start) {
+        spans.add(TextSpan(
+          text: name.substring(start, index),
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurface,
+          ),
+        ));
+      }
+      // 高亮匹配部分
+      spans.add(TextSpan(
+        text: name.substring(index, index + _searchQuery.length),
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.primary,
+          backgroundColor: colorScheme.primaryContainer.withValues(alpha: 0.4),
+        ),
+      ));
+      start = index + _searchQuery.length;
+    }
+
+    return RichText(
+      text: TextSpan(children: spans),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 }
