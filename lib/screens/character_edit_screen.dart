@@ -4,9 +4,156 @@ import '../data/standard_charset.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
 
-// 使用 StandardCharset.allCharStrings 获取标准字符列表
+/// 画笔工具模式
+enum DrawTool {
+  pencil, // 铅笔
+  eraser, // 橡皮擦
+}
 
-/// 字符编辑对话框：允许用户修改字符标签、删除字符、查看原始图片
+/// 笔画记录（用于撤销/重做）
+class StrokeRecord {
+  final List<Offset> points;
+  final double strokeWidth;
+  final Color color;
+
+  StrokeRecord({
+    required this.points,
+    required this.strokeWidth,
+    required this.color,
+  });
+}
+
+/// 画布绘制器 - 绘制所有笔画
+class _CanvasPainter extends CustomPainter {
+  final List<StrokeRecord> strokes;
+  final StrokeRecord? activeStroke;
+  final Offset? eraserPosition;
+  final double eraserRadius;
+
+  _CanvasPainter({
+    required this.strokes,
+    this.activeStroke,
+    this.eraserPosition,
+    this.eraserRadius = 10.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 绘制所有已完成的笔画
+    for (final stroke in strokes) {
+      _drawStroke(canvas, stroke);
+    }
+    // 绘制当前活动笔画
+    if (activeStroke != null) {
+      _drawStroke(canvas, activeStroke!);
+    }
+    // 绘制橡皮擦光标
+    if (eraserPosition != null) {
+      final fillPaint = Paint()
+        ..color = Colors.red.withValues(alpha: 0.2)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(eraserPosition!, eraserRadius, fillPaint);
+      final borderPaint = Paint()
+        ..color = Colors.red
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5;
+      canvas.drawCircle(eraserPosition!, eraserRadius, borderPaint);
+    }
+  }
+
+  /// 绘制单个笔画
+  void _drawStroke(Canvas canvas, StrokeRecord stroke) {
+    if (stroke.points.isEmpty) return;
+    final paint = Paint()
+      ..color = stroke.color
+      ..strokeWidth = stroke.strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    if (stroke.points.length == 1) {
+      // 单点绘制为圆点
+      final dotPaint = Paint()
+        ..color = stroke.color
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(stroke.points.first, stroke.strokeWidth / 2, dotPaint);
+    } else {
+      final path = Path();
+      path.moveTo(stroke.points.first.dx, stroke.points.first.dy);
+      for (int i = 1; i < stroke.points.length; i++) {
+        final p0 = stroke.points[i - 1];
+        final p1 = stroke.points[i];
+        final mid = Offset((p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
+        path.quadraticBezierTo(p0.dx, p0.dy, mid.dx, mid.dy);
+      }
+      final last = stroke.points.last;
+      path.lineTo(last.dx, last.dy);
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CanvasPainter oldDelegate) => true;
+}
+
+/// 网格线绘制器
+class _GridPainter extends CustomPainter {
+  final double gridSize;
+  final Color gridColor;
+
+  _GridPainter({this.gridSize = 20.0, required this.gridColor});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final thinPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 0.5;
+
+    // 垂直线
+    for (double x = 0; x <= size.width; x += gridSize) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), thinPaint);
+    }
+    // 水平线
+    for (double y = 0; y <= size.height; y += gridSize) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), thinPaint);
+    }
+
+    // 中心十字线（加粗）
+    final centerPaint = Paint()
+      ..color = gridColor.withValues(alpha: 0.6)
+      ..strokeWidth = 1.0;
+    canvas.drawLine(
+      Offset(size.width / 2, 0),
+      Offset(size.width / 2, size.height),
+      centerPaint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      centerPaint,
+    );
+
+    // 基线（下半部 3/4 处，虚线）
+    final baselineY = size.height * 0.75;
+    final baselinePaint = Paint()
+      ..color = gridColor.withValues(alpha: 0.4)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    const dashWidth = 6.0;
+    const dashSpace = 4.0;
+    for (double x = 0; x < size.width; x += dashWidth + dashSpace) {
+      canvas.drawLine(
+        Offset(x, baselineY),
+        Offset(x + dashWidth, baselineY),
+        baselinePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 字符编辑对话框：支持画笔绘制、橡皮擦、撤销重做、缩放平移
 class CharacterEditDialog extends StatefulWidget {
   final String character;
   final GlyphData glyph;
@@ -34,6 +181,7 @@ class CharacterEditDialog extends StatefulWidget {
   }) {
     return showDialog(
       context: context,
+      useRootNavigator: true,
       builder: (context) => CharacterEditDialog(
         character: character,
         glyph: glyph,
@@ -54,18 +202,83 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
   Uint8List? _sourceImage;
   bool _isLoadingImage = false;
 
+  // === 绘画相关状态 ===
+  /// 当前工具模式
+  DrawTool _currentTool = DrawTool.pencil;
+
+  /// 已完成的笔画列表
+  final List<StrokeRecord> _strokes = [];
+
+  /// 当前正在绘制的笔画
+  StrokeRecord? _activeStroke;
+
+  /// 橡皮擦当前位置（用于显示光标）
+  Offset? _eraserPosition;
+
+  /// 笔画宽度（1-10像素）
+  double _strokeWidth = 3.0;
+
+  /// 画笔颜色
+  final Color _penColor = Colors.black;
+
+  /// 橡皮擦半径
+  double get _eraserRadius => _strokeWidth * 2 + 5;
+
+  // === 缩放/平移 ===
+  final TransformationController _transformController =
+      TransformationController();
+
+  // === 撤销/重做 ===
+  static const int _maxHistorySize = 50;
+  final List<List<StrokeRecord>> _undoStack = [];
+  final List<List<StrokeRecord>> _redoStack = [];
+
+  // === 画布尺寸 ===
+  static const double _canvasSize = 500.0;
+
   @override
   void initState() {
     super.initState();
     _selectedCharacter = widget.character;
     _charController = TextEditingController(text: widget.character);
     _loadSourceImage();
+    _loadContoursToStrokes();
   }
 
   @override
   void dispose() {
     _charController.dispose();
+    _transformController.dispose();
     super.dispose();
+  }
+
+  /// 从 GlyphData 轮廓加载已有笔画
+  void _loadContoursToStrokes() {
+    for (final contour in widget.glyph.contours) {
+      if (contour.points.isEmpty) continue;
+      final points = contour.points
+          .map((p) => Offset(p.x.toDouble(), p.y.toDouble()))
+          .toList();
+      _strokes.add(StrokeRecord(
+        points: points,
+        strokeWidth: _strokeWidth,
+        color: _penColor,
+      ));
+    }
+  }
+
+  /// 将当前笔画保存到 GlyphData 轮廓
+  void _saveStrokesToContours() {
+    widget.glyph.contours.clear();
+    for (final stroke in _strokes) {
+      if (stroke.points.isEmpty) continue;
+      final contourPoints = stroke.points
+          .map((p) => ContourPoint(p.dx.round(), p.dy.round()))
+          .toList();
+      widget.glyph.contours.add(Contour(contourPoints));
+    }
+    // 重新计算字宽
+    widget.glyph.advanceWidth = widget.glyph.calculateAdvanceWidth();
   }
 
   /// 加载字符的原始图片
@@ -97,14 +310,16 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
     });
   }
 
-  /// 确认修改
+  /// 确认修改并退出
   void _confirmEdit() {
-    if (_selectedCharacter != widget.character && _selectedCharacter.isNotEmpty) {
-      // 修改字符标签
+    // 保存笔画到轮廓
+    _saveStrokesToContours();
+    if (_selectedCharacter != widget.character &&
+        _selectedCharacter.isNotEmpty) {
       widget.glyph.character = _selectedCharacter;
       widget.glyph.unicode = _selectedCharacter.codeUnitAt(0);
-      widget.onCharacterChanged();
     }
+    widget.onCharacterChanged();
     Navigator.pop(context);
   }
 
@@ -141,235 +356,480 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
     );
   }
 
+  // === 撤销/重做 ===
+
+  /// 保存当前状态到撤销栈
+  void _pushUndo() {
+    _undoStack.add(List<StrokeRecord>.from(_strokes));
+    if (_undoStack.length > _maxHistorySize) {
+      _undoStack.removeAt(0);
+    }
+    _redoStack.clear();
+  }
+
+  /// 撤销
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(List<StrokeRecord>.from(_strokes));
+    final previous = _undoStack.removeLast();
+    setState(() {
+      _strokes.clear();
+      _strokes.addAll(previous);
+    });
+  }
+
+  /// 重做
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(List<StrokeRecord>.from(_strokes));
+    final next = _redoStack.removeLast();
+    setState(() {
+      _strokes.clear();
+      _strokes.addAll(next);
+    });
+  }
+
+  /// 清除所有笔画
+  void _clearAll() {
+    if (_strokes.isEmpty) return;
+    _pushUndo();
+    setState(() {
+      _strokes.clear();
+      _eraserPosition = null;
+    });
+  }
+
+  /// 适应屏幕 - 重置视图
+  void _fitToScreen() {
+    setState(() {
+      _transformController.value = Matrix4.identity();
+    });
+  }
+
+  /// 放大
+  void _zoomIn() {
+    final matrix = _transformController.value.clone();
+    matrix.scale(1.2);
+    setState(() {
+      _transformController.value = matrix;
+    });
+  }
+
+  /// 缩小
+  void _zoomOut() {
+    final matrix = _transformController.value.clone();
+    matrix.scale(1 / 1.2);
+    setState(() {
+      _transformController.value = matrix;
+    });
+  }
+
+  // === 绘画手势处理 ===
+  // GestureDetector 放在 InteractiveViewer 内部
+  // 单指操作用于绘画，双指操作由 InteractiveViewer 处理缩放/平移
+
+  /// 判断点是否在画布范围内
+  bool _isInCanvas(Offset point) {
+    return point.dx >= -10 &&
+        point.dx <= _canvasSize + 10 &&
+        point.dy >= -10 &&
+        point.dy <= _canvasSize + 10;
+  }
+
+  /// 开始绘制
+  void _onPanStart(DragStartDetails details) {
+    final localPos = details.localPosition;
+    if (!_isInCanvas(localPos)) return;
+
+    if (_currentTool == DrawTool.pencil) {
+      _pushUndo();
+      setState(() {
+        _activeStroke = StrokeRecord(
+          points: [localPos],
+          strokeWidth: _strokeWidth,
+          color: _penColor,
+        );
+      });
+    } else if (_currentTool == DrawTool.eraser) {
+      _eraseAtPosition(localPos);
+    }
+  }
+
+  /// 绘制中
+  void _onPanUpdate(DragUpdateDetails details) {
+    final localPos = details.localPosition;
+
+    if (_currentTool == DrawTool.pencil && _activeStroke != null) {
+      setState(() {
+        _activeStroke!.points.add(localPos);
+      });
+    } else if (_currentTool == DrawTool.eraser) {
+      _eraseAtPosition(localPos);
+      setState(() {
+        _eraserPosition = localPos;
+      });
+    }
+  }
+
+  /// 结束绘制
+  void _onPanEnd(DragEndDetails details) {
+    if (_currentTool == DrawTool.pencil && _activeStroke != null) {
+      setState(() {
+        _strokes.add(_activeStroke!);
+        _activeStroke = null;
+      });
+    } else if (_currentTool == DrawTool.eraser) {
+      setState(() {
+        _eraserPosition = null;
+      });
+    }
+  }
+
+  /// 在指定位置执行橡皮擦操作
+  void _eraseAtPosition(Offset position) {
+    final eraseRadiusSq = _eraserRadius * _eraserRadius;
+    bool erased = false;
+    // 从后往前遍历，删除最近的笔画
+    for (int i = _strokes.length - 1; i >= 0; i--) {
+      final stroke = _strokes[i];
+      for (final point in stroke.points) {
+        final dx = point.dx - position.dx;
+        final dy = point.dy - position.dy;
+        if (dx * dx + dy * dy <= eraseRadiusSq) {
+          if (!erased) {
+            _pushUndo();
+            erased = true;
+          }
+          setState(() {
+            _strokes.removeAt(i);
+          });
+          break;
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final unicodeHex =
         'U+${widget.glyph.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}';
 
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Row(
-        children: [
-          // 字符预览
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                widget.character,
-                style: TextStyle(
-                  fontSize: 32,
-                  color: colorScheme.onPrimaryContainer,
-                ),
-              ),
-            ),
+    return Dialog.fullscreen(
+      child: Scaffold(
+        backgroundColor: colorScheme.surface,
+        // 顶部信息栏
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+            tooltip: '取消',
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '编辑字符',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                Text(
-                  '$unicodeHex · ${widget.glyph.contours.length} 个轮廓',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
+          title: Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 字符标签修改
-              Text(
-                '修改字符标签',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
+              // 字符预览
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  // 手动输入
-                  Expanded(
-                    child: TextField(
-                      controller: _charController,
-                      maxLength: 1,
-                      decoration: InputDecoration(
-                        labelText: '输入新字符',
-                        hintText: '输入一个字符',
-                        counterText: '',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onChanged: (v) {
-                        if (v.isNotEmpty) {
-                          setState(() => _selectedCharacter = v);
-                        }
-                      },
+                child: Center(
+                  child: Text(
+                    widget.character,
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: colorScheme.onPrimaryContainer,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // 从常用字符选择
-                  FilledButton.tonal(
-                    onPressed: () => _showCharacterPicker(context, colorScheme),
-                    child: const Text('选择'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // 字符和 Unicode 信息
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '编辑「${widget.character}」',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  Text(
+                    '$unicodeHex · ${_strokes.length} 笔画',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+            ],
+          ),
+          actions: [
+            // 撤销按钮
+            IconButton(
+              icon: const Icon(Icons.undo),
+              onPressed: _undoStack.isNotEmpty ? _undo : null,
+              tooltip: '撤销',
+            ),
+            // 重做按钮
+            IconButton(
+              icon: const Icon(Icons.redo),
+              onPressed: _redoStack.isNotEmpty ? _redo : null,
+              tooltip: '重做',
+            ),
+            // 适应屏幕
+            IconButton(
+              icon: const Icon(Icons.fit_screen),
+              onPressed: _fitToScreen,
+              tooltip: '适应屏幕',
+            ),
+            // 保存按钮
+            FilledButton(
+              onPressed: _confirmEdit,
+              child: const Text('保存'),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: Column(
+          children: [
+            // === 笔画粗细滑块 ===
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              color: colorScheme.surfaceContainerLow,
+              child: Row(
+                children: [
+                  Icon(Icons.line_weight,
+                      size: 18, color: colorScheme.onSurfaceVariant),
+                  Expanded(
+                    child: Slider(
+                      value: _strokeWidth,
+                      min: 1.0,
+                      max: 10.0,
+                      divisions: 9,
+                      label: '${_strokeWidth.round()}px',
+                      onChanged: (v) => setState(() => _strokeWidth = v),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text(
+                      '${_strokeWidth.round()}px',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 笔画预览圆点
+                  Container(
+                    width: _strokeWidth * 2 + 4,
+                    height: _strokeWidth * 2 + 4,
+                    decoration: BoxDecoration(
+                      color: _currentTool == DrawTool.eraser
+                          ? Colors.red
+                          : _penColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  // 缩放控制按钮
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.zoom_out, size: 20),
+                    onPressed: _zoomOut,
+                    tooltip: '缩小',
+                    iconColor: colorScheme.onSurfaceVariant,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                        minWidth: 32, minHeight: 32),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.zoom_in, size: 20),
+                    onPressed: _zoomIn,
+                    tooltip: '放大',
+                    iconColor: colorScheme.onSurfaceVariant,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                        minWidth: 32, minHeight: 32),
+                  ),
+                ],
+              ),
+            ),
 
-              // 原始图片预览
-              Text(
-                '原始图片',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
+            // === 画布区域 ===
+            Expanded(
+              child: Center(
+                child: InteractiveViewer(
+                  transformationController: _transformController,
+                  boundaryMargin: const EdgeInsets.all(100),
+                  minScale: 0.2,
+                  maxScale: 5.0,
+                  // 禁用单指平移，让 GestureDetector 处理绘画
+                  panEnabled: false,
+                  scaleEnabled: true,
+                  child: GestureDetector(
+                    onPanStart: _onPanStart,
+                    onPanUpdate: _onPanUpdate,
+                    onPanEnd: _onPanEnd,
+                    child: MouseRegion(
+                      cursor: _currentTool == DrawTool.eraser
+                          ? SystemMouseCursors.precise
+                          : SystemMouseCursors.precise,
+                      child: SizedBox(
+                        width: _canvasSize,
+                        height: _canvasSize,
+                        child: Stack(
+                          children: [
+                            // 白色背景
+                            Container(
+                              width: _canvasSize,
+                              height: _canvasSize,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: colorScheme.outlineVariant,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                            // 网格线
+                            CustomPaint(
+                              size: const Size(_canvasSize, _canvasSize),
+                              painter: _GridPainter(
+                                gridSize: 20,
+                                gridColor: colorScheme.outlineVariant
+                                    .withValues(alpha: 0.5),
+                              ),
+                            ),
+                            // 笔画绘制
+                            CustomPaint(
+                              size: const Size(_canvasSize, _canvasSize),
+                              painter: _CanvasPainter(
+                                strokes: _strokes,
+                                activeStroke: _activeStroke,
+                                eraserPosition: _eraserPosition,
+                                eraserRadius: _eraserRadius,
+                              ),
+                            ),
+                            // 字符参考（半透明显示）
+                            Center(
+                              child: Text(
+                                widget.character,
+                                style: TextStyle(
+                                  fontSize: 300,
+                                  color: colorScheme.outlineVariant
+                                      .withValues(alpha: 0.08),
+                                  fontWeight: FontWeight.w100,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                height: 160,
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colorScheme.outlineVariant),
-                ),
-                child: _isLoadingImage
-                    ? const Center(child: CircularProgressIndicator())
-                    : _sourceImage != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.memory(
-                              _sourceImage!,
-                              fit: BoxFit.contain,
-                            ),
-                          )
-                        : Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.image_not_supported_outlined,
-                                  size: 40,
-                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '暂无原始图片',
-                                  style: TextStyle(
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-              ),
-              const SizedBox(height: 16),
+            ),
 
-              // 字形信息
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
+            // === 底部工具栏 ===
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainer,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildInfoRow('Unicode', unicodeHex, colorScheme),
-                    _buildInfoRow('字符', widget.character, colorScheme),
-                    _buildInfoRow('轮廓数', '${widget.glyph.contours.length}', colorScheme),
-                    _buildInfoRow('字宽', '${widget.glyph.advanceWidth}', colorScheme),
-                    _buildInfoRow(
-                      '边界框',
-                      '(${widget.glyph.xMin}, ${widget.glyph.yMin}) - (${widget.glyph.xMax}, ${widget.glyph.yMax})',
-                      colorScheme,
+                    // 铅笔工具
+                    _ToolButton(
+                      icon: Icons.edit,
+                      label: '铅笔',
+                      isActive: _currentTool == DrawTool.pencil,
+                      onTap: () =>
+                          setState(() => _currentTool = DrawTool.pencil),
+                      colorScheme: colorScheme,
+                    ),
+                    // 橡皮擦工具
+                    _ToolButton(
+                      icon: Icons.auto_fix_high,
+                      label: '橡皮擦',
+                      isActive: _currentTool == DrawTool.eraser,
+                      onTap: () =>
+                          setState(() => _currentTool = DrawTool.eraser),
+                      colorScheme: colorScheme,
+                    ),
+                    // 分隔线
+                    Container(
+                      width: 1,
+                      height: 32,
+                      color: colorScheme.outlineVariant,
+                    ),
+                    // 撤销
+                    _ToolButton(
+                      icon: Icons.undo,
+                      label: '撤销',
+                      isActive: false,
+                      onTap: _undoStack.isNotEmpty ? _undo : null,
+                      colorScheme: colorScheme,
+                    ),
+                    // 重做
+                    _ToolButton(
+                      icon: Icons.redo,
+                      label: '重做',
+                      isActive: false,
+                      onTap: _redoStack.isNotEmpty ? _redo : null,
+                      colorScheme: colorScheme,
+                    ),
+                    // 清除
+                    _ToolButton(
+                      icon: Icons.delete_sweep,
+                      label: '清除',
+                      isActive: false,
+                      onTap: _strokes.isNotEmpty ? _clearAll : null,
+                      colorScheme: colorScheme,
+                    ),
+                    // 分隔线
+                    Container(
+                      width: 1,
+                      height: 32,
+                      color: colorScheme.outlineVariant,
+                    ),
+                    // 字符选择
+                    _ToolButton(
+                      icon: Icons.text_fields,
+                      label: '字符',
+                      isActive: false,
+                      onTap: () =>
+                          _showCharacterPicker(context, colorScheme),
+                      colorScheme: colorScheme,
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        // 删除按钮
-        TextButton.icon(
-          onPressed: _deleteCharacter,
-          icon: Icon(Icons.delete_outline, color: colorScheme.error),
-          label: Text('删除', style: TextStyle(color: colorScheme.error)),
-        ),
-        const Spacer(),
-        // 取消按钮
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
-        ),
-        // 确认按钮
-        FilledButton(
-          onPressed: _confirmEdit,
-          child: const Text('确认'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: colorScheme.onSurfaceVariant,
             ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurface,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   /// 显示常用字符选择器
   void _showCharacterPicker(BuildContext context, ColorScheme colorScheme) {
-    // 使用 StandardCharset 中的字符
     final commonChars = StandardCharset.allCharStrings;
 
     showModalBottomSheet(
@@ -430,10 +890,12 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                         decoration: BoxDecoration(
                           color: isSelected
                               ? colorScheme.primaryContainer
-                              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                              : colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(8),
                           border: isSelected
-                              ? Border.all(color: colorScheme.primary, width: 2)
+                              ? Border.all(
+                                  color: colorScheme.primary, width: 2)
                               : null,
                         ),
                         child: Center(
@@ -441,8 +903,9 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                             char,
                             style: TextStyle(
                               fontSize: 20,
-                              fontWeight:
-                                  isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                               color: isSelected
                                   ? colorScheme.onPrimaryContainer
                                   : colorScheme.onSurface,
@@ -457,6 +920,66 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// 底部工具栏按钮组件
+class _ToolButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback? onTap;
+  final ColorScheme colorScheme;
+
+  const _ToolButton({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+    required this.colorScheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color:
+              isActive ? colorScheme.primaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: enabled
+                  ? (isActive
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSurface)
+                  : colorScheme.onSurface.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: enabled
+                    ? (isActive
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSurfaceVariant)
+                    : colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
