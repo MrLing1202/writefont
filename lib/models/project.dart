@@ -47,8 +47,8 @@ class Contour {
 
 /// Represents a single glyph (character) with its contours and metrics.
 class GlyphData {
-  final String character;
-  final int unicode;
+  String character;
+  int unicode;
   List<Contour> contours;
   int advanceWidth;
   int leftSideBearing;

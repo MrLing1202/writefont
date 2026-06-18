@@ -5,6 +5,7 @@ import '../models/project.dart';
 import '../services/image_processor.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
+import '../services/app_config_service.dart';
 import 'character_edit_screen.dart';
 
 /// 一键生成页面
@@ -39,8 +40,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   final Map<int, String> _editedAssignments = {}; // 用户修正过的字符
   final Set<int> _aiRecognized = {}; // AI 原始识别成功的索引
 
-  // 默认参数（推荐值）
-  final ProcessingParams _params = ProcessingParams();
+  // 处理参数（从用户设置加载）
+  ProcessingParams _params = ProcessingParams();
 
   // 动画
   late AnimationController _animController;
@@ -120,6 +121,15 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
 
   Future<void> _startProcessing() async {
     try {
+      // 从用户设置加载处理参数
+      final config = AppConfigService.instance;
+      _params = ProcessingParams(
+        threshold: await config.getThreshold(),
+        contrast: await config.getContrast(),
+        smoothness: await config.getSmoothness(),
+        strokeWidth: await config.getStrokeWidth(),
+      );
+
       // 1. 分割字符
       setState(() {
         _status = '正在分割字符...';
