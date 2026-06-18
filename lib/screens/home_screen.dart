@@ -240,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white.withValues(alpha: 0.2),
                   margin: const EdgeInsets.symmetric(horizontal: 24),
                 ),
-                _buildStatItem('v1.9.5', '当前版本'),
+                _buildStatItem('v1.13.0', '当前版本'),
               ],
             ),
           ],
