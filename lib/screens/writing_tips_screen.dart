@@ -75,30 +75,42 @@ class WritingTipsScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            // 书写规范说明
-            _buildSectionHeader(context, icon: Icons.rule, title: '书写规范', colorScheme: colorScheme),
+            // 实用书写技巧
+            _buildSectionHeader(context, icon: Icons.tips_and_updates, title: '实用书写技巧', colorScheme: colorScheme),
             const SizedBox(height: 12),
-            _buildDetailTipCard(
+            _buildPracticalTipCard(
               context,
               icon: Icons.edit,
-              title: '使用黑色签字笔或中性笔',
-              description: '避免使用铅笔、彩色笔或可擦笔，黑色笔迹对比度高，识别效果最好。建议使用 0.5mm 或 0.7mm 笔芯。',
+              iconColor: WFColors.primary,
+              title: '黑色签字笔 + 白纸',
+              description: '用黑色签字笔在白纸上书写效果最佳。避免铅笔、彩色笔或可擦笔，黑色笔迹对比度高，识别最准确。',
               colorScheme: colorScheme,
             ),
             const SizedBox(height: 10),
-            _buildDetailTipCard(
+            _buildPracticalTipCard(
               context,
-              icon: Icons.description,
-              title: '白色纸张书写',
-              description: '使用白色或浅色纸张，避免使用带横线、格子花纹的纸张。纯白背景能让字迹更清晰。',
+              icon: Icons.format_size,
+              iconColor: WFColors.info,
+              title: '字写大一点，笔画清晰',
+              description: '每个字尽量写大，笔画之间留出空隙。建议每格约 2cm，字体占格子 80%。笔画清晰的字生成质量更高。',
               colorScheme: colorScheme,
             ),
             const SizedBox(height: 10),
-            _buildDetailTipCard(
+            _buildPracticalTipCard(
               context,
-              icon: Icons.auto_fix_high,
-              title: '字迹工整清晰',
-              description: '不要潦草书写，保持笔画完整、结构清晰。尽量保持你平时正常的书写习惯。',
+              icon: Icons.block,
+              iconColor: WFColors.warning,
+              title: '避免连笔和潦草字',
+              description: '一笔一画书写，不要连笔或潦草。连笔会导致轮廓提取失败，潦草字会影响最终字体的美观度。',
+              colorScheme: colorScheme,
+            ),
+            const SizedBox(height: 10),
+            _buildPracticalTipCard(
+              context,
+              icon: Icons.wb_sunny,
+              iconColor: WFColors.success,
+              title: '纸面平整，光线均匀',
+              description: '拍照时保持纸张平整无褶皱，光线均匀无阴影。避免反光和暗角，这样 AI 识别效果最好。',
               colorScheme: colorScheme,
             ),
 
@@ -275,54 +287,56 @@ class WritingTipsScreen extends StatelessWidget {
     );
   }
 
-  /// 详细提示卡片（书写规范用）
-  Widget _buildDetailTipCard(
+  /// 实用书写技巧卡片（带彩色图标）
+  Widget _buildPracticalTipCard(
     BuildContext context, {
     required IconData icon,
+    required Color iconColor,
     required String title,
     required String description,
     required ColorScheme colorScheme,
   }) {
     return WFCard(
       padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: colorScheme.primaryContainer.withValues(alpha: 0.4),
-              ),
-              child: Icon(icon, size: 20, color: colorScheme.primary),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: iconColor.withValues(alpha: 0.12),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
+            child: Icon(icon, size: 22, color: iconColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.4,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
     );
   }
 
