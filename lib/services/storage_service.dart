@@ -299,14 +299,20 @@ class StorageService {
       }
 
       // 为导入的项目生成新 ID（避免冲突）
-      project.id = generateId();
-      project.createdAt = DateTime.now();
-      project.updatedAt = DateTime.now();
+      final newProject = FontProject(
+        id: generateId(),
+        name: project.name,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        glyphs: project.glyphs,
+        params: project.params,
+        sourceImages: project.sourceImages,
+      );
 
       // 保存到本地
-      await saveProject(project);
+      await saveProject(newProject);
 
-      return project;
+      return newProject;
     } catch (e) {
       return null;
     }
