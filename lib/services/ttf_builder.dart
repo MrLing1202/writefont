@@ -257,26 +257,31 @@ class TtfBuilder {
 
         for (final contour in glyph.contours) {
           for (final p in contour.points) {
+            // 标志位：0x01=on-curve（曲线经过点），off-curve（贝塞尔控制点）无此标志
             int flag = p.onCurve ? 0x01 : 0x00;
             final dx = p.x - prevX;
             final dy = p.y - prevY;
 
-            // X coordinate: use short (1 byte) if delta fits in 0..255
+            // X 坐标编码：优先使用 1 字节短格式以节省空间
             if (dx >= 0 && dx <= 255) {
-              flag |= 0x02; // X_SHORT
-              if (dx >= 0) flag |= 0x10; // positive direction
+              flag |= 0x12; // X_SHORT (0x02) + X_IS_POSITIVE (0x10)
               xDeltas.add(dx);
+            } else if (dx >= -255 && dx < 0) {
+              flag |= 0x02; // X_SHORT (0x02)，负方向
+              xDeltas.add(-dx);
             } else {
-              xDeltas.add(dx); // signed 16-bit
+              xDeltas.add(dx); // 16 位有符号差值
             }
 
-            // Y coordinate: use short (1 byte) if delta fits in 0..255
+            // Y 坐标编码：优先使用 1 字节短格式以节省空间
             if (dy >= 0 && dy <= 255) {
-              flag |= 0x04; // Y_SHORT
-              if (dy >= 0) flag |= 0x20; // positive direction
+              flag |= 0x24; // Y_SHORT (0x04) + Y_IS_POSITIVE (0x20)
               yDeltas.add(dy);
+            } else if (dy >= -255 && dy < 0) {
+              flag |= 0x04; // Y_SHORT (0x04)，负方向
+              yDeltas.add(-dy);
             } else {
-              yDeltas.add(dy); // signed 16-bit
+              yDeltas.add(dy); // 16 位有符号差值
             }
 
             flags.add(flag);

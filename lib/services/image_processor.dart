@@ -231,11 +231,13 @@ class ImageProcessor {
           if (contour.length > 4) {
             // Scale to font units (0-1000) with Y-axis flipped
             final scaled = _scaleContour(contour, binary.width, binary.height, params.strokeWidth);
-            final simplified = _simplifyContour(scaled, params.smoothness * 3 + 1);
+            final simplified = _simplifyContour(scaled, params.smoothness * 5 + 2);
             if (simplified.length >= 3) {
               // 确保轮廓闭合：首尾点相同
               final closed = _ensureClosedContour(simplified);
-              allContours.add(Contour(closed));
+              // 贝塞尔曲线拟合：将折线转换为平滑的二次贝塞尔曲线
+              final fitted = _fitBezierCurves(closed, params.smoothness);
+              allContours.add(Contour(fitted));
             }
           }
         }
@@ -381,9 +383,9 @@ class ImageProcessor {
           holeCount++;
           // Scale and simplify the hole contour
           final scaled = _scaleContour(holeContour, w, h, params.strokeWidth);
-          final simplified = _simplifyContour(scaled, params.smoothness * 3 + 1);
+          final simplified = _simplifyContour(scaled, params.smoothness * 5 + 2);
           if (simplified.length >= 3) {
-            final closed = _ensureClosedContour(simplified);
+            var closed = _ensureClosedContour(simplified);
 
             // Ensure correct winding: inner contours should be counterclockwise
             // (negative signed area). If clockwise, reverse.
@@ -395,14 +397,13 @@ class ImageProcessor {
               }
               if (signedArea > 0) {
                 // Clockwise → reverse to counterclockwise
-                final reversed = closed.reversed.toList();
-                allContours.add(Contour(reversed));
-              } else {
-                allContours.add(Contour(closed));
+                closed = closed.reversed.toList();
               }
-            } else {
-              allContours.add(Contour(closed));
             }
+
+            // 贝塞尔曲线拟合：将折线转换为平滑的二次贝塞尔曲线
+            final fitted = _fitBezierCurves(closed, params.smoothness);
+            allContours.add(Contour(fitted));
           }
         }
       }
@@ -716,6 +717,127 @@ class ImageProcessor {
     final last = points.last;
     if (first.x == last.x && first.y == last.y) return points;
     return [...points, ContourPoint(first.x, first.y)];
+  }
+
+  /// 贝塞尔曲线拟合：将折线点序列转换为包含二次贝塞尔控制点的序列
+  /// 使用最小二乘法拟合，自适应分段长度，根据曲率决定段长度
+  static List<ContourPoint> _fitBezierCurves(List<ContourPoint> points, double smoothness) {
+    if (points.length < 4) return points;
+
+    // 检测闭合轮廓（首尾点相同）
+    final isClosed = points.first.x == points.last.x &&
+        points.first.y == points.last.y;
+    final work = isClosed
+        ? points.sublist(0, points.length - 1)
+        : List<ContourPoint>.from(points);
+
+    if (work.length < 4) return points;
+
+    // 拟合误差阈值：smoothness 越大，允许误差越大（更平滑，点更少）
+    final errorThreshold = 3.0 + smoothness * 10.0;
+
+    // 自适应段长度范围
+    final maxSegLen = (work.length / 3).round().clamp(4, 25);
+
+    final result = <ContourPoint>[];
+    // 第一个点始终是 on-curve
+    result.add(ContourPoint(work[0].x, work[0].y, onCurve: true));
+
+    int start = 0;
+    while (start < work.length - 1) {
+      int bestEnd = start + 1;
+
+      // 尝试扩展段长度，找到最长的可拟合段
+      for (int end = start + 2;
+          end <= (start + maxSegLen).clamp(0, work.length - 1);
+          end++) {
+        final error = _computeFitError(work, start, end);
+        if (error <= errorThreshold) {
+          bestEnd = end;
+        } else {
+          break; // 误差超过阈值，停止扩展
+        }
+      }
+
+      if (bestEnd == start + 1) {
+        // 直线段：直接添加 on-curve 点
+        result.add(ContourPoint(work[bestEnd].x, work[bestEnd].y, onCurve: true));
+      } else {
+        // 贝塞尔曲线段：计算控制点（off-curve）+ 端点（on-curve）
+        final (cx, cy) = _computeControlPoint(work, start, bestEnd);
+        result.add(ContourPoint(cx.round(), cy.round(), onCurve: false));
+        result.add(ContourPoint(work[bestEnd].x, work[bestEnd].y, onCurve: true));
+      }
+
+      start = bestEnd;
+    }
+
+    // 闭合轮廓：确保回到起点
+    if (isClosed && result.length >= 2) {
+      final first = result.first;
+      final last = result.last;
+      if (first.x != last.x || first.y != last.y) {
+        result.add(ContourPoint(first.x, first.y, onCurve: true));
+      }
+    }
+
+    return result;
+  }
+
+  /// 计算二次贝塞尔曲线的最优控制点（最小二乘法）
+  /// 给定折线段 points[start..end]，返回拟合的二次贝塞尔控制点坐标
+  /// B(t) = (1-t)²·P0 + 2t(1-t)·C + t²·Pn
+  static (double cx, double cy) _computeControlPoint(
+      List<ContourPoint> points, int start, int end) {
+    final p0 = points[start];
+    final pn = points[end];
+    final n = end - start;
+
+    double sumWRx = 0, sumWRy = 0, sumW2 = 0;
+
+    for (int i = 1; i < n; i++) {
+      final t = i / n;
+      final w = 2.0 * t * (1.0 - t); // 二次贝塞尔基函数权重
+      // 残差：实际点减去仅由端点确定的线性插值部分
+      final rx = points[start + i].x - (1 - t) * (1 - t) * p0.x - t * t * pn.x;
+      final ry = points[start + i].y - (1 - t) * (1 - t) * p0.y - t * t * pn.y;
+      sumWRx += w * rx;
+      sumWRy += w * ry;
+      sumW2 += w * w;
+    }
+
+    if (sumW2.abs() < 1e-10) {
+      // 退化情况：返回中点作为控制点
+      return ((p0.x + pn.x) / 2.0, (p0.y + pn.y) / 2.0);
+    }
+
+    return (sumWRx / sumW2, sumWRy / sumW2);
+  }
+
+  /// 计算贝塞尔拟合的最大误差（中间点到拟合曲线的最大距离）
+  static double _computeFitError(
+      List<ContourPoint> points, int start, int end) {
+    final p0 = points[start];
+    final pn = points[end];
+    final n = end - start;
+
+    // 计算最优控制点
+    final (cx, cy) = _computeControlPoint(points, start, end);
+
+    double maxError = 0;
+    for (int i = 1; i < n; i++) {
+      final t = i / n;
+      final omt = 1.0 - t; // one minus t
+      // 二次贝塞尔曲线上的对应点
+      final bx = omt * omt * p0.x + 2 * t * omt * cx + t * t * pn.x;
+      final by = omt * omt * p0.y + 2 * t * omt * cy + t * t * pn.y;
+      final dx = points[start + i].x - bx;
+      final dy = points[start + i].y - by;
+      final error = sqrt(dx * dx + dy * dy);
+      if (error > maxError) maxError = error;
+    }
+
+    return maxError;
   }
 
   static double _pointToLineDistance(ContourPoint p, ContourPoint lineStart, ContourPoint lineEnd) {

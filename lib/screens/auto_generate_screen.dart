@@ -164,12 +164,14 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
 
         final contours = ImageProcessor.extractContours(cells[i], _params);
 
-        project.glyphs[char] = GlyphData(
+        // 动态计算字宽，根据实际轮廓边界而非固定值
+        final glyph = GlyphData(
           character: char,
           unicode: char.codeUnitAt(0),
           contours: contours,
-          advanceWidth: 500,
         );
+        glyph.advanceWidth = glyph.calculateAdvanceWidth();
+        project.glyphs[char] = glyph;
       }
 
       setState(() {

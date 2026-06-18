@@ -9,6 +9,9 @@ class ContourPoint {
 
   ContourPoint(this.x, this.y, {this.onCurve = true});
 
+  /// 是否为控制点（off-curve 贝塞尔控制点），与 onCurve 互为取反
+  bool get isControl => !onCurve;
+
   /// 序列化为 JSON
   Map<String, dynamic> toJson() => {
         'x': x,
@@ -95,6 +98,21 @@ class GlyphData {
         yMax: json['yMax'] as int? ?? 0,
         sourceImagePath: json['sourceImagePath'] as String?,
       );
+
+  /// 根据轮廓实际边界计算动态字宽
+  /// 基于所有轮廓点的 minX/maxX 加上左右边距
+  int calculateAdvanceWidth() {
+    if (contours.isEmpty) return 500;
+    int minX = 99999, maxX = -99999;
+    for (final contour in contours) {
+      for (final p in contour.points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+      }
+    }
+    // 字宽 = 轮廓宽度 + 左右边距（各50单位），限制在合理范围
+    return (maxX - minX + 100).clamp(200, 1500);
+  }
 }
 
 /// Image processing parameters.
