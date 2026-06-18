@@ -465,7 +465,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         final i = entry.key;
         final char = entry.value;
 
-        final contours = ImageProcessor.extractContours(_cells[i], _params);
+        final contours = await ImageProcessor.extractContours(_cells[i], _params);
 
         // 动态计算字宽，根据实际轮廓边界而非固定值
         final glyph = GlyphData(
