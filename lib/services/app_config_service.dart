@@ -94,4 +94,15 @@ class AppConfigService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyThemeMode, mode);
   }
+
+  /// 获取深色模式状态（兼容旧接口）
+  Future<bool> getDarkMode() async {
+    final mode = await getThemeMode();
+    return mode == 'dark';
+  }
+
+  /// 设置深色模式（兼容旧接口，切换 light/dark）
+  Future<void> setDarkMode(bool value) async {
+    await setThemeMode(value ? 'dark' : 'light');
+  }
 }

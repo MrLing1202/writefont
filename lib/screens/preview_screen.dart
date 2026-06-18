@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/glyph_widget.dart';
 import 'character_edit_screen.dart';
 
+/// 预览导出页面
+/// 使用 WFCard / WFAppBar / WFPrimaryButton / WFDialog 统一设计风格
 class PreviewScreen extends StatefulWidget {
   final FontProject project;
 
@@ -45,13 +48,20 @@ class _PreviewScreenState extends State<PreviewScreen> {
     super.dispose();
   }
 
-  /// 导出 TTF 字体（先弹出命名对话框）
+  // ═══════════════════════════════════════════════════════════
+  // 导出逻辑
+  // ═══════════════════════════════════════════════════════════
+
+  /// 导出 TTF 字体 — 先弹出确认对话框，再弹命名框
   Future<void> _exportFont() async {
+    // 显示字体信息确认对话框
+    final confirmed = await _showExportConfirmDialog();
+    if (confirmed != true) return;
+
     // 弹出字体命名对话框
     final fontName = await _showFontNameDialog();
-    if (fontName == null || fontName.isEmpty) return; // 用户取消
+    if (fontName == null || fontName.isEmpty) return;
 
-    // 更新项目名称
     widget.project.name = fontName;
 
     setState(() => _isExporting = true);
@@ -59,88 +69,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
       final filePath = await StorageService.exportTtf(widget.project);
 
       if (mounted) {
-        // Show success dialog with install hint
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(
-              Icons.check_circle,
-              color: Theme.of(context).colorScheme.primary,
-              size: 48,
-            ),
-            title: const Text('导出成功'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('字体文件已保存到：'),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    filePath,
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '共导出 ${widget.project.glyphs.length} 个字符',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                // 安装提示
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.tertiary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '安装字体：将 TTF 文件发送到电脑，双击安装即可在设计软件中使用。Android 可通过「设置→显示→字体」导入。',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  StorageService.shareTtf(filePath);
-                },
-                icon: const Icon(Icons.share),
-                label: const Text('分享'),
-              ),
-            ],
-          ),
-        );
+        // 导出成功后显示分享选项
+        _showExportSuccessDialog(filePath);
       }
     } catch (e) {
       if (mounted) {
@@ -165,7 +95,155 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  /// 显示字体命名对话框，返回用户输入的字体名称（取消返回 null）
+  /// 显示导出确认对话框（WFDialog 样式）
+  Future<bool?> _showExportConfirmDialog() async {
+    final glyphs = widget.project.glyphs;
+    final editedCount = glyphs.values.where((g) => g.contours.isNotEmpty).length;
+
+    return WFDialog.show<bool>(
+      context,
+      title: '导出字体',
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 字体信息摘要
+          _buildInfoRow(Icons.font_download, '字体名称', widget.project.name),
+          const SizedBox(height: 8),
+          _buildInfoRow(Icons.text_fields, '已生成字符', '$editedCount / ${glyphs.length}'),
+          const SizedBox(height: 8),
+          _buildInfoRow(Icons.calendar_today, '创建日期',
+              '${widget.project.createdAt.year}-${widget.project.createdAt.month.toString().padLeft(2, '0')}-${widget.project.createdAt.day.toString().padLeft(2, '0')}'),
+          const SizedBox(height: 16),
+          // 安装提示
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: WFColors.info.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: WFColors.info.withValues(alpha: 0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: WFColors.info),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '导出为 TTF 字体文件，可在电脑或手机上安装使用。',
+                    style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        WFPrimaryButton(
+          text: '继续导出',
+          icon: Icons.file_download,
+          onPressed: () => Navigator.pop(context, true),
+        ),
+      ],
+    );
+  }
+
+  /// 信息行 — 用于对话框内展示
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: WFColors.textSecondary),
+        const SizedBox(width: 8),
+        Text(
+          '$label：',
+          style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: WFColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 导出成功对话框 — 含分享按钮
+  void _showExportSuccessDialog(String filePath) {
+    WFDialog.show(
+      context,
+      title: '导出成功',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 文件路径
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: WFColors.bgPrimary,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              filePath,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '共导出 ${widget.project.glyphs.length} 个字符',
+            style: const TextStyle(color: WFColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          // 安装提示
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: WFColors.success.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: WFColors.success.withValues(alpha: 0.2)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.check_circle_outline, size: 18, color: WFColors.success),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '安装字体：将 TTF 文件发送到电脑，双击安装即可在设计软件中使用。Android 可通过「设置→显示→字体」导入。',
+                    style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+        WFPrimaryButton(
+          text: '分享',
+          icon: Icons.share,
+          onPressed: () {
+            Navigator.pop(context);
+            StorageService.shareTtf(filePath);
+          },
+        ),
+      ],
+    );
+  }
+
+  /// 显示字体命名对话框
   Future<String?> _showFontNameDialog() async {
     final controller = TextEditingController(text: widget.project.name);
     final formKey = GlobalKey<FormState>();
@@ -179,11 +257,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              icon: Icon(Icons.font_download, color: colorScheme.primary, size: 36),
+              icon: const Icon(Icons.font_download, color: WFColors.primary, size: 36),
               title: const Text('为你的字体命名'),
               content: Form(
                 key: formKey,
@@ -191,12 +268,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       '这个名字将作为字体文件名和项目标题',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -214,7 +288,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
                         if (value == null || value.trim().isEmpty) {
                           return '请输入字体名称';
                         }
-                        // 检查非法文件名字符
                         if (RegExp(r'[<>:"/\\|?*]').hasMatch(value)) {
                           return '名称不能包含特殊字符';
                         }
@@ -232,72 +305,57 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     // 字体预览区域
                     if (previewGlyphs.isNotEmpty) ...[
                       const SizedBox(height: 16),
-                      Card(
-                        elevation: 0,
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(
-                            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.preview, size: 16, color: colorScheme.primary),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '预览效果',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: colorScheme.onSurfaceVariant,
+                      WFCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.preview, size: 16, color: WFColors.primary),
+                                SizedBox(width: 6),
+                                Text(
+                                  '预览效果',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: WFColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              controller.text.isEmpty ? '字体名称' : controller.text,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: WFColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: previewGlyphs.map((entry) {
+                                return Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: WFColors.textLight),
+                                    color: WFColors.bgPrimary,
+                                  ),
+                                  child: Center(
+                                    child: GlyphWidget(
+                                      contours: entry.value.contours,
+                                      size: 32,
+                                      color: WFColors.textPrimary,
                                     ),
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              // 字体名称预览
-                              Text(
-                                controller.text.isEmpty ? '字体名称' : controller.text,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: colorScheme.onSurface,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              // 字形预览
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: previewGlyphs.map((entry) {
-                                  return Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: colorScheme.outlineVariant,
-                                      ),
-                                      color: colorScheme.surface,
-                                    ),
-                                    child: Center(
-                                      child: GlyphWidget(
-                                        contours: entry.value.contours,
-                                        size: 32,
-                                        color: colorScheme.onSurface,
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -328,6 +386,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     return result;
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 保存 & 备份
+  // ═══════════════════════════════════════════════════════════
+
   /// 自动保存（带 1 秒 debounce）
   void _scheduleAutoSave() {
     _autoSaveTimer?.cancel();
@@ -353,10 +415,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('项目「${widget.project.name}」已保存'),
-            action: SnackBarAction(
-              label: '知道了',
-              onPressed: () {},
-            ),
+            action: SnackBarAction(label: '知道了', onPressed: () {}),
           ),
         );
       }
@@ -371,7 +430,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  /// 导出项目备份（JSON 格式，含源图片 base64）
+  /// 导出项目备份（JSON 格式）
   Future<void> _exportProjectBackup() async {
     try {
       final filePath = await StorageService.exportProject(widget.project);
@@ -381,9 +440,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
             content: Text('备份已导出: ${widget.project.name}_backup.json'),
             action: SnackBarAction(
               label: '分享',
-              onPressed: () {
-                StorageService.shareTtf(filePath);
-              },
+              onPressed: () => StorageService.shareTtf(filePath),
             ),
           ),
         );
@@ -397,7 +454,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  /// 打开字符编辑对话框
+  // ═══════════════════════════════════════════════════════════
+  // 字符编辑 & 多选
+  // ═══════════════════════════════════════════════════════════
+
   void _editCharacter(String character, GlyphData glyph) {
     if (_isMultiSelectMode) {
       _toggleSelection(character);
@@ -409,7 +469,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
       glyph: glyph,
       projectId: widget.project.id,
       onCharacterChanged: () {
-        // 如果字符标签改变了，需要更新 glyphs Map
         if (glyph.character != character) {
           widget.project.glyphs.remove(character);
           widget.project.glyphs[glyph.character] = glyph;
@@ -425,21 +484,17 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 
-  /// 切换多选状态
   void _toggleSelection(String character) {
     setState(() {
       if (_selectedCharacters.contains(character)) {
         _selectedCharacters.remove(character);
-        if (_selectedCharacters.isEmpty) {
-          _isMultiSelectMode = false;
-        }
+        if (_selectedCharacters.isEmpty) _isMultiSelectMode = false;
       } else {
         _selectedCharacters.add(character);
       }
     });
   }
 
-  /// 进入多选模式
   void _enterMultiSelectMode(String character) {
     setState(() {
       _isMultiSelectMode = true;
@@ -447,7 +502,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     });
   }
 
-  /// 退出多选模式
   void _exitMultiSelectMode() {
     setState(() {
       _isMultiSelectMode = false;
@@ -455,27 +509,23 @@ class _PreviewScreenState extends State<PreviewScreen> {
     });
   }
 
-  /// 批量删除选中的字符
   Future<void> _deleteSelectedCharacters() async {
     final count = _selectedCharacters.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.delete_outline, color: Colors.red),
-        title: const Text('确认删除'),
-        content: Text('确定要删除选中的 $count 个字符吗？此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await WFDialog.show<bool>(
+      context,
+      title: '确认删除',
+      content: Text('确定要删除选中的 $count 个字符吗？此操作不可撤销。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: TextButton.styleFrom(foregroundColor: WFColors.error),
+          child: const Text('删除'),
+        ),
+      ],
     );
 
     if (confirmed == true) {
@@ -490,31 +540,34 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 构建 UI
+  // ═══════════════════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final glyphs = widget.project.glyphs;
+    final editedCount = glyphs.values.where((g) => g.contours.isNotEmpty).length;
 
     return Scaffold(
-      appBar: AppBar(
-        title: _isMultiSelectMode
-            ? Text('已选 ${_selectedCharacters.length} 个')
-            : const Text('字体预览'),
-        leading: _isMultiSelectMode
-            ? IconButton(
+      appBar: _isMultiSelectMode
+          ? WFAppBar(
+              title: '已选 ${_selectedCharacters.length} 个',
+              leading: IconButton(
                 onPressed: _exitMultiSelectMode,
                 icon: const Icon(Icons.close),
-              )
-            : null,
-        actions: _isMultiSelectMode
-            ? [
+              ),
+              actions: [
                 IconButton(
                   onPressed: _deleteSelectedCharacters,
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  icon: const Icon(Icons.delete_outline, color: WFColors.error),
                   tooltip: '删除选中',
                 ),
-              ]
-            : [
+              ],
+            )
+          : WFAppBar(
+              title: '字体预览',
+              actions: [
                 if (_isAutoSaving)
                   const Padding(
                     padding: EdgeInsets.only(right: 8),
@@ -527,51 +580,19 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     ),
                   ),
                 IconButton(
-                  onPressed: () => _showGlyphList(colorScheme),
+                  onPressed: () => _showGlyphList(),
                   icon: const Icon(Icons.list),
                   tooltip: '查看字符列表',
                 ),
               ],
-      ),
+            ),
       body: Column(
         children: [
-          // Stats bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-            child: Row(
-              children: [
-                Icon(Icons.font_download, size: 20, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '${widget.project.name} · ${glyphs.length} 个字符',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                const Spacer(),
-                // 字符可点击提示
-                Icon(
-                  Icons.touch_app,
-                  size: 16,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '点击字符可编辑',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Preview input
+          // ── 字体信息头部 ──
+          _buildFontInfoHeader(glyphs.length, editedCount),
+          // ── 预览输入 ──
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: TextField(
               controller: _textController,
               decoration: InputDecoration(
@@ -593,17 +614,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
               maxLines: 2,
             ),
           ),
-
-          // Preview area
+          // ── 预览区域 ──
           Expanded(
             child: _previewText.isEmpty
-                ? Center(
+                ? const Center(
                     child: Text(
                       '输入文字查看预览效果',
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: WFColors.textLight, fontSize: 16),
                     ),
                   )
                 : SingleChildScrollView(
@@ -611,133 +628,17 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Large preview
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: colorScheme.outlineVariant),
-                          ),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '大字预览',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _buildGlyphPreviewText(_previewText, 48),
-                              ],
-                            ),
-                          ),
-                        ),
+                        // 大字预览
+                        _buildPreviewCard('大字预览', 48),
+                        const SizedBox(height: 12),
+                        // 中字预览
+                        _buildPreviewCard('中字预览', 28),
+                        const SizedBox(height: 12),
+                        // 小字预览
+                        _buildPreviewCard('小字预览', 16),
                         const SizedBox(height: 16),
-
-                        // Medium preview
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: colorScheme.outlineVariant),
-                          ),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '中字预览',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                _buildGlyphPreviewText(_previewText, 28),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Small preview
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: colorScheme.outlineVariant),
-                          ),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '小字预览',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                _buildGlyphPreviewText(_previewText, 16),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Character grid preview
-                        Text(
-                          '已收录字符',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '点击字符可编辑 · 长按批量选择',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Search box
-                        TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: '搜索字符或 Unicode 编码...',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, size: 18),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() => _searchQuery = '');
-                                    },
-                                  )
-                                : null,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          onChanged: (v) => setState(() => _searchQuery = v),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildCharacterGrid(glyphs, colorScheme),
+                        // 字符网格
+                        _buildCharacterGridSection(glyphs),
                         const SizedBox(height: 100),
                       ],
                     ),
@@ -745,134 +646,179 @@ class _PreviewScreenState extends State<PreviewScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 保存项目 + 导出备份按钮
-              Row(
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
+
+  /// 字体信息头部 — WFCard 包裹
+  Widget _buildFontInfoHeader(int total, int edited) {
+    final project = widget.project;
+    final dateStr =
+        '${project.createdAt.year}-${project.createdAt.month.toString().padLeft(2, '0')}-${project.createdAt.day.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: WFCard(
+        accentColor: WFColors.accent,
+        child: Row(
+          children: [
+            // 左侧：字体名称 & 信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isSaving ? null : _saveProject,
-                      icon: _isSaving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.save),
-                      label: Text(_isSaving ? '保存中...' : '保存项目'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                  Text(
+                    project.name,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: WFColors.textPrimary,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _exportProjectBackup,
-                      icon: const Icon(Icons.backup),
-                      label: const Text('导出备份'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.text_fields, size: 14, color: WFColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$edited / $total 个字符',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: WFColors.textSecondary,
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.calendar_today, size: 14, color: WFColors.textSecondary),
+                      const SizedBox(width: 4),
+                      Text(
+                        dateStr,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: WFColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              // 底部操作按钮
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.edit),
-                      label: const Text('返回编辑'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton.icon(
-                      onPressed: _isExporting ? null : _exportFont,
-                      icon: _isExporting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.file_download),
-                      label: Text(_isExporting ? '导出中...' : '导出 TTF'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+            ),
+            // 右侧：完成度指示
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: edited == total && total > 0
+                    ? WFColors.success.withValues(alpha: 0.12)
+                    : WFColors.primary.withValues(alpha: 0.12),
               ),
-            ],
-          ),
+              child: Center(
+                child: Text(
+                  total > 0 ? '${(edited * 100 ~/ total)}%' : '0%',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: edited == total && total > 0
+                        ? WFColors.success
+                        : WFColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildGlyphPreviewText(String text, double fontSize) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final List<InlineSpan> spans = [];
+  /// 预览卡片 — WFCard 包裹
+  Widget _buildPreviewCard(String label, double fontSize) {
+    return WFCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          _buildGlyphPreviewText(_previewText, fontSize),
+        ],
+      ),
+    );
+  }
 
+  /// 构建字形预览文本
+  Widget _buildGlyphPreviewText(String text, double fontSize) {
+    final List<InlineSpan> spans = [];
     for (int i = 0; i < text.length; i++) {
       final char = text[i];
       final glyph = widget.project.glyphs[char];
-
       if (glyph != null && glyph.contours.isNotEmpty) {
-        // We have this glyph - render it using a custom painter approach
         spans.add(WidgetSpan(
           child: GlyphWidget(
             contours: glyph.contours,
             size: fontSize,
-            color: colorScheme.onSurface,
+            color: WFColors.textPrimary,
           ),
           alignment: PlaceholderAlignment.middle,
         ));
       } else {
-        // Use default font
         spans.add(TextSpan(
           text: char,
-          style: TextStyle(
-            fontSize: fontSize,
-            color: colorScheme.onSurface,
-          ),
+          style: TextStyle(fontSize: fontSize, color: WFColors.textPrimary),
         ));
       }
     }
+    return RichText(text: TextSpan(children: spans));
+  }
 
-    return RichText(
-      text: TextSpan(children: spans),
+  /// 字符网格区域 — 使用 WFCard 包裹每个字符
+  Widget _buildCharacterGridSection(Map<String, GlyphData> glyphs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '已收录字符',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: WFColors.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '点击字符可编辑 · 长按批量选择',
+          style: TextStyle(fontSize: 12, color: WFColors.textSecondary.withValues(alpha: 0.6)),
+        ),
+        const SizedBox(height: 8),
+        // 搜索框
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: '搜索字符或 Unicode 编码...',
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  )
+                : null,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onChanged: (v) => setState(() => _searchQuery = v),
+        ),
+        const SizedBox(height: 8),
+        _buildCharacterGrid(glyphs),
+      ],
     );
   }
 
-  Widget _buildCharacterGrid(Map<String, GlyphData> glyphs, ColorScheme colorScheme) {
-    // Filter glyphs based on search query
+  /// 字符网格 — 每个字符用 WFCard 包裹，编辑状态用绿色边框
+  Widget _buildCharacterGrid(Map<String, GlyphData> glyphs) {
     final filteredEntries = glyphs.entries.where((entry) {
       if (_searchQuery.isEmpty) return true;
       final query = _searchQuery.toLowerCase();
@@ -887,12 +833,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 24),
         alignment: Alignment.center,
-        child: Text(
+        child: const Text(
           '未找到匹配的字符',
-          style: TextStyle(
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            fontSize: 14,
-          ),
+          style: TextStyle(color: WFColors.textLight, fontSize: 14),
         ),
       );
     }
@@ -905,6 +848,16 @@ class _PreviewScreenState extends State<PreviewScreen> {
         final character = entry.key;
         final unicodeHex = 'U+${glyph.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}';
         final isSelected = _selectedCharacters.contains(character);
+        final isEdited = glyph.contours.isNotEmpty;
+
+        // 边框颜色：已选 > 已编辑（绿色）> 未编辑（灰色）
+        final borderColor = isSelected
+            ? WFColors.primary
+            : isEdited
+                ? WFColors.success
+                : WFColors.textLight;
+        final borderWidth = isSelected ? 2.5 : isEdited ? 1.5 : 1.0;
+
         return GestureDetector(
           onTap: () => _editCharacter(character, glyph),
           onLongPress: () => _enterMultiSelectMode(character),
@@ -914,12 +867,16 @@ class _PreviewScreenState extends State<PreviewScreen> {
               width: 48,
               height: 58,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant,
-                  width: isSelected ? 2.5 : 1,
-                ),
-                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: borderWidth),
+                color: WFColors.bgCard,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -929,48 +886,55 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       children: [
                         glyph.contours.isNotEmpty
                             ? GlyphWidget(
-                            contours: glyph.contours,
-                            size: 32,
-                            color: isSelected
-                                ? colorScheme.primary
-                                : colorScheme.onSurface,
-                          )
+                                contours: glyph.contours,
+                                size: 32,
+                                color: isSelected ? WFColors.primary : WFColors.textPrimary,
+                              )
                             : Center(
-                            child: Text(
-                              entry.key,
-                              style: TextStyle(
-                                fontSize: 20,
-                                color: isSelected
-                                    ? colorScheme.primary
-                                    : colorScheme.onSurface,
+                                child: Text(
+                                  entry.key,
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    color: isSelected ? WFColors.primary : WFColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                        // 已编辑标记
+                        if (isEdited && !isSelected)
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: WFColors.success,
+                                shape: BoxShape.circle,
                               ),
                             ),
                           ),
+                        // 多选勾选标记
                         if (isSelected)
                           Positioned(
                             top: 0,
                             right: 0,
                             child: Container(
                               padding: const EdgeInsets.all(1),
-                              decoration: BoxDecoration(
-                                color: colorScheme.primary,
+                              decoration: const BoxDecoration(
+                                color: WFColors.primary,
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(
-                                Icons.check,
-                                size: 12,
-                                color: colorScheme.onPrimary,
-                              ),
+                              child: const Icon(Icons.check, size: 12, color: Colors.white),
                             ),
                           ),
                       ],
                     ),
                   ),
                   Text(
-                    unicodeHex.substring(2), // 显示 4 位十六进制
-                    style: TextStyle(
+                    unicodeHex.substring(2),
+                    style: const TextStyle(
                       fontSize: 8,
-                      color: colorScheme.onSurfaceVariant,
+                      color: WFColors.textSecondary,
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -984,7 +948,82 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 
-  void _showGlyphList(ColorScheme colorScheme) {
+  /// 底部操作栏 — WFPrimaryButton 导出
+  Widget _buildBottomBar() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 保存 & 备份
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isSaving ? null : _saveProject,
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save),
+                    label: Text(_isSaving ? '保存中...' : '保存项目'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _exportProjectBackup,
+                    icon: const Icon(Icons.backup),
+                    label: const Text('导出备份'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // 返回编辑 + 导出 TTF
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.edit),
+                    label: const Text('返回编辑'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: WFPrimaryButton(
+                    text: _isExporting ? '导出中...' : '导出 TTF',
+                    icon: _isExporting ? null : Icons.file_download,
+                    onPressed: _isExporting ? () {} : _exportFont,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 字符列表底部弹出
+  void _showGlyphList() {
+    final glyphs = widget.project.glyphs.entries.toList();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -994,7 +1033,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
         minChildSize: 0.3,
         expand: false,
         builder: (context, scrollController) {
-          final glyphs = widget.project.glyphs.entries.toList();
           return Column(
             children: [
               // Handle
@@ -1003,7 +1041,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  color: WFColors.textLight.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1011,10 +1049,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   '字符列表 (${glyphs.length})',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
               Expanded(
@@ -1035,30 +1070,22 @@ class _PreviewScreenState extends State<PreviewScreen> {
                             ? GlyphWidget(
                                 contours: entry.value.contours,
                                 size: 32,
-                                color: colorScheme.onSurface,
+                                color: WFColors.textPrimary,
                               )
                             : Center(
-                                child: Text(
-                                  entry.key,
-                                  style: const TextStyle(fontSize: 24),
-                                ),
+                                child: Text(entry.key, style: const TextStyle(fontSize: 24)),
                               ),
                       ),
-                      title: Text('U+${entry.value.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}'),
+                      title: Text(
+                        'U+${entry.value.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}',
+                      ),
                       subtitle: Text('${entry.value.contours.length} 个轮廓'),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            entry.key,
-                            style: const TextStyle(fontSize: 24),
-                          ),
+                          Text(entry.key, style: const TextStyle(fontSize: 24)),
                           const SizedBox(width: 8),
-                          Icon(
-                            Icons.edit,
-                            size: 16,
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                          ),
+                          const Icon(Icons.edit, size: 16, color: WFColors.textLight),
                         ],
                       ),
                     );
@@ -1072,5 +1099,3 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 }
-
-
