@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
@@ -361,6 +363,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   }
 
   /// 从文件选择器导入项目备份
+  ///
+  /// 导入前检查文件格式是否为合法的 WriteFont 项目 JSON
   Future<void> _importProject() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -381,6 +385,31 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         return;
       }
 
+      // ── 导入前格式校验 ──
+      final file = File(filePath);
+      final jsonString = await file.readAsString();
+      Map<String, dynamic> json;
+      try {
+        json = jsonDecode(jsonString) as Map<String, dynamic>;
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('导入失败：文件不是有效的 JSON 格式')),
+          );
+        }
+        return;
+      }
+
+      // 检查必要字段
+      if (!json.containsKey('name') || !json.containsKey('glyphs')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('导入失败：缺少必要字段（name / glyphs）')),
+          );
+        }
+        return;
+      }
+
       final project = await StorageService.importProject(filePath);
       if (project != null) {
         await _loadProjects();
@@ -392,7 +421,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('导入失败：文件格式不正确')),
+            const SnackBar(content: Text('导入失败：数据解析异常')),
           );
         }
       }
