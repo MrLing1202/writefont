@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../models/project.dart';
 
@@ -94,8 +93,6 @@ class ImageProcessor {
         bboxes.add([minX, minY, maxX, maxY, area]);
       }
     }
-
-    debugPrint('轮廓提取: 找到 ${bboxes.length} 个连通区域 (图片 ${w}x$h)');
 
     if (bboxes.isEmpty) return [];
 
@@ -201,23 +198,10 @@ class ImageProcessor {
     final image = img.decodeImage(imageBytes);
     if (image == null) return [];
 
-    // 大图等比缩小，避免 BFS 在百万像素级别卡死闪退
-    img.Image workImage = image;
-    final maxDim = workImage.width > workImage.height ? workImage.width : workImage.height;
-    if (maxDim > 800) {
-      final scale = 800.0 / maxDim;
-      final newW = (workImage.width * scale).round().clamp(1, 99999);
-      final newH = (workImage.height * scale).round().clamp(1, 99999);
-      debugPrint('extractContours: 大图缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
-      workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
-    }
-
-    final gray = img.grayscale(workImage);
+    final gray = img.grayscale(image);
     final binary = _binarize(gray, params.threshold, params.invertColors);
 
-    debugPrint('extractContours: 开始轮廓提取, 图片 ${binary.width}x${binary.height}');
-
-    // Find connected components and trace contours (outer boundaries)
+    // Find connected components and trace contours
     final List<Contour> allContours = [];
     final visited = List.generate(
       binary.height,
@@ -233,183 +217,12 @@ class ImageProcessor {
             final scaled = _scaleContour(contour, binary.width, binary.height, params.strokeWidth);
             final simplified = _simplifyContour(scaled, params.smoothness * 3 + 1);
             if (simplified.length >= 3) {
-              // 确保轮廓闭合：首尾点相同
-              final closed = _ensureClosedContour(simplified);
-              allContours.add(Contour(closed));
+              allContours.add(Contour(simplified));
             }
           }
         }
       }
     }
-
-    // --- Hole detection: find white regions enclosed by black pixels ---
-    // Flood fill from image edges to mark all exterior white pixels.
-    // Any white pixel NOT reached is an interior hole.
-    debugPrint('extractContours: 开始空心字检测 BFS...');
-    final w = binary.width, h = binary.height;
-    final isExterior = List.generate(h, (_) => List.filled(w, false));
-    final bfsDirs4 = const [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-    // BFS from all edge pixels
-    final queue = <List<int>>[];
-    for (int x = 0; x < w; x++) {
-      if (!_isBlack(binary, x, 0)) { queue.add([x, 0]); isExterior[0][x] = true; }
-      if (!_isBlack(binary, x, h - 1)) { queue.add([x, h - 1]); isExterior[h - 1][x] = true; }
-    }
-    for (int y = 1; y < h - 1; y++) {
-      if (!_isBlack(binary, 0, y)) { queue.add([0, y]); isExterior[y][0] = true; }
-      if (!_isBlack(binary, w - 1, y)) { queue.add([w - 1, y]); isExterior[y][w - 1] = true; }
-    }
-    while (queue.isNotEmpty) {
-      final p = queue.removeAt(0);
-      for (final d in bfsDirs4) {
-        final nx = p[0] + d[0], ny = p[1] + d[1];
-        if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-            !isExterior[ny][nx] && !_isBlack(binary, nx, ny)) {
-          isExterior[ny][nx] = true;
-          queue.add([nx, ny]);
-        }
-      }
-    }
-
-    // Find interior white regions (holes) and trace their contours
-    final holeVisited = List.generate(h, (_) => List.filled(w, false));
-    int holeCount = 0;
-
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        if (_isBlack(binary, x, y) || isExterior[y][x] || holeVisited[y][x]) continue;
-
-        // Found an interior white pixel — collect the entire hole region
-        final holePixels = <Point>[];
-        int minX = x, maxX = x, minY = y, maxY = y;
-        final holeQueue = <List<int>>[];
-        holeQueue.add([x, y]);
-        holeVisited[y][x] = true;
-
-        while (holeQueue.isNotEmpty) {
-          final p = holeQueue.removeAt(0);
-          final px = p[0], py = p[1];
-          holePixels.add(Point(px, py));
-          if (px < minX) minX = px;
-          if (px > maxX) maxX = px;
-          if (py < minY) minY = py;
-          if (py > maxY) maxY = py;
-
-          for (final d in bfsDirs4) {
-            final nx = px + d[0], ny = py + d[1];
-            if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-                !holeVisited[ny][nx] && !_isBlack(binary, nx, ny) && !isExterior[ny][nx]) {
-              holeVisited[ny][nx] = true;
-              holeQueue.add([nx, ny]);
-            }
-          }
-        }
-
-        // Skip tiny holes (noise)
-        if (holePixels.length < 4) continue;
-
-        // Skip holes that span the entire component (not real holes)
-        final holeW = maxX - minX + 1;
-        final holeH = maxY - minY + 1;
-        if (holeW > w * 0.4 || holeH > h * 0.4) continue;
-
-        // Find a boundary white pixel to start tracing
-        int bx = -1, by = -1;
-        for (final p in holePixels) {
-          if (p.x > 0 && _isBlack(binary, p.x - 1, p.y)) {
-            bx = p.x;
-            by = p.y;
-            break;
-          }
-        }
-        // Fallback: find a white pixel with any black cardinal neighbor
-        if (bx < 0) {
-          for (final p in holePixels) {
-            bool hasBlackNeighbor = false;
-            for (final d in bfsDirs4) {
-              final nx = p.x + d[0], ny = p.y + d[1];
-              if (nx >= 0 && nx < w && ny >= 0 && ny < h && _isBlack(binary, nx, ny)) {
-                hasBlackNeighbor = true;
-                break;
-              }
-            }
-            if (hasBlackNeighbor) {
-              bx = p.x;
-              by = p.y;
-              break;
-            }
-          }
-        }
-        if (bx < 0) continue; // No boundary found, skip
-
-        // Trace the hole boundary using Moore neighborhood tracing
-        const tdx = [1, 1, 0, -1, -1, -1, 0, 1];
-        const tdy = [0, 1, 1, 1, 0, -1, -1, -1];
-
-        int dir = 0;
-        final traceStartX = bx, traceStartY = by;
-        final holeContour = <Point>[Point(bx, by)];
-        int maxSteps = w * h;
-        int steps = 0;
-
-        do {
-          int searchDir = (dir + 7) % 8;
-          bool found = false;
-          for (int i = 0; i < 8; i++) {
-            int d = (searchDir + i) % 8;
-            int nx = bx + tdx[d];
-            int ny = by + tdy[d];
-            if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-                _isBlack(binary, nx, ny)) {
-              bx = nx;
-              by = ny;
-              dir = d;
-              found = true;
-              break;
-            }
-          }
-          if (!found) break;
-
-          steps++;
-          if (bx != traceStartX || by != traceStartY) {
-            holeContour.add(Point(bx, by));
-          }
-        } while ((bx != traceStartX || by != traceStartY) && steps < maxSteps);
-
-        if (holeContour.length > 4) {
-          holeCount++;
-          // Scale and simplify the hole contour
-          final scaled = _scaleContour(holeContour, w, h, params.strokeWidth);
-          final simplified = _simplifyContour(scaled, params.smoothness * 3 + 1);
-          if (simplified.length >= 3) {
-            final closed = _ensureClosedContour(simplified);
-
-            // Ensure correct winding: inner contours should be counterclockwise
-            // (negative signed area). If clockwise, reverse.
-            if (closed.length >= 3) {
-              double signedArea = 0;
-              for (int i = 0; i < closed.length - 1; i++) {
-                signedArea += (closed[i + 1].x - closed[i].x) *
-                    (closed[i + 1].y + closed[i].y);
-              }
-              if (signedArea > 0) {
-                // Clockwise → reverse to counterclockwise
-                final reversed = closed.reversed.toList();
-                allContours.add(Contour(reversed));
-              } else {
-                allContours.add(Contour(closed));
-              }
-            } else {
-              allContours.add(Contour(closed));
-            }
-          }
-        }
-      }
-    }
-
-    debugPrint('轮廓提取: 共 ${allContours.length} 个轮廓 (含 $holeCount 个洞), '
-        '点数=[${allContours.map((c) => c.points.length).join(", ")}]');
 
     return allContours;
   }
@@ -707,15 +520,6 @@ class ImageProcessor {
     } else {
       return [first, last];
     }
-  }
-
-  /// 确保轮廓闭合：如果首尾点不同，则追加首点到末尾
-  static List<ContourPoint> _ensureClosedContour(List<ContourPoint> points) {
-    if (points.length < 3) return points;
-    final first = points.first;
-    final last = points.last;
-    if (first.x == last.x && first.y == last.y) return points;
-    return [...points, ContourPoint(first.x, first.y)];
   }
 
   static double _pointToLineDistance(ContourPoint p, ContourPoint lineStart, ContourPoint lineEnd) {
