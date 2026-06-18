@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
+import '../widgets/glyph_widget.dart';
 import 'preview_screen.dart';
 
 /// 项目管理页面：列出所有已保存的字体项目
@@ -264,27 +265,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // 项目图标
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Center(
-                  child: Text(
-                    project.glyphs.isNotEmpty
-                        ? project.glyphs.keys.first
-                        : '字',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ),
-              ),
+              // 字体预览（显示前 3 个字符的轮廓）
+              _buildFontPreview(project, colorScheme),
               const SizedBox(width: 16),
 
               // 项目信息
@@ -390,6 +372,53 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// 构建字体预览区域（显示前 3 个字符的轮廓）
+  Widget _buildFontPreview(FontProject project, ColorScheme colorScheme) {
+    final glyphEntries = project.glyphs.entries.take(3).toList();
+
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: glyphEntries.isEmpty
+          ? Center(
+              child: Text(
+                '字',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: glyphEntries.map((entry) {
+                  final glyph = entry.value;
+                  return glyph.contours.isNotEmpty
+                      ? GlyphWidget(
+                          contours: glyph.contours,
+                          size: 16,
+                          color: colorScheme.onPrimaryContainer,
+                        )
+                      : Text(
+                          entry.key,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        );
+                }).toList(),
+              ),
+            ),
     );
   }
 

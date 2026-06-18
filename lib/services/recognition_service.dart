@@ -374,6 +374,47 @@ class RecognitionService {
     }
   }
 
+  /// 为云端 API 压缩图片
+  /// 如果图片超过 200KB，缩放到最大 512x512（保持宽高比），编码为 JPEG quality=85
+  Uint8List _compressForCloud(Uint8List imageBytes) {
+    const int maxSizeBytes = 200 * 1024; // 200KB
+    const int maxDimension = 512;
+    const int jpegQuality = 85;
+
+    if (imageBytes.length <= maxSizeBytes) {
+      debugPrint('云端压缩: 图片 ${imageBytes.length} bytes < 200KB，跳过压缩');
+      return imageBytes;
+    }
+
+    debugPrint('云端压缩: 原始大小 ${imageBytes.length} bytes (${(imageBytes.length / 1024).toStringAsFixed(1)} KB)');
+
+    final decoded = img.decodeImage(imageBytes);
+    if (decoded == null) {
+      debugPrint('云端压缩: 解码失败，使用原图');
+      return imageBytes;
+    }
+
+    img.Image resized = decoded;
+    final w = decoded.width;
+    final h = decoded.height;
+    final maxDim = w > h ? w : h;
+
+    if (maxDim > maxDimension) {
+      final scale = maxDimension / maxDim;
+      final newW = (w * scale).round();
+      final newH = (h * scale).round();
+      resized = img.copyResize(decoded, width: newW, height: newH,
+          interpolation: img.Interpolation.cubic);
+      debugPrint('云端压缩: 缩放 ${w}x$h -> ${resized.width}x${resized.height}');
+    }
+
+    final jpegBytes = img.encodeJpg(resized, quality: jpegQuality);
+    debugPrint('云端压缩: 压缩后 ${jpegBytes.length} bytes (${(jpegBytes.length / 1024).toStringAsFixed(1)} KB), '
+        '压缩率 ${(100 - jpegBytes.length * 100 / imageBytes.length).toStringAsFixed(1)}%');
+
+    return jpegBytes;
+  }
+
   /// SSRF 防护：校验 URL 是否为公网地址
   bool _isValidPublicUrl(String url) {
     try {
@@ -401,6 +442,9 @@ class RecognitionService {
   /// 云端 API 识别（OpenAI 兼容格式，支持 DeepSeek-OCR / 硅基流动）
   /// 支持自动重试：若首次返回无效字符，用更强 prompt 重试一次
   Future<String?> _recognizeCloud(Uint8List imageBytes) async {
+    // 压缩大图以减少 API 传输量和耗时
+    final Uint8List compressedBytes = _compressForCloud(imageBytes);
+
     final cloudUrl = await getCloudUrl();
     final cloudKey = await getCloudKey();
 
@@ -410,7 +454,7 @@ class RecognitionService {
       return null;
     }
 
-    debugPrint('云端识别: 图片大小 ${imageBytes.length} bytes');
+    debugPrint('云端识别: 图片大小 ${compressedBytes.length} bytes');
 
     // 读取用户选择的模型
     final savedModel = await getModel();
@@ -429,7 +473,7 @@ class RecognitionService {
 
     for (int attempt = 0; attempt < prompts.length; attempt++) {
       try {
-        final base64Image = base64Encode(imageBytes);
+        final base64Image = base64Encode(compressedBytes);
 
         debugPrint('云端识别: 第${attempt + 1}次请求');
 
@@ -448,7 +492,7 @@ class RecognitionService {
                   {
                     'type': 'image_url',
                     'image_url': {
-                      'url': 'data:image/png;base64,$base64Image',
+                      'url': 'data:image/jpeg;base64,$base64Image',
                     },
                   },
                   {
