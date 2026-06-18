@@ -25,6 +25,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _savedProjectCount = 0;
+  int _totalCharCount = 0;
+  String _lastActivityDesc = '';
   List<FontProject> _recentProjects = [];
   String _appVersion = '';
 
@@ -41,14 +43,39 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadProjectData();
   }
 
-  /// 加载项目数据（数量 + 最近项目）
+  /// 加载项目数据（数量 + 最近项目 + 统计）
   Future<void> _loadProjectData() async {
     try {
       final projects = await StorageService.loadProjects();
       if (mounted) {
+        // 统计已识别字符数（所有项目中有轮廓的字符总数）
+        int charCount = 0;
+        for (final p in projects) {
+          charCount += p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+        }
+
+        // 最近活动时间
+        String lastDesc = '';
+        if (projects.isNotEmpty) {
+          final last = projects.first.updatedAt;
+          final diff = DateTime.now().difference(last);
+          if (diff.inMinutes < 1) {
+            lastDesc = '刚刚';
+          } else if (diff.inHours < 1) {
+            lastDesc = '${diff.inMinutes} 分钟前';
+          } else if (diff.inDays < 1) {
+            lastDesc = '${diff.inHours} 小时前';
+          } else if (diff.inDays < 30) {
+            lastDesc = '${diff.inDays} 天前';
+          } else {
+            lastDesc = '${last.month}/${last.day}';
+          }
+        }
+
         setState(() {
           _savedProjectCount = projects.length;
-          // 取最近 2 个项目（StorageService 已按 updatedAt 倒序排列）
+          _totalCharCount = charCount;
+          _lastActivityDesc = lastDesc;
           _recentProjects = projects.take(2).toList();
         });
       }
@@ -264,16 +291,24 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 20),
             // 统计栏
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildStatItem('$_savedProjectCount', '已保存项目'),
+                _buildStatItem('$_savedProjectCount', '已创建项目'),
                 Container(
                   width: 1,
                   height: 32,
                   color: Colors.white.withValues(alpha: 0.2),
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
                 ),
-                _buildStatItem(_appVersion, '当前版本'),
+                _buildStatItem('$_totalCharCount', '已识别字符'),
+                Container(
+                  width: 1,
+                  height: 32,
+                  color: Colors.white.withValues(alpha: 0.2),
+                ),
+                _buildStatItem(
+                  _lastActivityDesc.isNotEmpty ? _lastActivityDesc : '-',
+                  '最近活动',
+                ),
               ],
             ),
           ],

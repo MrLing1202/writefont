@@ -329,6 +329,53 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
     Navigator.pop(context);
   }
 
+  /// 按关闭按钮时检查未保存修改
+  Future<void> _onClosePressed() async {
+    if (!_isDirty) {
+      Navigator.pop(context);
+      return;
+    }
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(
+          Icons.save_outlined,
+          color: Theme.of(ctx).colorScheme.primary,
+          size: 36,
+        ),
+        title: const Text('未保存的修改'),
+        content: const Text('有未保存的修改，是否保存？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'discard'),
+            child: const Text('不保存'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    switch (result) {
+      case 'save':
+        _confirmEdit();
+        break;
+      case 'discard':
+        Navigator.pop(context);
+        break;
+      // 'cancel' or dismissed: do nothing
+    }
+  }
+
   /// 删除字符
   void _deleteCharacter() {
     showDialog(
@@ -532,7 +579,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.close),
-            onPressed: () => Navigator.pop(context),
+            onPressed: _onClosePressed,
             tooltip: '取消',
           ),
           title: Row(

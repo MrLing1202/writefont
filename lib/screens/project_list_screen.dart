@@ -708,14 +708,14 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                Icons.font_download_off,
+                Icons.font_download_outlined,
                 size: 60,
                 color: colorScheme.primary.withValues(alpha: 0.5),
               ),
             ),
             const SizedBox(height: 24),
             Text(
-              '还没有保存的字体项目',
+              '还没有手迹字体项目',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -724,7 +724,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              '拍照生成字体后，\n在预览页面点击「保存项目」即可保存到这里',
+              '点击下方按钮开始创建你的第一款手写字体',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 15,
@@ -736,7 +736,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
             FilledButton.icon(
               onPressed: () => Navigator.pop(context),
               icon: const Icon(Icons.add),
-              label: const Text('去创建字体'),
+              label: const Text('新建项目'),
             ),
           ],
         ),
