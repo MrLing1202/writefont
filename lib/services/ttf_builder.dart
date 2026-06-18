@@ -57,11 +57,15 @@ class TtfBuilder {
     // Ensure .notdef glyph exists at index 0
     _ensureNotdefGlyph();
 
-    // Build all tables
-    _buildHead();
-    _buildMaxp();
+    // 预计算所有字形度量（边界框 + advanceWidth）
+    // 必须在构建任何表之前完成，因为 head/hhea/hmtx/glyf 都依赖这些数据
+    _precomputeGlyphMetrics();
+
+    // Build all tables (glyf 必须先于 head/hhea，因为会更新字形边界框)
     _buildGlyf();
     _buildLoca();
+    _buildHead();
+    _buildMaxp();
     _buildHhea();
     _buildHmtx();
     _buildCmap();
@@ -154,6 +158,45 @@ class TtfBuilder {
         contours: [],
         xMin: 0, yMin: 0, xMax: 0, yMax: 0,
       ));
+    }
+  }
+
+  /// 预计算所有字形的精确度量
+  /// 1. 从轮廓点计算精确边界框
+  /// 2. 根据实际轮廓宽度计算合理的 advanceWidth
+  void _precomputeGlyphMetrics() {
+    for (final glyph in glyphs) {
+      if (glyph.contours.isEmpty) continue;
+
+      // 从轮廓点计算精确边界框
+      int xMin = 99999, yMin = 99999, xMax = -99999, yMax = -99999;
+      for (final contour in glyph.contours) {
+        for (final p in contour.points) {
+          if (p.x < xMin) xMin = p.x;
+          if (p.y < yMin) yMin = p.y;
+          if (p.x > xMax) xMax = p.x;
+          if (p.y > yMax) yMax = p.y;
+        }
+      }
+      glyph.xMin = xMin;
+      glyph.yMin = yMin;
+      glyph.xMax = xMax;
+      glyph.yMax = yMax;
+      // leftSideBearing = xMin（TrueType 规范）
+      glyph.leftSideBearing = xMin;
+
+      // 根据实际轮廓计算 advanceWidth
+      // 如果轮廓数据存在且 advanceWidth 为默认值，则基于轮廓宽度 + 边距计算
+      final contourWidth = xMax - xMin;
+      if (contourWidth > 0) {
+        // advanceWidth = 轮廓宽度 + 左侧起始边距 + 右侧留白
+        // 使用 xMin 作为左侧起始，右侧留白为轮廓宽度的 15%
+        final computedWidth = (xMin + contourWidth + contourWidth * 0.15).round();
+        // 仅当默认值不合理时才覆盖（默认值 <= 0 或远大于计算值的 2 倍）
+        if (glyph.advanceWidth <= 0 || glyph.advanceWidth > computedWidth * 2) {
+          glyph.advanceWidth = computedWidth.clamp(200, unitsPerEm);
+        }
+      }
     }
   }
 
@@ -376,43 +419,42 @@ class TtfBuilder {
 
   // --- hhea table ---
   void _buildHhea() {
-    final w = _Writer();
-    w.writeInt16(1);  // majorVersion
-    w.writeInt16(0);  // minorVersion
-    w.writeInt16(unitsPerEm * 8 ~/ 10); // ascender
-    w.writeInt16(-unitsPerEm ~/ 5);     // descender
-    w.writeInt16(0);  // lineGap
-    w.writeUint16(0); // advanceWidthMax (filled below)
-
-    // Calculate max advance width
+    // 计算 hhea 水平度量
     int maxAdv = 0;
+    int minLSB = 0;
+    int minRSB = 0;
+    int xMaxExt = 0;
+
     for (final g in glyphs) {
       if (g.advanceWidth > maxAdv) maxAdv = g.advanceWidth;
+      final lsb = g.xMin;
+      final rsb = g.advanceWidth - g.xMax;
+      final extent = g.xMax - g.xMin;
+      if (lsb < minLSB) minLSB = lsb;
+      if (rsb < minRSB) minRSB = rsb;
+      if (extent > xMaxExt) xMaxExt = extent;
     }
 
-    // Rewrite advanceWidthMax
-    final hheaBytes = w.toBytes();
-    // We need to set it properly, let's redo
-    final w2 = _Writer();
-    w2.writeUint32(0x00010000); // version (Fixed 16.16)
-    w2.writeInt16(unitsPerEm * 8 ~/ 10);
-    w2.writeInt16(-unitsPerEm ~/ 5);
-    w2.writeInt16(0);
-    w2.writeUint16(maxAdv); // advanceWidthMax
-    w2.writeInt16(0);  // minLeftSideBearing
-    w2.writeInt16(0);  // minRightSideBearing
-    w2.writeInt16(0);  // xMaxExtent
-    w2.writeInt16(1);  // caretSlopeRise
-    w2.writeInt16(0);  // caretSlopeRun
-    w2.writeInt16(0);  // caretOffset
-    w2.writeInt16(0);  // reserved
-    w2.writeInt16(0);  // reserved
-    w2.writeInt16(0);  // reserved
-    w2.writeInt16(0);  // reserved
-    w2.writeInt16(0);  // metricDataFormat
-    w2.writeUint16(glyphs.length); // numberOfHMetrics
+    final w = _Writer();
+    w.writeUint32(0x00010000); // version (Fixed 16.16)
+    w.writeInt16(unitsPerEm * 8 ~/ 10); // ascender
+    w.writeInt16(-unitsPerEm ~/ 5);     // descender
+    w.writeInt16(0);          // lineGap
+    w.writeUint16(maxAdv);    // advanceWidthMax
+    w.writeInt16(minLSB);     // minLeftSideBearing
+    w.writeInt16(minRSB);     // minRightSideBearing
+    w.writeInt16(xMaxExt);    // xMaxExtent
+    w.writeInt16(1);          // caretSlopeRise
+    w.writeInt16(0);          // caretSlopeRun
+    w.writeInt16(0);          // caretOffset
+    w.writeInt16(0);          // reserved
+    w.writeInt16(0);          // reserved
+    w.writeInt16(0);          // reserved
+    w.writeInt16(0);          // reserved
+    w.writeInt16(0);          // metricDataFormat
+    w.writeUint16(glyphs.length); // numberOfHMetrics
 
-    _tables['hhea'] = w2.toBytes();
+    _tables['hhea'] = w.toBytes();
   }
 
   // --- hmtx table ---
@@ -427,17 +469,17 @@ class TtfBuilder {
 
   // --- cmap table ---
   void _buildCmap() {
-    // Build format 4 subtable (covers BMP characters)
+    // Build format 4 subtable (covers BMP characters U+0000..U+FFFF)
     final entries = <_CmapEntry>[];
     for (int i = 0; i < glyphs.length; i++) {
-      if (glyphs[i].unicode > 0) {
+      if (glyphs[i].unicode > 0 && glyphs[i].unicode <= 0xFFFF) {
         entries.add(_CmapEntry(glyphs[i].unicode, i));
       }
     }
     entries.sort((a, b) => a.charCode.compareTo(b.charCode));
 
     // Build format 4 subtable
-    final segCount = entries.length + 1; // +1 for the .notdef segment
+    final segCount = entries.length + 1; // +1 for the .notdef terminator segment
     final segCountX2 = segCount * 2;
     int searchRange = 1;
     int entrySelector = 0;
@@ -448,74 +490,70 @@ class TtfBuilder {
     searchRange *= 2;
     final rangeShift = segCountX2 - searchRange;
 
-    final sub2 = _Writer();
-    sub2.writeUint16(4); // format
-    final lengthPos = sub2.offset;
-    sub2.writeUint16(0); // length (fill later)
-    sub2.writeUint16(0); // language
+    // format 4 子表长度 = 固定头部(14) + endCode(segCount*2) + pad(2) + startCode(segCount*2) + idDelta(segCount*2) + idRangeOffset(segCount*2)
+    final subtableLength = 14 + segCountX2 * 4 + 2;
 
-    sub2.writeUint16(segCountX2);
-    sub2.writeUint16(searchRange);
-    sub2.writeUint16(entrySelector);
-    sub2.writeUint16(rangeShift);
+    final sub = _Writer();
+    sub.writeUint16(4); // format
+    sub.writeUint16(subtableLength); // length
+    sub.writeUint16(0); // language
+
+    sub.writeUint16(segCountX2);
+    sub.writeUint16(searchRange);
+    sub.writeUint16(entrySelector);
+    sub.writeUint16(rangeShift);
 
     // endCode
     for (final e in entries) {
-      sub2.writeUint16(e.charCode);
+      sub.writeUint16(e.charCode);
     }
-    sub2.writeUint16(0xFFFF);
+    sub.writeUint16(0xFFFF); // terminator
 
     // reservedPad
-    sub2.writeUint16(0);
+    sub.writeUint16(0);
 
     // startCode
     for (final e in entries) {
-      sub2.writeUint16(e.charCode);
+      sub.writeUint16(e.charCode);
     }
-    sub2.writeUint16(0xFFFF); // terminator sentinel at end
+    sub.writeUint16(0xFFFF); // terminator sentinel
 
     // idDelta
     for (final e in entries) {
-      sub2.writeInt16(e.glyphIndex - e.charCode);
+      sub.writeInt16(e.glyphIndex - e.charCode);
     }
-    sub2.writeInt16(1); // terminator: (0xFFFF + 1) % 65536 = 0 (.notdef)
+    sub.writeInt16(1); // terminator: (0xFFFF + 1) % 65536 = 0 (.notdef)
 
-    // idRangeOffset - all zeros since we use idDelta
+    // idRangeOffset — all zeros (we use idDelta for direct mapping)
     for (int i = 0; i <= entries.length; i++) {
-      sub2.writeUint16(0);
+      sub.writeUint16(0);
     }
 
-    // Fix length
-    final sub2Bytes = sub2.toBytes();
-    sub2Bytes[lengthPos] = (sub2Bytes.length >> 8) & 0xFF;
-    sub2Bytes[lengthPos + 1] = sub2Bytes.length & 0xFF;
+    final subBytes = sub.toBytes();
 
-    // Build cmap table header
+    // Build cmap table with two encoding records for maximum compatibility:
+    //   Record 1: Platform 0 (Unicode), Encoding 3 (BMP) — standard Unicode
+    //   Record 2: Platform 3 (Windows), Encoding 1 (Unicode BMP) — Windows 兼容
+    const headerSize = 4; // version(2) + numTables(2)
+    const recordSize = 8; // platformID(2) + encodingID(2) + offset(4)
+    const numRecords = 2;
+    final subtableOffset = headerSize + numRecords * recordSize; // = 20
+
     final cmap = _Writer();
     cmap.writeUint16(0); // version
-    cmap.writeUint16(1); // numberSubtables
-    // Platform 0 (Unicode BMP), encoding 3
-    cmap.writeUint16(0); // platformID
-    cmap.writeUint16(3); // encodingID
-    cmap.writeUint32(12); // offset to subtable (header is 12 bytes for 1 subtable? No, 4+8=12)
+    cmap.writeUint16(numRecords); // numberSubtables
 
-    // Hmm, let me recalculate. cmap header: version(2) + numTables(2) = 4 bytes
-    // Each encoding record: 4+4+4 = 12 bytes
-    // So offset to subtable = 4 + 1*12 = 16... wait, that's wrong too.
-    // offset(4) bytes each: platformID(2) + encodingID(2) + offset(4) = 8 bytes per record
-    // So offset = 4 + 1*8 = 12
+    // Record 1: Unicode BMP (Platform 0, Encoding 3)
+    cmap.writeUint16(0); // platformID (Unicode)
+    cmap.writeUint16(3); // encodingID (Unicode 2.0 BMP)
+    cmap.writeUint32(subtableOffset); // offset to subtable
 
-    final cmapBytes = [...cmap.toBytes(), ...sub2Bytes];
-    // Fix the offset in the subtable offset field
-    // The offset should be relative to the start of the cmap table
-    // It's at position 8 (after version and numTables and platform/encoding)
-    // Should be 4 + 8*1 = 12
-    cmapBytes[8] = 0;
-    cmapBytes[9] = 0;
-    cmapBytes[10] = 0;
-    cmapBytes[11] = 12;
+    // Record 2: Windows BMP (Platform 3, Encoding 1)
+    cmap.writeUint16(3); // platformID (Windows)
+    cmap.writeUint16(1); // encodingID (Unicode BMP)
+    cmap.writeUint32(subtableOffset); // same subtable data
 
-    _tables['cmap'] = cmapBytes;
+    _tables['cmap'] = [...cmap.toBytes(), ...subBytes];
   }
 
   // --- name table ---
