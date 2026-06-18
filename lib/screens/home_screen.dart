@@ -24,25 +24,30 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _savedProjectCount = 0;
+  List<FontProject> _recentProjects = [];
 
   @override
   void initState() {
     super.initState();
-    _loadProjectCount();
+    _loadProjectData();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _loadProjectCount();
+    _loadProjectData();
   }
 
-  /// 加载已保存项目数量
-  Future<void> _loadProjectCount() async {
+  /// 加载项目数据（数量 + 最近项目）
+  Future<void> _loadProjectData() async {
     try {
       final projects = await StorageService.loadProjects();
       if (mounted) {
-        setState(() => _savedProjectCount = projects.length);
+        setState(() {
+          _savedProjectCount = projects.length;
+          // 取最近 2 个项目（StorageService 已按 updatedAt 倒序排列）
+          _recentProjects = projects.take(2).toList();
+        });
       }
     } catch (_) {}
   }
@@ -64,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
               context,
               MaterialPageRoute(builder: (_) => const ProjectListScreen()),
             );
-            _loadProjectCount();
+            _loadProjectData();
           },
         ),
         actions: [
@@ -155,6 +160,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 24),
 
+              // ── 最近项目快捷入口 ──
+              if (_recentProjects.isNotEmpty) ...[
+                _buildRecentProjectsHeader(),
+                const SizedBox(height: 12),
+                ..._recentProjects.asMap().entries.map((entry) {
+                  return WFAnimations.fadeInSlide(
+                    _buildRecentProjectCard(context, entry.value),
+                    delay: Duration(milliseconds: 480 + entry.key * 80),
+                  );
+                }),
+                const SizedBox(height: 24),
+              ],
+
               // 底部提示
               Text(
                 '推荐使用标准字表，生成效果更好',
@@ -240,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white.withValues(alpha: 0.2),
                   margin: const EdgeInsets.symmetric(horizontal: 24),
                 ),
-                _buildStatItem('v1.13.0', '当前版本'),
+                _buildStatItem('v1.15.0', '当前版本'),
               ],
             ),
           ],
@@ -269,6 +287,102 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 最近项目快捷入口
+  // ═══════════════════════════════════════════════════════
+
+  Widget _buildRecentProjectsHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        children: [
+          Icon(Icons.history, size: 18, color: WFColors.textSecondary),
+          const SizedBox(width: 8),
+          Text(
+            '最近项目',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: WFColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentProjectCard(BuildContext context, FontProject project) {
+    final glyphCount = project.glyphs.length;
+    // 计算时间差描述
+    final diff = DateTime.now().difference(project.updatedAt);
+    String timeDesc;
+    if (diff.inMinutes < 1) {
+      timeDesc = '刚刚';
+    } else if (diff.inHours < 1) {
+      timeDesc = '${diff.inMinutes} 分钟前';
+    } else if (diff.inDays < 1) {
+      timeDesc = '${diff.inHours} 小时前';
+    } else if (diff.inDays < 30) {
+      timeDesc = '${diff.inDays} 天前';
+    } else {
+      timeDesc = '${project.updatedAt.month}/${project.updatedAt.day}';
+    }
+
+    return WFCard(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CharacterGridScreen(project: project),
+          ),
+        );
+      },
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          // 项目图标
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: WFColors.info.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.font_download, size: 22, color: WFColors.info),
+          ),
+          const SizedBox(width: 14),
+          // 项目信息
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  project.name,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: WFColors.textPrimary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$glyphCount 个字符 · $timeDesc',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: WFColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, size: 20, color: WFColors.textLight),
+        ],
+      ),
     );
   }
 
@@ -310,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const ProjectListScreen()),
               );
-              _loadProjectCount();
+              _loadProjectData();
             },
           ),
           const Divider(height: 1, indent: 56),
