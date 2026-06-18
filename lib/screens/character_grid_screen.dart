@@ -5,6 +5,7 @@ import '../services/storage_service.dart';
 import 'character_edit_screen.dart';
 import 'capture_screen.dart';
 import 'font_test_screen.dart';
+import 'font_quality_screen.dart';
 import '../theme/app_theme.dart';
 
 /// 筛选模式枚举
@@ -284,6 +285,18 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   },
                   icon: const Icon(Icons.text_fields),
                   tooltip: '字体测试',
+                ),
+                IconButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FontQualityScreen(project: _project),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.assessment),
+                  tooltip: '质量分析',
                 ),
                 IconButton(
                   onPressed: () async {
