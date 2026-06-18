@@ -41,8 +41,16 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   /// 获取 SharedPreferences 实例（带缓存）
   static Future<SharedPreferences> getPrefs() async {
-    _prefsCache ??= await SharedPreferences.getInstance();
-    return _prefsCache!;
+    if (_prefsCache != null) return _prefsCache!;
+    try {
+      _prefsCache = await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 5),
+      );
+      return _prefsCache!;
+    } catch (e) {
+      debugPrint('SharedPreferences 初始化超时或失败: $e');
+      rethrow;
+    }
   }
 
   @override
@@ -51,6 +59,14 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _loadThemeMode();
     _checkOnboarding();
+    // 兜底：3秒后无论如何都取消加载状态
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && !_onboardingChecked) {
+        setState(() {
+          _onboardingChecked = true;
+        });
+      }
+    });
   }
 
   /// 检查是否已看过新手引导
