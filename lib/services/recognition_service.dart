@@ -412,6 +412,15 @@ class RecognitionService {
 
     debugPrint('云端识别: 图片大小 ${imageBytes.length} bytes');
 
+    // 读取用户选择的模型
+    final savedModel = await getModel();
+    String modelName = savedModel;
+    if (savedModel == 'custom') {
+      final customModel = await getCustomModel();
+      modelName = customModel.isNotEmpty ? customModel : defaultModel;
+    }
+    if (modelName.isEmpty) modelName = defaultModel;
+
     // 两轮 prompt：首轮常规，重试时加强语气
     final prompts = [
       '这是一个手写汉字的图片，请识别图片中的汉字。只输出一个汉字，不要输出其他任何内容。如果识别不出，输出?',
@@ -431,7 +440,7 @@ class RecognitionService {
             if (cloudKey != null && cloudKey.isNotEmpty) 'Authorization': 'Bearer $cloudKey',
           },
           body: jsonEncode({
-            'model': defaultModel,
+            'model': modelName,
             'messages': [
               {
                 'role': 'user',

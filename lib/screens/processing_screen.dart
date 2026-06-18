@@ -5,6 +5,7 @@ import '../models/project.dart';
 import '../services/image_processor.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
+import '../services/app_config_service.dart';
 import '../data/standard_charset.dart';
 
 class ProcessingScreen extends StatefulWidget {
@@ -55,9 +56,18 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
   @override
   void initState() {
     super.initState();
-    _params = ProcessingParams();
+    _loadParams().then((_) => _processImages());
+  }
+
+  Future<void> _loadParams() async {
+    final config = AppConfigService.instance;
+    _params = ProcessingParams(
+      threshold: await config.getThreshold(),
+      contrast: await config.getContrast(),
+      smoothness: await config.getSmoothness(),
+      strokeWidth: await config.getStrokeWidth(),
+    );
     _loadUseCloudSetting();
-    _processImages();
   }
 
   /// 读取 OCR 识别模式设置
@@ -173,6 +183,12 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
     setState(() {
       _params = newParams;
     });
+    // 回写参数到 AppConfigService
+    final config = AppConfigService.instance;
+    config.setThreshold(newParams.threshold);
+    config.setContrast(newParams.contrast);
+    config.setSmoothness(newParams.smoothness);
+    config.setStrokeWidth(newParams.strokeWidth);
     // Debounce: 只在用户停止拖动 500ms 后才触发处理
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {

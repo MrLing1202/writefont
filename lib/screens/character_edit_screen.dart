@@ -643,7 +643,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                     icon: const Icon(Icons.zoom_out, size: 20),
                     onPressed: _zoomOut,
                     tooltip: '缩小',
-                    iconColor: colorScheme.onSurfaceVariant,
+                    color: colorScheme.onSurfaceVariant,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                         minWidth: 32, minHeight: 32),
@@ -652,7 +652,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                     icon: const Icon(Icons.zoom_in, size: 20),
                     onPressed: _zoomIn,
                     tooltip: '放大',
-                    iconColor: colorScheme.onSurfaceVariant,
+                    color: colorScheme.onSurfaceVariant,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                         minWidth: 32, minHeight: 32),

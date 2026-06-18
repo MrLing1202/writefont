@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'auto_generate_screen.dart';
+import 'font_preview_screen.dart';
 import 'processing_screen.dart';
 import 'project_list_screen.dart';
 import 'settings_screen.dart';
@@ -168,6 +169,10 @@ class _HomeScreenState extends State<HomeScreen> {
               // 我的字体入口卡片
               _buildMyFontsCard(context, colorScheme),
 
+              const SizedBox(height: 16),
+
+              // 字体预览入口卡片
+              _buildPreviewCard(context, colorScheme),
               const SizedBox(height: 32),
 
               // 底部提示
@@ -438,6 +443,82 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
 
               // 箭头
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 字体预览入口卡片
+  Widget _buildPreviewCard(BuildContext context, ColorScheme colorScheme) {
+    return Card(
+      elevation: 2,
+      shadowColor: colorScheme.tertiaryContainer.withValues(alpha: 0.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const FontPreviewScreen(),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            color: colorScheme.tertiaryContainer.withValues(alpha: 0.15),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: colorScheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.visibility,
+                  size: 28,
+                  color: colorScheme.onTertiaryContainer,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '字体预览',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '输入文字查看手迹效果',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Icon(
                 Icons.arrow_forward_ios,
                 size: 16,
