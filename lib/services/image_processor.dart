@@ -239,7 +239,7 @@ class ImageProcessor {
     Uint8List imageBytes,
     ProcessingParams params, {
     ProgressCallback? onProgress,
-    Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 60),
   }) async {
     final stopwatch = Stopwatch()..start();
 
