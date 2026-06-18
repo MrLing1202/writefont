@@ -4,6 +4,7 @@ import '../data/standard_charset.dart';
 import '../services/storage_service.dart';
 import 'character_edit_screen.dart';
 import 'capture_screen.dart';
+import 'font_test_screen.dart';
 import '../theme/app_theme.dart';
 
 /// 筛选模式枚举
@@ -272,6 +273,18 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
           : WFAppBar(
               title: _project.name,
               actions: [
+                IconButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FontTestScreen(project: _project),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.text_fields),
+                  tooltip: '字体测试',
+                ),
                 IconButton(
                   onPressed: () async {
                     final updated =
