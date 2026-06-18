@@ -346,7 +346,7 @@ class RecognitionService {
     try {
       final pngBytes = img.encodePng(image);
       final tempDir = await getTemporaryDirectory();
-      tempFile = File('${tempDir.path}/mlkit_${DateTime.now().millisecondsSinceEpoch}.png');
+      tempFile = File('${tempDir.path}/mlkit_${DateTime.now().millisecondsSinceEpoch}_${(100000 + (900000 * (DateTime.now().microsecond % 1000) / 1000).round())}.png');
       await tempFile.writeAsBytes(pngBytes);
 
       final inputImage = InputImage.fromFilePath(tempFile.path);
