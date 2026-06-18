@@ -328,7 +328,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
     super.dispose();
   }
 
-  void _proceedToPreview() {
+  Future<void> _proceedToPreview() async {
     if (_processedCells.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('没有识别到字符，请调整参数后重试')),
