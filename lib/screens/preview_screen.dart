@@ -365,29 +365,49 @@ class _PreviewScreenState extends State<PreviewScreen> {
       runSpacing: 6,
       children: glyphs.entries.map((entry) {
         final glyph = entry.value;
-        return Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: colorScheme.outlineVariant),
-            color: colorScheme.surface,
-          ),
-          child: glyph.contours.isNotEmpty
-              ? _GlyphWidget(
-                  contours: glyph.contours,
-                  size: 32,
-                  color: colorScheme.onSurface,
-                )
-              : Center(
-                  child: Text(
-                    entry.key,
-                    style: TextStyle(
-                      fontSize: 20,
-                      color: colorScheme.onSurface,
-                    ),
+        final unicodeHex = 'U+${glyph.unicode.toRadixString(16).toUpperCase().padLeft(4, '0')}';
+        return Tooltip(
+          message: '$unicodeHex (${glyph.contours.length} 轮廓)',
+          child: Container(
+            width: 48,
+            height: 58,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colorScheme.outlineVariant),
+              color: colorScheme.surface,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: glyph.contours.isNotEmpty
+                      ? _GlyphWidget(
+                          contours: glyph.contours,
+                          size: 32,
+                          color: colorScheme.onSurface,
+                        )
+                      : Center(
+                          child: Text(
+                            entry.key,
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                ),
+                Text(
+                  unicodeHex.substring(2), // 显示 4 位十六进制
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: colorScheme.onSurfaceVariant,
+                    fontFamily: 'monospace',
                   ),
                 ),
+                const SizedBox(height: 2),
+              ],
+            ),
+          ),
         );
       }).toList(),
     );

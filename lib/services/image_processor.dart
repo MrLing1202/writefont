@@ -201,8 +201,21 @@ class ImageProcessor {
     final image = img.decodeImage(imageBytes);
     if (image == null) return [];
 
-    final gray = img.grayscale(image);
+    // 大图等比缩小，避免 BFS 在百万像素级别卡死闪退
+    img.Image workImage = image;
+    final maxDim = workImage.width > workImage.height ? workImage.width : workImage.height;
+    if (maxDim > 800) {
+      final scale = 800.0 / maxDim;
+      final newW = (workImage.width * scale).round().clamp(1, 99999);
+      final newH = (workImage.height * scale).round().clamp(1, 99999);
+      debugPrint('extractContours: 大图缩小 ${workImage.width}x${workImage.height} -> ${newW}x$newH');
+      workImage = img.copyResize(workImage, width: newW, height: newH, interpolation: img.Interpolation.linear);
+    }
+
+    final gray = img.grayscale(workImage);
     final binary = _binarize(gray, params.threshold, params.invertColors);
+
+    debugPrint('extractContours: 开始轮廓提取, 图片 ${binary.width}x${binary.height}');
 
     // Find connected components and trace contours (outer boundaries)
     final List<Contour> allContours = [];
@@ -232,6 +245,7 @@ class ImageProcessor {
     // --- Hole detection: find white regions enclosed by black pixels ---
     // Flood fill from image edges to mark all exterior white pixels.
     // Any white pixel NOT reached is an interior hole.
+    debugPrint('extractContours: 开始空心字检测 BFS...');
     final w = binary.width, h = binary.height;
     final isExterior = List.generate(h, (_) => List.filled(w, false));
     final bfsDirs4 = const [[1, 0], [-1, 0], [0, 1], [0, -1]];
