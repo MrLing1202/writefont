@@ -179,7 +179,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          '使用 Google ML Kit 离线识别中文手写字符，无需网络，完全免费。',
+                          '使用本地离线识别中文手写字符，无需网络，完全免费。',
                           style: TextStyle(
                             fontSize: 14,
                             color: colorScheme.onSurfaceVariant,
@@ -249,7 +249,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                         // 开关
                         SwitchListTile(
                           title: const Text('启用云端识别'),
-                          subtitle: const Text('关闭则使用本地 ML Kit'),
+                          subtitle: const Text('关闭则使用本地识别'),
                           value: _useCloud,
                           onChanged: (value) {
                             setState(() => _useCloud = value);

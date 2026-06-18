@@ -305,7 +305,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: false,
             groupValue: _useCloud,
             onChanged: (v) => _toggleUseCloud(v!),
-            title: const Text('本地 ML Kit'),
+            title: const Text('本地识别'),
             subtitle: const Text('离线识别，无需网络，免费使用'),
             secondary: Icon(
               Icons.phone_android,

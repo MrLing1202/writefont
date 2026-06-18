@@ -59,7 +59,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    RecognitionService.instance.dispose(); // 释放 ML Kit 资源
+    RecognitionService.instance.dispose(); // 释放识别服务资源
     super.dispose();
   }
 
