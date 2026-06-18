@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/project.dart';
+import '../data/standard_charset.dart';
 import '../services/storage_service.dart';
 import 'preview_screen.dart';
 import 'character_grid_screen.dart';
@@ -491,14 +492,25 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
     ).then((_) => _loadProjects()); // 返回时刷新列表
   }
 
-  /// 获取项目统计信息
-  (int total, int edited, double progress) _getProjectStats(FontProject project) {
-    final total = project.glyphs.length;
-    final edited = project.glyphs.values
+  /// 获取项目统计信息（基于标准字表 108 字）
+  (int totalChars, int editedChars, int standardTotal, int standardEdited, double progress)
+      _getProjectStats(FontProject project) {
+    final totalChars = project.glyphs.length;
+    final editedChars = project.glyphs.values
         .where((g) => g.contours.isNotEmpty)
         .length;
-    final progress = total > 0 ? edited / total : 0.0;
-    return (total, edited, progress);
+
+    // 标准字表进度：108 个标准字符中有多少已编辑
+    final standardTotal = StandardCharset.allChars.length;
+    int standardEdited = 0;
+    for (final sc in StandardCharset.allChars) {
+      final glyph = project.glyphs[sc.char];
+      if (glyph != null && glyph.contours.isNotEmpty) {
+        standardEdited++;
+      }
+    }
+    final progress = standardTotal > 0 ? standardEdited / standardTotal : 0.0;
+    return (totalChars, editedChars, standardTotal, standardEdited, progress);
   }
 
   @override
@@ -693,9 +705,11 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
   /// 单个项目卡片（带统计信息和长按菜单）
   Widget _buildProjectCard(FontProject project, ColorScheme colorScheme) {
     final stats = _getProjectStats(project);
-    final total = stats.$1;
-    final edited = stats.$2;
-    final progress = stats.$3;
+    final totalChars = stats.$1;
+    final editedChars = stats.$2;
+    final standardTotal = stats.$3;
+    final standardEdited = stats.$4;
+    final progress = stats.$5;
     final createdStr = _formatDate(project.createdAt);
     final updatedStr = _formatDate(project.updatedAt);
 
@@ -761,7 +775,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '$total 个字符',
+                              '$totalChars 个字符',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: colorScheme.onSurfaceVariant,
@@ -775,7 +789,7 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '已编辑 $edited',
+                              '已编辑 $editedChars',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: colorScheme.onSurfaceVariant,
@@ -921,8 +935,8 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                   ),
                 ],
               ),
-              // 进度条
-              if (total > 0) ...[
+              // 进度条（基于标准字表 108 字）
+              if (standardTotal > 0) ...[
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -942,10 +956,14 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    if (progress >= 1.0) ...[
+                      Icon(Icons.check_circle, size: 18, color: Colors.green),
+                      const SizedBox(width: 4),
+                    ],
                     Text(
-                      '${(progress * 100).toStringAsFixed(0)}%',
+                      '$standardEdited/$standardTotal  ${(progress * 100).toStringAsFixed(0)}%',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: progress >= 1.0
                             ? Colors.green
