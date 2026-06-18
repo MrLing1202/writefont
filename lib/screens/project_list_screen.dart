@@ -16,6 +16,8 @@ enum SortMode {
   createdAsc, // 按创建时间正序
   updatedDesc, // 按修改时间倒序
   updatedAsc, // 按修改时间正序
+  charCountDesc, // 按字符数量倒序
+  charCountAsc, // 按字符数量正序
 }
 
 /// 项目管理页面：列出所有已保存的字体项目
@@ -88,6 +90,12 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
       case SortMode.updatedAsc:
         _projects.sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
         break;
+      case SortMode.charCountDesc:
+        _projects.sort((a, b) => b.glyphs.length.compareTo(a.glyphs.length));
+        break;
+      case SortMode.charCountAsc:
+        _projects.sort((a, b) => a.glyphs.length.compareTo(b.glyphs.length));
+        break;
     }
   }
 
@@ -118,6 +126,12 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
           _sortMode = SortMode.createdAsc;
           break;
         case SortMode.createdAsc:
+          _sortMode = SortMode.charCountDesc;
+          break;
+        case SortMode.charCountDesc:
+          _sortMode = SortMode.charCountAsc;
+          break;
+        case SortMode.charCountAsc:
           _sortMode = SortMode.updatedDesc;
           break;
       }
@@ -140,6 +154,10 @@ class _ProjectListScreenState extends State<ProjectListScreen> {
         return (Icons.access_time, '修改时间↓');
       case SortMode.updatedAsc:
         return (Icons.access_time, '修改时间↑');
+      case SortMode.charCountDesc:
+        return (Icons.numbers, '字符数↓');
+      case SortMode.charCountAsc:
+        return (Icons.numbers, '字符数↑');
     }
   }
 
