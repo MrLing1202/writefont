@@ -165,8 +165,8 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
       return;
     }
 
-    final result = await WFDialog.show<String>(
-      context: context,
+    final result = await WFDialog.show<String>(context,
+
       title: '未保存的修改',
       content: Column(
         mainAxisSize: MainAxisSize.min,
