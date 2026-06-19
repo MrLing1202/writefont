@@ -2947,3 +2947,489 @@ class LearningService {
     } catch (_) {}
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 用户行为分析服务：行为跟踪、行为分析、行为预测、行为优化
+// ═══════════════════════════════════════════════════════════
+
+/// 用户行为类型枚举
+enum UserBehaviorType {
+  pageVisit,      // 页面访问
+  featureUse,     // 功能使用
+  projectCreate,  // 项目创建
+  projectEdit,    // 项目编辑
+  projectDelete,  // 项目删除
+  exportFont,     // 导出字体
+  settingsChange, // 设置变更
+  search,         // 搜索行为
+  share,          // 分享行为
+}
+
+/// 用户行为记录数据模型
+class UserBehaviorRecord {
+  final String id;
+  final UserBehaviorType type;
+  final String action;
+  final Map<String, dynamic>? metadata;
+  final DateTime timestamp;
+
+  UserBehaviorRecord({
+    required this.id,
+    required this.type,
+    required this.action,
+    this.metadata,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type.name,
+        'action': action,
+        'metadata': metadata,
+        'timestamp': timestamp.toIso8601String(),
+      };
+
+  factory UserBehaviorRecord.fromJson(Map<String, dynamic> json) =>
+      UserBehaviorRecord(
+        id: json['id'] as String,
+        type: UserBehaviorType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => UserBehaviorType.pageVisit,
+        ),
+        action: json['action'] as String,
+        metadata: json['metadata'] as Map<String, dynamic>?,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+      );
+}
+
+/// 用户行为分析服务
+///
+/// 功能：
+/// - 行为跟踪：记录用户各类操作行为
+/// - 行为分析：分析用户行为模式和偏好
+/// - 行为预测：基于历史行为预测用户意图
+/// - 行为优化：基于分析结果优化用户体验
+class UserBehaviorAnalysisService {
+  static final UserBehaviorAnalysisService _instance = UserBehaviorAnalysisService._();
+  static UserBehaviorAnalysisService get instance => _instance;
+  UserBehaviorAnalysisService._();
+
+  final List<UserBehaviorRecord> _behaviorRecords = [];
+  static const int _maxRecords = 1000;
+  static const String _storageKey = 'user_behavior_records';
+
+  /// 初始化行为分析服务
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_storageKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _behaviorRecords.clear();
+        _behaviorRecords.addAll(
+          list.map((e) => UserBehaviorRecord.fromJson(e as Map<String, dynamic>)),
+        );
+      }
+      debugPrint('[BehaviorAnalysis] 初始化完成，${_behaviorRecords.length} 条记录');
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 初始化失败: $e');
+    }
+  }
+
+  // ═══ 行为跟踪 ═══
+
+  /// 记录用户行为
+  ///
+  /// [type] 行为类型
+  /// [action] 具体操作描述
+  /// [metadata] 附加元数据
+  Future<void> trackBehavior(UserBehaviorType type, String action,
+      {Map<String, dynamic>? metadata}) async {
+    try {
+      final record = UserBehaviorRecord(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        type: type,
+        action: action,
+        metadata: metadata,
+      );
+      _behaviorRecords.add(record);
+      // 限制记录数量
+      if (_behaviorRecords.length > _maxRecords) {
+        _behaviorRecords.removeRange(0, _behaviorRecords.length - _maxRecords);
+      }
+      await _saveRecords();
+      debugPrint('[BehaviorAnalysis] 记录行为: ${type.name} - $action');
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 记录行为失败: $e');
+    }
+  }
+
+  /// 持久化行为记录
+  Future<void> _saveRecords() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_behaviorRecords.map((e) => e.toJson()).toList());
+      await prefs.setString(_storageKey, json);
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 保存记录失败: $e');
+    }
+  }
+
+  // ═══ 行为分析 ═══
+
+  /// 获取行为统计报告
+  ///
+  /// 返回按行为类型分组的统计数据
+  Map<String, dynamic> getBehaviorStats() {
+    try {
+      final typeCounts = <String, int>{};
+      final actionCounts = <String, int>{};
+      final hourlyDistribution = <int, int>{};
+      final dailyDistribution = <String, int>{};
+
+      for (final record in _behaviorRecords) {
+        // 按类型统计
+        typeCounts[record.type.name] = (typeCounts[record.type.name] ?? 0) + 1;
+        // 按操作统计
+        actionCounts[record.action] = (actionCounts[record.action] ?? 0) + 1;
+        // 按小时分布
+        hourlyDistribution[record.timestamp.hour] =
+            (hourlyDistribution[record.timestamp.hour] ?? 0) + 1;
+        // 按日分布
+        final dateKey = '${record.timestamp.year}-${record.timestamp.month.toString().padLeft(2, '0')}-${record.timestamp.day.toString().padLeft(2, '0')}';
+        dailyDistribution[dateKey] = (dailyDistribution[dateKey] ?? 0) + 1;
+      }
+
+      // 找出最活跃时段
+      int peakHour = 0;
+      int peakHourCount = 0;
+      hourlyDistribution.forEach((hour, count) {
+        if (count > peakHourCount) {
+          peakHour = hour;
+          peakHourCount = count;
+        }
+      });
+
+      return {
+        'totalRecords': _behaviorRecords.length,
+        'typeCounts': typeCounts,
+        'actionCounts': actionCounts,
+        'hourlyDistribution': hourlyDistribution,
+        'dailyDistribution': dailyDistribution,
+        'peakHour': peakHour,
+        'peakHourCount': peakHourCount,
+      };
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 获取行为统计失败: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  /// 获取用户偏好分析
+  ///
+  /// 基于行为记录分析用户的功能偏好和使用习惯
+  Map<String, dynamic> getUserPreferences() {
+    try {
+      // 功能偏好（按使用频率排序）
+      final featureUsage = <String, int>{};
+      for (final record in _behaviorRecords) {
+        if (record.type == UserBehaviorType.featureUse) {
+          featureUsage[record.action] = (featureUsage[record.action] ?? 0) + 1;
+        }
+      }
+      final sortedFeatures = featureUsage.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      // 使用时段偏好
+      final stats = getBehaviorStats();
+      final peakHour = stats['peakHour'] as int;
+      String timePreference;
+      if (peakHour >= 6 && peakHour < 12) {
+        timePreference = 'morning';
+      } else if (peakHour >= 12 && peakHour < 18) {
+        timePreference = 'afternoon';
+      } else if (peakHour >= 18 && peakHour < 22) {
+        timePreference = 'evening';
+      } else {
+        timePreference = 'night';
+      }
+
+      // 活跃度评估
+      final dailyDist = stats['dailyDistribution'] as Map<String, int>;
+      final activeDays = dailyDist.length;
+      String activityLevel;
+      if (activeDays >= 20) {
+        activityLevel = 'high';
+      } else if (activeDays >= 10) {
+        activityLevel = 'medium';
+      } else {
+        activityLevel = 'low';
+      }
+
+      return {
+        'topFeatures': sortedFeatures.take(5).map((e) => {
+              'feature': e.key,
+              'count': e.value,
+            }).toList(),
+        'timePreference': timePreference,
+        'peakHour': peakHour,
+        'activityLevel': activityLevel,
+        'activeDays': activeDays,
+      };
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 获取用户偏好失败: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  // ═══ 行为预测 ═══
+
+  /// 预测用户下一步可能的操作
+  ///
+  /// 基于最近的行为序列和历史模式进行预测
+  List<Map<String, dynamic>> predictNextActions({int topN = 3}) {
+    try {
+      if (_behaviorRecords.length < 5) {
+        return [];
+      }
+
+      // 获取最近的行为序列
+      final recentActions = _behaviorRecords
+          .takeLast(20)
+          .map((r) => r.action)
+          .toList();
+
+      // 分析行为转移模式
+      final transitionCounts = <String, Map<String, int>>{};
+      for (int i = 0; i < _behaviorRecords.length - 1; i++) {
+        final current = _behaviorRecords[i].action;
+        final next = _behaviorRecords[i + 1].action;
+        transitionCounts.putIfAbsent(current, () => {});
+        transitionCounts[current]![next] = (transitionCounts[current]![next] ?? 0) + 1;
+      }
+
+      // 基于最近行为预测
+      final lastAction = recentActions.last;
+      final transitions = transitionCounts[lastAction];
+      if (transitions == null || transitions.isEmpty) {
+        return [];
+      }
+
+      final sortedTransitions = transitions.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      final totalTransitions = sortedTransitions.fold(0, (sum, e) => sum + e.value);
+
+      return sortedTransitions.take(topN).map((e) => {
+            'action': e.key,
+            'probability': (e.value / totalTransitions * 100).toStringAsFixed(1),
+            'confidence': e.value > 3 ? 'high' : e.value > 1 ? 'medium' : 'low',
+          }).toList();
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 行为预测失败: $e');
+      return [];
+    }
+  }
+
+  /// 预测用户可能感兴趣的功能
+  ///
+  /// 基于已使用功能的相关性推荐未使用功能
+  List<Map<String, dynamic>> suggestFeatures({int topN = 3}) {
+    try {
+      // 功能关联规则（预定义的功能关联矩阵）
+      final featureRelations = {
+        'capture': ['standard', 'quick', 'free', 'processing'],
+        'standard': ['capture', 'preview', 'export'],
+        'quick': ['capture', 'auto_generate'],
+        'free': ['capture', 'preview'],
+        'ai': ['preview', 'export'],
+        'preview': ['export', 'share'],
+        'export': ['share'],
+        'settings': ['ocr_settings', 'theme'],
+      };
+
+      // 获取用户已使用的功能
+      final usedFeatures = <String>{};
+      for (final record in _behaviorRecords) {
+        if (record.type == UserBehaviorType.featureUse) {
+          usedFeatures.add(record.action);
+        }
+      }
+
+      // 推荐关联功能
+      final recommendations = <String, int>{};
+      for (final feature in usedFeatures) {
+        final related = featureRelations[feature] ?? [];
+        for (final relatedFeature in related) {
+          if (!usedFeatures.contains(relatedFeature)) {
+            recommendations[relatedFeature] = (recommendations[relatedFeature] ?? 0) + 1;
+          }
+        }
+      }
+
+      final sorted = recommendations.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      return sorted.take(topN).map((e) => {
+            'feature': e.key,
+            'relevance': e.value,
+            'reason': '基于您使用的相关功能推荐',
+          }).toList();
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 功能推荐失败: $e');
+      return [];
+    }
+  }
+
+  // ═══ 行为优化 ═══
+
+  /// 获取用户体验优化建议
+  ///
+  /// 基于行为分析结果生成优化建议
+  List<Map<String, dynamic>> getOptimizationSuggestions() {
+    try {
+      final suggestions = <Map<String, dynamic>>[];
+      final stats = getBehaviorStats();
+      final preferences = getUserPreferences();
+
+      // 1. 基于活跃度的建议
+      final activityLevel = preferences['activityLevel'] as String;
+      if (activityLevel == 'low') {
+        suggestions.add({
+          'type': 'engagement',
+          'priority': 'high',
+          'title': '提升使用频率',
+          'description': '您最近使用频率较低，建议设置每日提醒保持创作习惯',
+          'action': '设置提醒',
+        });
+      }
+
+      // 2. 基于功能使用的建议
+      final topFeatures = preferences['topFeatures'] as List;
+      if (topFeatures.isNotEmpty) {
+        final mostUsed = topFeatures.first['feature'] as String;
+        if (mostUsed == 'capture' && !topFeatures.any((f) => f['feature'] == 'preview')) {
+          suggestions.add({
+            'type': 'feature_discovery',
+            'priority': 'medium',
+            'title': '尝试预览功能',
+            'description': '您经常使用拍摄功能，建议尝试预览功能查看字体效果',
+            'action': '去预览',
+          });
+        }
+      }
+
+      // 3. 基于使用时段的建议
+      final timePreference = preferences['timePreference'] as String;
+      if (timePreference == 'night') {
+        suggestions.add({
+          'type': 'comfort',
+          'priority': 'low',
+          'title': '夜间模式',
+          'description': '您经常在夜间使用，建议开启深色模式保护视力',
+          'action': '开启深色模式',
+        });
+      }
+
+      // 4. 基于错误频率的建议
+      final typeCounts = stats['typeCounts'] as Map<String, int>;
+      final errorCount = typeCounts[UserBehaviorType.settingsChange.name] ?? 0;
+      if (errorCount > 10) {
+        suggestions.add({
+          'type': 'stability',
+          'priority': 'medium',
+          'title': '频繁修改设置',
+          'description': '您频繁修改设置，建议找到合适的配置后保存为预设',
+          'action': '保存预设',
+        });
+      }
+
+      return suggestions;
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 获取优化建议失败: $e');
+      return [];
+    }
+  }
+
+  /// 获取行为分析报告
+  ///
+  /// 生成完整的用户行为分析报告
+  String generateBehaviorReport() {
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 用户行为分析报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      final stats = getBehaviorStats();
+      final preferences = getUserPreferences();
+
+      // 行为概览
+      buffer.writeln('【行为概览】');
+      buffer.writeln('  总记录数: ${stats['totalRecords']}');
+      buffer.writeln('  活跃天数: ${preferences['activeDays']}');
+      buffer.writeln('  活跃度: ${preferences['activityLevel']}');
+      buffer.writeln('  偏好时段: ${preferences['timePreference']}');
+      buffer.writeln('  最活跃小时: ${stats['peakHour']}:00');
+      buffer.writeln();
+
+      // 功能偏好
+      buffer.writeln('【功能偏好】');
+      final topFeatures = preferences['topFeatures'] as List;
+      if (topFeatures.isEmpty) {
+        buffer.writeln('  暂无功能使用记录');
+      } else {
+        for (int i = 0; i < topFeatures.length; i++) {
+          final feature = topFeatures[i];
+          buffer.writeln('  ${i + 1}. ${feature['feature']}: ${feature['count']} 次');
+        }
+      }
+      buffer.writeln();
+
+      // 行为类型分布
+      buffer.writeln('【行为类型分布】');
+      final typeCounts = stats['typeCounts'] as Map<String, int>;
+      for (final entry in typeCounts.entries) {
+        buffer.writeln('  ${entry.key}: ${entry.value} 次');
+      }
+      buffer.writeln();
+
+      // 优化建议
+      buffer.writeln('【优化建议】');
+      final suggestions = getOptimizationSuggestions();
+      if (suggestions.isEmpty) {
+        buffer.writeln('  暂无优化建议，继续保持良好的使用习惯！');
+      } else {
+        for (int i = 0; i < suggestions.length; i++) {
+          final s = suggestions[i];
+          buffer.writeln('  ${i + 1}. ${s['title']}');
+          buffer.writeln('     ${s['description']}');
+        }
+      }
+
+      buffer.writeln();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[BehaviorAnalysis] 生成报告失败: $e');
+      return '报告生成失败: $e';
+    }
+  }
+
+  /// 清除所有行为记录
+  Future<void> clearAll() async {
+    _behaviorRecords.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_storageKey);
+    } catch (_) {}
+  }
+
+  /// 获取所有行为记录（只读）
+  List<UserBehaviorRecord> get records => List.unmodifiable(_behaviorRecords);
+}

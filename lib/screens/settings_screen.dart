@@ -2495,6 +2495,360 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 决策支持优化：决策建议、决策模拟、决策评估、决策优化
+  // ═══════════════════════════════════════════════════════════
+
+  /// 决策上下文数据
+  final Map<String, dynamic> _decisionContext = {};
+
+  /// 获取决策建议
+  ///
+  /// 基于当前设置状态和用户使用模式，生成智能决策建议
+  List<Map<String, dynamic>> getDecisionSuggestions() {
+    try {
+      final suggestions = <Map<String, dynamic>>[];
+
+      // 1. 识别模式建议
+      if (!_useCloud) {
+        suggestions.add({
+          'category': 'recognition',
+          'title': '考虑启用云端识别',
+          'description': '云端识别通常具有更高的准确率，适合对字体质量要求较高的场景',
+          'impact': 'high',
+          'effort': 'low',
+          'action': () => _toggleUseCloud(true),
+        });
+      }
+
+      // 2. 主题模式建议
+      if (_themeMode == 'system') {
+        suggestions.add({
+          'category': 'appearance',
+          'title': '固定主题模式',
+          'description': '如果您有固定的使用偏好，可以设置固定的主题模式而非跟随系统',
+          'impact': 'low',
+          'effort': 'low',
+          'action': null,
+        });
+      }
+
+      // 3. 参数优化建议
+      if (_threshold > 0.8) {
+        suggestions.add({
+          'category': 'parameters',
+          'title': '调整二值化阈值',
+          'description': '当前阈值较高 (${_threshold.toStringAsFixed(2)})，可能导致笔画细节丢失',
+          'impact': 'medium',
+          'effort': 'low',
+          'action': () => _onThresholdChanged(0.5),
+        });
+      }
+
+      // 4. 缓存管理建议
+      if (_syncStatus == 'pending') {
+        suggestions.add({
+          'category': 'sync',
+          'title': '同步待处理数据',
+          'description': '有数据等待同步，建议及时同步以避免数据丢失',
+          'impact': 'high',
+          'effort': 'low',
+          'action': null,
+        });
+      }
+
+      return suggestions;
+    } catch (e) {
+      debugPrint('[Settings] 获取决策建议失败: $e');
+      return [];
+    }
+  }
+
+  /// 决策模拟：模拟不同设置组合的效果
+  ///
+  /// [scenario] 模拟场景配置
+  /// 返回模拟结果评估
+  Map<String, dynamic> simulateDecision(Map<String, dynamic> scenario) {
+    try {
+      final results = <String, dynamic>{
+        'scenario': scenario,
+        'timestamp': DateTime.now().toIso8601String(),
+        'evaluations': <Map<String, dynamic>>[],
+      };
+
+      final evaluations = results['evaluations'] as List<Map<String, dynamic>>;
+
+      // 评估识别模式
+      if (scenario.containsKey('useCloud')) {
+        final useCloud = scenario['useCloud'] as bool;
+        evaluations.add({
+          'aspect': '识别准确率',
+          'current': _useCloud ? '高' : '中',
+          'simulated': useCloud ? '高' : '中',
+          'change': useCloud && !_useCloud ? '提升' : '不变',
+        });
+        evaluations.add({
+          'aspect': '网络依赖',
+          'current': _useCloud ? '需要' : '不需要',
+          'simulated': useCloud ? '需要' : '不需要',
+          'change': useCloud && !_useCloud ? '增加' : '不变',
+        });
+      }
+
+      // 评估阈值参数
+      if (scenario.containsKey('threshold')) {
+        final threshold = scenario['threshold'] as double;
+        evaluations.add({
+          'aspect': '笔画细节',
+          'current': _threshold < 0.5 ? '保留较多' : '保留较少',
+          'simulated': threshold < 0.5 ? '保留较多' : '保留较少',
+          'change': threshold < _threshold ? '提升' : threshold > _threshold ? '降低' : '不变',
+        });
+      }
+
+      // 评估平滑度
+      if (scenario.containsKey('smoothness')) {
+        final smoothness = scenario['smoothness'] as double;
+        evaluations.add({
+          'aspect': '曲线平滑度',
+          'current': _smoothness > 0.5 ? '平滑' : '原始',
+          'simulated': smoothness > 0.5 ? '平滑' : '原始',
+          'change': smoothness > _smoothness ? '提升' : smoothness < _smoothness ? '降低' : '不变',
+        });
+      }
+
+      return results;
+    } catch (e) {
+      debugPrint('[Settings] 决策模拟失败: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  /// 决策评估：评估当前设置的综合效果
+  ///
+  /// 返回当前设置的评估报告
+  Map<String, dynamic> evaluateCurrentSettings() {
+    try {
+      final evaluation = <String, dynamic>{
+        'timestamp': DateTime.now().toIso8601String(),
+        'overallScore': 0.0,
+        'aspects': <Map<String, dynamic>>[],
+      };
+
+      final aspects = evaluation['aspects'] as List<Map<String, dynamic>>;
+      double totalScore = 0;
+
+      // 评估识别质量
+      final recognitionScore = _useCloud ? 90.0 : 70.0;
+      aspects.add({
+        'aspect': '识别质量',
+        'score': recognitionScore,
+        'status': recognitionScore >= 80 ? 'good' : 'acceptable',
+        'detail': _useCloud ? '云端识别，准确率高' : '本地识别，离线可用',
+      });
+      totalScore += recognitionScore;
+
+      // 评估参数合理性
+      double paramScore = 80.0;
+      if (_threshold < 0.3 || _threshold > 0.8) paramScore -= 10;
+      if (_contrast < 0.3 || _contrast > 0.8) paramScore -= 10;
+      if (_smoothness < 0.2 || _smoothness > 0.8) paramScore -= 5;
+      aspects.add({
+        'aspect': '参数合理性',
+        'score': paramScore,
+        'status': paramScore >= 75 ? 'good' : 'needsAttention',
+        'detail': '阈值: ${_threshold.toStringAsFixed(2)}, '
+            '对比度: ${_contrast.toStringAsFixed(2)}, '
+            '平滑度: ${_smoothness.toStringAsFixed(2)}',
+      });
+      totalScore += paramScore;
+
+      // 评估外观设置
+      final appearanceScore = _themeMode == 'system' ? 85.0 : 80.0;
+      aspects.add({
+        'aspect': '外观设置',
+        'score': appearanceScore,
+        'status': 'good',
+        'detail': '主题模式: ${_themeModeLabel(_themeMode)}',
+      });
+      totalScore += appearanceScore;
+
+      // 评估同步状态
+      double syncScore;
+      String syncDetail;
+      switch (_syncStatus) {
+        case 'synced':
+          syncScore = 95.0;
+          syncDetail = '数据已同步';
+          break;
+        case 'pending':
+          syncScore = 60.0;
+          syncDetail = '有待同步数据';
+          break;
+        default:
+          syncScore = 70.0;
+          syncDetail = '未启用同步';
+      }
+      aspects.add({
+        'aspect': '数据同步',
+        'score': syncScore,
+        'status': syncScore >= 80 ? 'good' : 'needsAttention',
+        'detail': syncDetail,
+      });
+      totalScore += syncScore;
+
+      evaluation['overallScore'] = (totalScore / aspects.length).toStringAsFixed(1);
+
+      return evaluation;
+    } catch (e) {
+      debugPrint('[Settings] 决策评估失败: $e');
+      return {'error': e.toString()};
+    }
+  }
+
+  /// 决策优化：基于评估结果生成优化方案
+  ///
+  /// 返回优化方案列表
+  List<Map<String, dynamic>> getOptimizationPlan() {
+    try {
+      final plan = <Map<String, dynamic>>[];
+      final evaluation = evaluateCurrentSettings();
+      final aspects = evaluation['aspects'] as List<Map<String, dynamic>>;
+
+      for (final aspect in aspects) {
+        final score = aspect['score'] as double;
+        final status = aspect['status'] as String;
+
+        if (status == 'needsAttention' || score < 70) {
+          switch (aspect['aspect'] as String) {
+            case '识别质量':
+              plan.add({
+                'priority': 'high',
+                'action': '启用云端识别',
+                'reason': '提升字体识别准确率',
+                'steps': ['进入设置', '开启云端识别', '确保网络连接'],
+              });
+              break;
+            case '参数合理性':
+              plan.add({
+                'priority': 'medium',
+                'action': '重置参数为推荐值',
+                'reason': '当前参数偏离推荐范围',
+                'steps': ['进入设置', '点击"重置默认参数"', '根据效果微调'],
+              });
+              break;
+            case '数据同步':
+              plan.add({
+                'priority': 'high',
+                'action': '同步待处理数据',
+                'reason': '避免数据丢失风险',
+                'steps': ['确保网络连接', '进入云同步页面', '点击同步按钮'],
+              });
+              break;
+          }
+        }
+      }
+
+      // 按优先级排序
+      const priorityOrder = {'high': 0, 'medium': 1, 'low': 2};
+      plan.sort((a, b) =>
+          (priorityOrder[a['priority']] ?? 2).compareTo(priorityOrder[b['priority']] ?? 2));
+
+      return plan;
+    } catch (e) {
+      debugPrint('[Settings] 生成优化方案失败: $e');
+      return [];
+    }
+  }
+
+  /// 显示决策支持对话框
+  void _showDecisionSupportDialog() {
+    final evaluation = evaluateCurrentSettings();
+    final plan = getOptimizationPlan();
+    final suggestions = getDecisionSuggestions();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('决策支持'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 综合评分
+              Text(
+                '综合评分: ${evaluation['overallScore']} / 100',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 各方面评分
+              const Text('各项评估:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              ...((evaluation['aspects'] as List<Map<String, dynamic>>).map((aspect) {
+                final score = aspect['score'] as double;
+                final color = score >= 80 ? Colors.green : score >= 60 ? Colors.orange : Colors.red;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('  ${aspect['aspect']}')),
+                      Text(
+                        '${score.toStringAsFixed(0)}分',
+                        style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                );
+              })),
+              const SizedBox(height: 16),
+
+              // 优化建议
+              if (plan.isNotEmpty) ...[
+                const Text('优化建议:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                ...plan.map((item) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        item['priority'] == 'high' ? Icons.priority_high : Icons.lightbulb_outline,
+                        color: item['priority'] == 'high' ? Colors.red : Colors.orange,
+                      ),
+                      title: Text(item['action'] as String),
+                      subtitle: Text(item['reason'] as String),
+                    )),
+              ],
+
+              // 智能建议
+              if (suggestions.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('智能建议:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                ...suggestions.map((s) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.auto_awesome, color: Colors.blue),
+                      title: Text(s['title'] as String),
+                      subtitle: Text(s['description'] as String),
+                    )),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 错误日志条目数据类
