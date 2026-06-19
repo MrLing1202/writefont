@@ -102,6 +102,8 @@ class _EditCharacterDialogState extends State<EditCharacterDialog> {
               child: Image.memory(
                 widget.imageBytes,
                 fit: BoxFit.contain,
+                cacheWidth: 200,
+                cacheHeight: 200,
               ),
             ),
           ),

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'image_processor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'api_key.dart';
@@ -207,36 +208,8 @@ class RecognitionService {
   /// 二值化（Otsu 自动阈值）
   img.Image _binarize(img.Image src) {
     final gray = img.grayscale(src);
-    // 计算 Otsu 阈值
-    final histogram = List<int>.filled(256, 0);
-    for (int y = 0; y < gray.height; y++) {
-      for (int x = 0; x < gray.width; x++) {
-        histogram[gray.getPixel(x, y).r.toInt()]++;
-      }
-    }
-    final totalPixels = gray.width * gray.height;
-    int sum = 0;
-    for (int i = 0; i < 256; i++) {
-      sum += i * histogram[i];
-    }
-    int sumB = 0;
-    int wB = 0;
-    double maxVariance = 0;
-    int threshold = 0;
-    for (int i = 0; i < 256; i++) {
-      wB += histogram[i];
-      if (wB == 0) continue;
-      final wF = totalPixels - wB;
-      if (wF == 0) break;
-      sumB += i * histogram[i];
-      final mB = sumB / wB;
-      final mF = (sum - sumB) / wF;
-      final variance = wB * wF * (mB - mF) * (mB - mF);
-      if (variance > maxVariance) {
-        maxVariance = variance;
-        threshold = i;
-      }
-    }
+    // 复用 ImageProcessor 的 Otsu 阈值算法
+    final threshold = ImageProcessor.otsuThreshold(gray);
     debugPrint('  二值化 Otsu 阈值: $threshold');
     // 按阈值二值化
     final result = img.Image(width: gray.width, height: gray.height);

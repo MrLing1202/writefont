@@ -4,6 +4,14 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.1.4] - 2026-06-19
+
+### 优化
+- 优化图片加载缓存策略，所有 Image.memory/Image.file 组件统一使用 cacheWidth/cacheHeight
+- 提取 image_processor.dart 和 recognition_service.dart 中重复的 Otsu 阈值算法为公共方法
+- 统一 app_config_service.dart 中所有 SharedPreferences 操作的错误处理模式
+- 添加用户友好的错误提示和调试日志
+
 ## [1.1.3] - 2026-06-19
 
 ### 优化
