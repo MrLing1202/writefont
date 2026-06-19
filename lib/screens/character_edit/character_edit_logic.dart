@@ -136,9 +136,14 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
     }
   }
 
-  /// 修改字符标签
+  /// 修改字符标签（切换前自动保存当前修改）
   void changeCharacter(String newChar) {
     if (newChar.isEmpty || newChar == widget.character) return;
+    // 切换前保存当前修改
+    if (isDirty) {
+      saveStrokesToContours();
+      isDirty = false;
+    }
     setState(() {
       selectedCharacter = newChar;
       charController.text = newChar;

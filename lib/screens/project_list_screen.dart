@@ -201,6 +201,86 @@ class _ProjectListScreenState extends State<ProjectListScreen>
     });
   }
 
+  // === 批量删除 ===
+  bool _isMultiSelectMode = false;
+  final Set<String> _selectedProjectIds = {};
+
+  /// 进入/退出多选模式
+  void _toggleMultiSelectMode() {
+    setState(() {
+      _isMultiSelectMode = !_isMultiSelectMode;
+      if (!_isMultiSelectMode) {
+        _selectedProjectIds.clear();
+      }
+    });
+  }
+
+  /// 切换选中状态
+  void _toggleProjectSelection(String projectId) {
+    setState(() {
+      if (_selectedProjectIds.contains(projectId)) {
+        _selectedProjectIds.remove(projectId);
+      } else {
+        _selectedProjectIds.add(projectId);
+      }
+    });
+  }
+
+  /// 全选/取消全选
+  void _selectAll() {
+    setState(() {
+      if (_selectedProjectIds.length == _filteredProjects.length) {
+        _selectedProjectIds.clear();
+      } else {
+        _selectedProjectIds.clear();
+        _selectedProjectIds.addAll(_filteredProjects.map((p) => p.id));
+      }
+    });
+  }
+
+  /// 批量删除选中项目
+  Future<void> _batchDeleteProjects() async {
+    if (_selectedProjectIds.isEmpty) return;
+
+    final count = _selectedProjectIds.length;
+    final confirmed = await WFDialog.show<bool>(
+      context,
+      title: '批量删除',
+      content: Text('确定要删除选中的 $count 个项目吗？\n该操作不可撤销。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: FilledButton.styleFrom(backgroundColor: WFColors.error),
+          child: Text('删除 $count 个项目'),
+        ),
+      ],
+    );
+
+    if (confirmed == true) {
+      try {
+        for (final id in _selectedProjectIds) {
+          await StorageService.deleteProject(id);
+        }
+        setState(() {
+          _isMultiSelectMode = false;
+          _selectedProjectIds.clear();
+        });
+        await _loadProjects();
+        if (mounted) {
+          WFSnackBar.show(context, '已删除 $count 个项目');
+        }
+      } catch (e) {
+        if (mounted) {
+          WFSnackBar.error(context, '批量删除失败: $e');
+        }
+      }
+    }
+  }
+
   /// 重命名项目
   Future<void> _renameProject(FontProject project) async {
     final controller = TextEditingController(text: project.name);
@@ -418,6 +498,27 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       appBar: WFAppBar(
         title: '我的字体',
         actions: [
+          // 批量删除按钮
+          if (_projects.isNotEmpty)
+            IconButton(
+              onPressed: _toggleMultiSelectMode,
+              icon: Icon(_isMultiSelectMode ? Icons.close : Icons.checklist),
+              tooltip: _isMultiSelectMode ? '退出多选' : '批量删除',
+            ),
+          // 多选模式下的全选和删除
+          if (_isMultiSelectMode) ...[
+            IconButton(
+              onPressed: _selectAll,
+              icon: const Icon(Icons.select_all),
+              tooltip: '全选',
+            ),
+            if (_selectedProjectIds.isNotEmpty)
+              IconButton(
+                onPressed: _batchDeleteProjects,
+                icon: Icon(Icons.delete_forever, color: WFColors.error),
+                tooltip: '删除选中',
+              ),
+          ],
           // 导入备份按钮
           IconButton(
             onPressed: _importProject,
@@ -471,6 +572,9 @@ class _ProjectListScreenState extends State<ProjectListScreen>
                               onExport: _exportProject,
                               onExportBackup: _exportProjectBackup,
                               onOpen: _openProject,
+                              isMultiSelectMode: _isMultiSelectMode,
+                              selectedProjectIds: _selectedProjectIds,
+                              onToggleSelection: _toggleProjectSelection,
                               onShowActions: (project) => showProjectActions(
                                 context: context,
                                 project: project,

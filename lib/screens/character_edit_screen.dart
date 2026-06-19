@@ -144,6 +144,20 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
               onPressed: fitToScreen,
               tooltip: '适应屏幕',
             ),
+            // 字符预览缩略图
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: CustomPaint(
+                painter: _MiniPreviewPainter(strokes: strokes),
+              ),
+            ),
             // 保存按钮
             FilledButton(
               onPressed: confirmEdit,
@@ -605,5 +619,76 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
         },
       ),
     );
+  }
+}
+
+/// 小缩略图预览画笔
+class _MiniPreviewPainter extends CustomPainter {
+  final List<StrokeRecord> strokes;
+
+  _MiniPreviewPainter({required this.strokes});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (strokes.isEmpty) return;
+
+    // 计算笔画边界
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+    for (final stroke in strokes) {
+      for (final p in stroke.points) {
+        if (p.dx < minX) minX = p.dx;
+        if (p.dy < minY) minY = p.dy;
+        if (p.dx > maxX) maxX = p.dx;
+        if (p.dy > maxY) maxY = p.dy;
+      }
+    }
+
+    if (maxX <= minX || maxY <= minY) return;
+
+    // 缩放到缩略图大小，留 2px 边距
+    final scaleX = (size.width - 4) / (maxX - minX);
+    final scaleY = (size.height - 4) / (maxY - minY);
+    final scale = scaleX < scaleY ? scaleX : scaleY;
+    final offsetX = (size.width - (maxX - minX) * scale) / 2;
+    final offsetY = (size.height - (maxY - minY) * scale) / 2;
+
+    final paint = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    for (final stroke in strokes) {
+      if (stroke.points.isEmpty) continue;
+      paint.strokeWidth = stroke.strokeWidth * scale;
+      if (stroke.points.length == 1) {
+        final pt = stroke.points.first;
+        final dx = (pt.dx - minX) * scale + offsetX;
+        final dy = (pt.dy - minY) * scale + offsetY;
+        canvas.drawCircle(Offset(dx, dy), paint.strokeWidth / 2, paint..style = PaintingStyle.fill);
+        paint.style = PaintingStyle.stroke;
+      } else {
+        final path = Path();
+        final first = stroke.points.first;
+        path.moveTo(
+          (first.dx - minX) * scale + offsetX,
+          (first.dy - minY) * scale + offsetY,
+        );
+        for (int i = 1; i < stroke.points.length; i++) {
+          final pt = stroke.points[i];
+          path.lineTo(
+            (pt.dx - minX) * scale + offsetX,
+            (pt.dy - minY) * scale + offsetY,
+          );
+        }
+        canvas.drawPath(path, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MiniPreviewPainter oldDelegate) {
+    return oldDelegate.strokes != strokes;
   }
 }
