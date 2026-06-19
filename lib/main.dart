@@ -2894,6 +2894,568 @@ class CommunityService {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// 授权服务：角色权限管理、访问控制、权限审计、授权策略管理
+// ═══════════════════════════════════════════════════════════
+
+/// 权限枚举
+enum Permission {
+  projectCreate,    // 创建项目
+  projectRead,      // 读取项目
+  projectUpdate,    // 更新项目
+  projectDelete,    // 删除项目
+  projectExport,    // 导出项目
+  projectShare,     // 分享项目
+  syncUpload,       // 上传同步
+  syncDownload,     // 下载同步
+  settingsRead,     // 读取设置
+  settingsUpdate,   // 修改设置
+  analyticsView,    // 查看分析
+  adminAccess,      // 管理员访问
+}
+
+/// 角色枚举
+enum AppRole {
+  viewer,     // 查看者：只读权限
+  editor,     // 编辑者：读写权限
+  admin,      // 管理员：全部权限
+  owner,      // 所有者：全部权限 + 管理权限
+}
+
+/// 访问控制条目
+class AccessControlEntry {
+  final String id;
+  final String resourceType;  // 'project' | 'setting' | 'sync' | 'analytics'
+  final String? resourceId;   // 资源ID（null 表示类型级别权限）
+  final AppRole role;
+  final Set<Permission> permissions;
+  final DateTime createdAt;
+  final DateTime? expiresAt;
+
+  AccessControlEntry({
+    required this.id,
+    required this.resourceType,
+    this.resourceId,
+    required this.role,
+    required this.permissions,
+    DateTime? createdAt,
+    this.expiresAt,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  /// 检查是否已过期
+  bool get isExpired =>
+      expiresAt != null && DateTime.now().isAfter(expiresAt!);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'resourceType': resourceType,
+        'resourceId': resourceId,
+        'role': role.name,
+        'permissions': permissions.map((p) => p.name).toList(),
+        'createdAt': createdAt.toIso8601String(),
+        'expiresAt': expiresAt?.toIso8601String(),
+      };
+
+  factory AccessControlEntry.fromJson(Map<String, dynamic> json) =>
+      AccessControlEntry(
+        id: json['id'] as String,
+        resourceType: json['resourceType'] as String,
+        resourceId: json['resourceId'] as String?,
+        role: AppRole.values.firstWhere(
+          (e) => e.name == json['role'],
+          orElse: () => AppRole.viewer,
+        ),
+        permissions: (json['permissions'] as List<dynamic>?)
+                ?.map((p) => Permission.values.firstWhere(
+                      (e) => e.name == p,
+                      orElse: () => Permission.projectRead,
+                    ))
+                .toSet() ??
+            {},
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        expiresAt: json['expiresAt'] != null
+            ? DateTime.parse(json['expiresAt'] as String)
+            : null,
+      );
+}
+
+/// 权限审计记录
+class PermissionAuditEntry {
+  final String id;
+  final String userId;
+  final String action;
+  final String resourceType;
+  final String? resourceId;
+  final bool granted;
+  final String? reason;
+  final DateTime timestamp;
+
+  PermissionAuditEntry({
+    required this.id,
+    required this.userId,
+    required this.action,
+    required this.resourceType,
+    this.resourceId,
+    required this.granted,
+    this.reason,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'userId': userId,
+        'action': action,
+        'resourceType': resourceType,
+        'resourceId': resourceId,
+        'granted': granted,
+        'reason': reason,
+        'timestamp': timestamp.toIso8601String(),
+      };
+}
+
+/// 授权策略
+class AuthorizationPolicy {
+  final String id;
+  final String name;
+  final String description;
+  final AppRole minimumRole;
+  final Set<Permission> requiredPermissions;
+  final bool isEnabled;
+
+  const AuthorizationPolicy({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.minimumRole,
+    required this.requiredPermissions,
+    this.isEnabled = true,
+  });
+}
+
+/// 授权服务
+///
+/// 功能：
+/// - 角色权限管理：定义角色和权限映射
+/// - 访问控制：检查用户对资源的访问权限
+/// - 权限审计：记录所有权限检查和变更
+/// - 授权策略管理：定义和管理授权策略
+class AuthorizationService {
+  static final AuthorizationService _instance = AuthorizationService._();
+  static AuthorizationService get instance => _instance;
+  AuthorizationService._();
+
+  static const String _aclKey = 'authz_acl';
+  static const String _auditKey = 'authz_audit';
+  static const String _policiesKey = 'authz_policies';
+  static const String _currentRoleKey = 'authz_current_role';
+  static const int _maxAuditEntries = 500;
+
+  final List<AccessControlEntry> _acl = [];
+  final List<PermissionAuditEntry> _auditLog = [];
+  AppRole _currentRole = AppRole.owner; // 默认所有者角色
+
+  // ── 预定义授权策略 ──
+  static const List<AuthorizationPolicy> defaultPolicies = [
+    AuthorizationPolicy(
+      id: 'project_access',
+      name: '项目访问策略',
+      description: '项目的基本访问控制',
+      minimumRole: AppRole.viewer,
+      requiredPermissions: {Permission.projectRead},
+    ),
+    AuthorizationPolicy(
+      id: 'project_edit',
+      name: '项目编辑策略',
+      description: '项目编辑操作的权限控制',
+      minimumRole: AppRole.editor,
+      requiredPermissions: {Permission.projectRead, Permission.projectUpdate},
+    ),
+    AuthorizationPolicy(
+      id: 'project_delete',
+      name: '项目删除策略',
+      description: '项目删除操作的权限控制',
+      minimumRole: AppRole.admin,
+      requiredPermissions: {Permission.projectDelete},
+    ),
+    AuthorizationPolicy(
+      id: 'sync_access',
+      name: '同步访问策略',
+      description: '云同步功能的权限控制',
+      minimumRole: AppRole.editor,
+      requiredPermissions: {Permission.syncUpload, Permission.syncDownload},
+    ),
+    AuthorizationPolicy(
+      id: 'admin_access',
+      name: '管理员访问策略',
+      description: '管理功能的权限控制',
+      minimumRole: AppRole.admin,
+      requiredPermissions: {Permission.adminAccess},
+    ),
+  ];
+
+  /// 初始化授权服务
+  Future<void> init() async {
+    await _loadACL();
+    await _loadAuditLog();
+    await _loadCurrentRole();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 角色权限管理
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取当前用户角色
+  AppRole get currentRole => _currentRole;
+
+  /// 设置当前用户角色
+  Future<void> setCurrentRole(AppRole role) async {
+    final oldRole = _currentRole;
+    _currentRole = role;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_currentRoleKey, role.name);
+    await _auditLog.add(PermissionAuditEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      userId: 'current_user',
+      action: 'role_change',
+      resourceType: 'system',
+      granted: true,
+      reason: '角色变更: ${oldRole.name} -> ${role.name}',
+    ));
+    await _saveAuditLog();
+    debugPrint('[Authorization] 角色已变更: ${oldRole.name} -> ${role.name}');
+  }
+
+  /// 获取角色的默认权限集
+  static Set<Permission> getRolePermissions(AppRole role) {
+    switch (role) {
+      case AppRole.viewer:
+        return {
+          Permission.projectRead,
+          Permission.settingsRead,
+        };
+      case AppRole.editor:
+        return {
+          Permission.projectCreate,
+          Permission.projectRead,
+          Permission.projectUpdate,
+          Permission.projectExport,
+          Permission.projectShare,
+          Permission.syncUpload,
+          Permission.syncDownload,
+          Permission.settingsRead,
+          Permission.analyticsView,
+        };
+      case AppRole.admin:
+        return Permission.values.toSet();
+      case AppRole.owner:
+        return Permission.values.toSet();
+    }
+  }
+
+  /// 检查角色是否拥有指定权限
+  static bool roleHasPermission(AppRole role, Permission permission) {
+    return getRolePermissions(role).contains(permission);
+  }
+
+  /// 获取角色描述
+  static String getRoleDescription(AppRole role) {
+    switch (role) {
+      case AppRole.viewer:
+        return '查看者：只能查看项目，不能编辑';
+      case AppRole.editor:
+        return '编辑者：可以创建、编辑和导出项目';
+      case AppRole.admin:
+        return '管理员：拥有全部权限';
+      case AppRole.owner:
+        return '所有者：拥有全部权限和管理权限';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 访问控制
+  // ═══════════════════════════════════════════════════════════
+
+  /// 检查当前用户是否有指定权限
+  ///
+  /// [permission] 需要检查的权限
+  /// [resourceType] 资源类型
+  /// [resourceId] 资源ID（可选）
+  bool checkPermission(
+    Permission permission, {
+    String resourceType = 'system',
+    String? resourceId,
+  }) {
+    // 1. 检查角色级别权限
+    if (roleHasPermission(_currentRole, permission)) {
+      _logAccessCheck(permission, resourceType, resourceId, true, '角色权限允许');
+      return true;
+    }
+
+    // 2. 检查 ACL 条目
+    for (final entry in _acl) {
+      if (entry.isExpired) continue;
+      if (entry.resourceType == resourceType &&
+          (entry.resourceId == null || entry.resourceId == resourceId) &&
+          entry.permissions.contains(permission)) {
+        _logAccessCheck(permission, resourceType, resourceId, true, 'ACL 条目允许');
+        return true;
+      }
+    }
+
+    _logAccessCheck(permission, resourceType, resourceId, false, '权限不足');
+    return false;
+  }
+
+  /// 异步版本的权限检查（带审计日志持久化）
+  Future<bool> checkPermissionAsync(
+    Permission permission, {
+    String resourceType = 'system',
+    String? resourceId,
+  }) async {
+    final granted = checkPermission(permission,
+        resourceType: resourceType, resourceId: resourceId);
+    await _saveAuditLog();
+    return granted;
+  }
+
+  /// 添加访问控制条目
+  Future<void> addACLEntry(AccessControlEntry entry) async {
+    _acl.add(entry);
+    await _saveACL();
+    await _auditLog.add(PermissionAuditEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      userId: 'current_user',
+      action: 'acl_add',
+      resourceType: entry.resourceType,
+      resourceId: entry.resourceId,
+      granted: true,
+      reason: '添加 ACL 条目: ${entry.role.name}',
+    ));
+    await _saveAuditLog();
+  }
+
+  /// 移除访问控制条目
+  Future<void> removeACLEntry(String entryId) async {
+    _acl.removeWhere((e) => e.id == entryId);
+    await _saveACL();
+    await _auditLog.add(PermissionAuditEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      userId: 'current_user',
+      action: 'acl_remove',
+      resourceType: 'system',
+      granted: true,
+      reason: '移除 ACL 条目: $entryId',
+    ));
+    await _saveAuditLog();
+  }
+
+  /// 获取所有 ACL 条目
+  List<AccessControlEntry> getACLEntries() => List.unmodifiable(_acl);
+
+  /// 记录访问检查
+  void _logAccessCheck(
+    Permission permission,
+    String resourceType,
+    String? resourceId,
+    bool granted,
+    String reason,
+  ) {
+    _auditLog.add(PermissionAuditEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      userId: 'current_user',
+      action: permission.name,
+      resourceType: resourceType,
+      resourceId: resourceId,
+      granted: granted,
+      reason: reason,
+    ));
+    // 限制审计日志大小
+    if (_auditLog.length > _maxAuditEntries) {
+      _auditLog.removeRange(0, _auditLog.length - _maxAuditEntries);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 权限审计
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取审计日志
+  List<PermissionAuditEntry> getAuditLog({int limit = 50}) {
+    return List.unmodifiable(_auditLog.reversed.take(limit));
+  }
+
+  /// 按操作类型过滤审计日志
+  List<PermissionAuditEntry> getAuditLogByAction(String action, {int limit = 50}) {
+    return List.unmodifiable(
+      _auditLog.where((e) => e.action == action).reversed.take(limit),
+    );
+  }
+
+  /// 获取被拒绝的访问记录
+  List<PermissionAuditEntry> getDeniedAccess({int limit = 50}) {
+    return List.unmodifiable(
+      _auditLog.where((e) => !e.granted).reversed.take(limit),
+    );
+  }
+
+  /// 生成权限审计报告
+  Map<String, dynamic> generateAuditReport() {
+    final actionCounts = <String, int>{};
+    final deniedCount = _auditLog.where((e) => !e.granted).length;
+    final grantedCount = _auditLog.where((e) => e.granted).length;
+
+    for (final entry in _auditLog) {
+      actionCounts[entry.action] = (actionCounts[entry.action] ?? 0) + 1;
+    }
+
+    return {
+      'totalEntries': _auditLog.length,
+      'grantedCount': grantedCount,
+      'deniedCount': deniedCount,
+      'actionCounts': actionCounts,
+      'currentRole': _currentRole.name,
+      'aclEntryCount': _acl.length,
+      'reportTime': DateTime.now().toIso8601String(),
+    };
+  }
+
+  /// 清除审计日志
+  Future<void> clearAuditLog() async {
+    _auditLog.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_auditKey);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 授权策略管理
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取所有策略
+  List<AuthorizationPolicy> getPolicies() => defaultPolicies;
+
+  /// 检查是否满足策略要求
+  ///
+  /// [policyId] 策略ID
+  /// 返回 true 表示当前用户满足策略要求
+  bool checkPolicy(String policyId) {
+    final policy = defaultPolicies.where((p) => p.id == policyId).firstOrNull;
+    if (policy == null || !policy.isEnabled) return false;
+
+    // 检查角色级别
+    if (_currentRole.index < policy.minimumRole.index) {
+      return false;
+    }
+
+    // 检查所有必需权限
+    for (final perm in policy.requiredPermissions) {
+      if (!roleHasPermission(_currentRole, perm)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// 获取当前用户可访问的策略列表
+  List<AuthorizationPolicy> getAccessiblePolicies() {
+    return defaultPolicies.where((p) => checkPolicy(p.id)).toList();
+  }
+
+  /// 获取策略状态摘要
+  Map<String, dynamic> getPolicyStatusSummary() {
+    final accessible = getAccessiblePolicies();
+    return {
+      'totalPolicies': defaultPolicies.length,
+      'accessiblePolicies': accessible.length,
+      'currentRole': _currentRole.name,
+      'rolePermissions': getRolePermissions(_currentRole).map((p) => p.name).toList(),
+      'policies': defaultPolicies.map((p) => {
+        'id': p.id,
+        'name': p.name,
+        'accessible': checkPolicy(p.id),
+      }).toList(),
+    };
+  }
+
+  // ── 持久化 ──
+
+  Future<void> _loadACL() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_aclKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _acl.clear();
+        _acl.addAll(list.map((e) =>
+            AccessControlEntry.fromJson(e as Map<String, dynamic>)));
+      }
+    } catch (e) {
+      debugPrint('[Authorization] 加载 ACL 失败: $e');
+    }
+  }
+
+  Future<void> _saveACL() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_acl.map((e) => e.toJson()).toList());
+      await prefs.setString(_aclKey, json);
+    } catch (e) {
+      debugPrint('[Authorization] 保存 ACL 失败: $e');
+    }
+  }
+
+  Future<void> _loadAuditLog() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_auditKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _auditLog.clear();
+        _auditLog.addAll(list.map((e) {
+          final m = e as Map<String, dynamic>;
+          return PermissionAuditEntry(
+            id: m['id'] as String,
+            userId: m['userId'] as String,
+            action: m['action'] as String,
+            resourceType: m['resourceType'] as String,
+            resourceId: m['resourceId'] as String?,
+            granted: m['granted'] as bool,
+            reason: m['reason'] as String?,
+            timestamp: DateTime.parse(m['timestamp'] as String),
+          );
+        }));
+      }
+    } catch (e) {
+      debugPrint('[Authorization] 加载审计日志失败: $e');
+    }
+  }
+
+  Future<void> _saveAuditLog() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_auditLog.map((e) => e.toJson()).toList());
+      await prefs.setString(_auditKey, json);
+    } catch (e) {
+      debugPrint('[Authorization] 保存审计日志失败: $e');
+    }
+  }
+
+  Future<void> _loadCurrentRole() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final roleName = prefs.getString(_currentRoleKey);
+      if (roleName != null) {
+        _currentRole = AppRole.values.firstWhere(
+          (e) => e.name == roleName,
+          orElse: () => AppRole.owner,
+        );
+      }
+    } catch (e) {
+      debugPrint('[Authorization] 加载角色失败: $e');
+    }
+  }
+}
+
 /// 应用主导航页面 - 包含底部导航栏和页面状态保持
 class MainNavigationPage extends StatefulWidget {
   final VoidCallback? onThemeChanged;

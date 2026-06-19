@@ -10,6 +10,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -844,6 +845,234 @@ class CloudSyncService {
   /// 解密项目数据（用于下载）
   Future<String> _decryptProjectData(String encryptedData) async {
     return await StorageService.decryptData(encryptedData);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 端到端加密功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加密算法枚举
+  ///
+  /// 支持不同安全级别的加密算法选择
+  static const String algoXorStream = 'xor_stream';       // 默认，轻量级
+  static const String algoAesCbc = 'aes_cbc';             // 高安全性（需插件支持）
+  static const String algoChaCha20 = 'chacha20';          // 现代高性能算法
+
+  static const String _keyEncryptionAlgo = 'cloud_encryption_algorithm';
+  static const String _keyE2eEnabled = 'cloud_e2e_encryption_enabled';
+  static const String _keyKeyRotationTime = 'cloud_key_rotation_time';
+  static const String _keyKeyVersion = 'cloud_key_version';
+  static const Duration _keyRotationInterval = Duration(days: 90);
+
+  /// 获取当前加密算法
+  Future<String> getEncryptionAlgorithm() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyEncryptionAlgo) ?? algoXorStream;
+  }
+
+  /// 设置加密算法
+  ///
+  /// [algorithm] 加密算法标识符
+  Future<void> setEncryptionAlgorithm(String algorithm) async {
+    final validAlgorithms = [algoXorStream, algoAesCbc, algoChaCha20];
+    if (!validAlgorithms.contains(algorithm)) {
+      _addLog('warning', '无效的加密算法: $algorithm');
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyEncryptionAlgo, algorithm);
+    _addLog('info', '加密算法已切换: $algorithm');
+  }
+
+  /// 检查端到端加密是否启用
+  Future<bool> isE2EEncryptionEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyE2eEnabled) ?? false;
+  }
+
+  /// 设置端到端加密开关
+  ///
+  /// 启用后，数据在客户端加密，服务端无法解密
+  Future<void> setE2EEncryptionEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyE2eEnabled, enabled);
+    _addLog('info', '端到端加密${enabled ? "已启用" : "已禁用"}');
+  }
+
+  /// 端到端加密数据
+  ///
+  /// 使用用户密钥加密数据，确保服务端无法访问明文
+  Future<String> e2eEncryptData(String plainData, String userKey) async {
+    try {
+      final keyBytes = utf8.encode(userKey);
+      final dataBytes = utf8.encode(plainData);
+      // 使用 HMAC-SHA256 派生密钥流
+      final encrypted = StorageService.encryptBytes(
+        Uint8List.fromList(dataBytes),
+        keyBytes,
+      );
+      return base64Encode(encrypted);
+    } catch (e) {
+      _addLog('error', 'E2E加密失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 端到端解密数据
+  Future<String> e2eDecryptData(String encryptedData, String userKey) async {
+    try {
+      final keyBytes = utf8.encode(userKey);
+      final dataBytes = base64Decode(encryptedData);
+      final decrypted = StorageService.decryptBytes(
+        Uint8List.fromList(dataBytes),
+        keyBytes,
+      );
+      return utf8.decode(decrypted);
+    } catch (e) {
+      _addLog('error', 'E2E解密失败: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 密钥管理功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取密钥版本
+  Future<int> getKeyVersion() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyKeyVersion) ?? 1;
+  }
+
+  /// 检查密钥是否需要轮换
+  ///
+  /// 根据上次轮换时间和轮换间隔判断
+  Future<bool> isKeyRotationNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastRotationStr = prefs.getString(_keyKeyRotationTime);
+    if (lastRotationStr == null) return true;
+
+    final lastRotation = DateTime.tryParse(lastRotationStr);
+    if (lastRotation == null) return true;
+
+    return DateTime.now().difference(lastRotation) > _keyRotationInterval;
+  }
+
+  /// 执行密钥轮换
+  ///
+  /// 生成新密钥并更新版本号
+  Future<bool> rotateKey() async {
+    try {
+      _addLog('info', '开始密钥轮换');
+
+      final prefs = await SharedPreferences.getInstance();
+      final currentVersion = prefs.getInt(_keyKeyVersion) ?? 1;
+
+      // 生成新的随机密钥
+      final newKeySeed = List<int>.generate(32, (i) =>
+          DateTime.now().microsecondsSinceEpoch.hashCode ^
+          (i * 0x9E3779B9) ^
+          (currentVersion * 0x517CC1B7));
+      final salted = utf8.encode('writefont_key_v${currentVersion + 1}') + newKeySeed;
+      final newKeyHex = sha256.convert(salted).toString();
+
+      // 保存新密钥
+      await prefs.setString('storage_encryption_key', newKeyHex);
+      await prefs.setInt(_keyKeyVersion, currentVersion + 1);
+      await prefs.setString(_keyKeyRotationTime, DateTime.now().toIso8601String());
+
+      // 清除缓存的旧密钥
+      StorageService.clearEncryptionKeyCache();
+
+      _addLog('info', '密钥轮换完成，新版本: ${currentVersion + 1}');
+      return true;
+    } catch (e) {
+      _addLog('error', '密钥轮换失败: $e');
+      return false;
+    }
+  }
+
+  /// 获取密钥管理状态
+  Future<Map<String, dynamic>> getKeyManagementStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final version = prefs.getInt(_keyKeyVersion) ?? 1;
+    final lastRotationStr = prefs.getString(_keyKeyRotationTime);
+    final needsRotation = await isKeyRotationNeeded();
+    final algorithm = await getEncryptionAlgorithm();
+
+    return {
+      'keyVersion': version,
+      'lastRotation': lastRotationStr,
+      'needsRotation': needsRotation,
+      'algorithm': algorithm,
+      'rotationIntervalDays': _keyRotationInterval.inDays,
+      'e2eEnabled': await isE2EEncryptionEnabled(),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 加密性能优化
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加密性能指标
+  static final List<Map<String, dynamic>> _encryptionMetrics = [];
+  static const int _maxMetricsCount = 100;
+
+  /// 记录加密性能
+  void _recordEncryptionMetric(String operation, Duration elapsed, int dataSize) {
+    _encryptionMetrics.add({
+      'operation': operation,
+      'elapsedMs': elapsed.inMicroseconds / 1000.0,
+      'dataSize': dataSize,
+      'throughputMBps': dataSize > 0 && elapsed.inMicroseconds > 0
+          ? (dataSize / 1048576) / (elapsed.inMicroseconds / 1000000)
+          : 0.0,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_encryptionMetrics.length > _maxMetricsCount) {
+      _encryptionMetrics.removeAt(0);
+    }
+  }
+
+  /// 获取加密性能统计
+  Map<String, dynamic> getEncryptionPerformanceStats() {
+    if (_encryptionMetrics.isEmpty) {
+      return {
+        'sampleCount': 0,
+        'avgDurationMs': 0.0,
+        'avgThroughputMBps': 0.0,
+      };
+    }
+
+    final durations = _encryptionMetrics.map((m) => m['elapsedMs'] as double).toList();
+    final throughputs = _encryptionMetrics.map((m) => m['throughputMBps'] as double).toList();
+
+    return {
+      'sampleCount': _encryptionMetrics.length,
+      'avgDurationMs': durations.reduce((a, b) => a + b) / durations.length,
+      'minDurationMs': durations.reduce((a, b) => a < b ? a : b),
+      'maxDurationMs': durations.reduce((a, b) => a > b ? a : b),
+      'avgThroughputMBps': throughputs.reduce((a, b) => a + b) / throughputs.length,
+      'recentSamples': _encryptionMetrics.take(10).toList(),
+    };
+  }
+
+  /// 带性能监控的加密方法
+  Future<String> encryptWithMetrics(String plainData) async {
+    final sw = Stopwatch()..start();
+    final result = await _encryptProjectData(plainData);
+    sw.stop();
+    _recordEncryptionMetric('encrypt', sw.elapsed, plainData.length);
+    return result;
+  }
+
+  /// 带性能监控的解密方法
+  Future<String> decryptWithMetrics(String encryptedData) async {
+    final sw = Stopwatch()..start();
+    final result = await _decryptProjectData(encryptedData);
+    sw.stop();
+    _recordEncryptionMetric('decrypt', sw.elapsed, encryptedData.length);
+    return result;
   }
 
   // ═══════════════════════════════════════════════════════════

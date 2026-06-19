@@ -570,6 +570,23 @@ class StorageService {
     return _encryptBytes(data, key);
   }
 
+  /// 公开的字节加密方法（供其他服务调用）
+  ///
+  /// 用于云同步服务的端到端加密
+  static Uint8List encryptBytes(Uint8List data, List<int> key) {
+    return _encryptBytes(data, key);
+  }
+
+  /// 公开的字节解密方法（供其他服务调用）
+  static Uint8List decryptBytes(Uint8List data, List<int> key) {
+    return _decryptBytes(data, key);
+  }
+
+  /// 清除加密密钥缓存（密钥轮换后调用）
+  static void clearEncryptionKeyCache() {
+    _encryptionKey = null;
+  }
+
   /// 加密字符串数据
   static Future<String> encryptData(String plainText) async {
     final key = await _getEncryptionKey();
@@ -2428,6 +2445,345 @@ class StorageService {
     }
 
     return report;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 多因素认证功能
+  // ═══════════════════════════════════════════════════════════
+
+  static const String _mfaEnabledKey = 'auth_mfa_enabled';
+  static const String _mfaMethodKey = 'auth_mfa_method';
+  static const String _mfaSecretKey = 'auth_mfa_secret';
+  static const String _mfaBackupCodesKey = 'auth_mfa_backup_codes';
+
+  /// MFA 认证方法
+  static const String mfaMethodTotp = 'totp';         // 基于时间的一次性密码
+  static const String mfaMethodSms = 'sms';           // 短信验证码
+  static const String mfaMethodEmail = 'email';       // 邮箱验证码
+  static const String mfaMethodBiometric = 'biometric'; // 生物识别
+
+  /// 检查 MFA 是否启用
+  static Future<bool> isMfaEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_mfaEnabledKey) ?? false;
+  }
+
+  /// 获取 MFA 认证方法
+  static Future<String> getMfaMethod() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_mfaMethodKey) ?? mfaMethodTotp;
+  }
+
+  /// 启用 MFA
+  ///
+  /// [method] 认证方法（totp/sms/email/biometric）
+  /// [secret] 认证密钥（TOTP 场景下的密钥）
+  static Future<void> enableMfa(String method, {String? secret}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_mfaEnabledKey, true);
+    await prefs.setString(_mfaMethodKey, method);
+    if (secret != null) {
+      await prefs.setString(_mfaSecretKey, secret);
+    }
+    // 生成备份码
+    final backupCodes = _generateBackupCodes();
+    await prefs.setStringList(_mfaBackupCodesKey, backupCodes);
+    debugPrint('[StorageService] MFA 已启用: $method');
+  }
+
+  /// 禁用 MFA
+  static Future<void> disableMfa() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_mfaEnabledKey, false);
+    await prefs.remove(_mfaMethodKey);
+    await prefs.remove(_mfaSecretKey);
+    await prefs.remove(_mfaBackupCodesKey);
+    debugPrint('[StorageService] MFA 已禁用');
+  }
+
+  /// 验证 MFA 代码
+  ///
+  /// [code] 用户输入的验证码
+  /// 返回 true 表示验证通过
+  static Future<bool> verifyMfaCode(String code) async {
+    final prefs = await SharedPreferences.getInstance();
+    final method = prefs.getString(_mfaMethodKey) ?? mfaMethodTotp;
+
+    switch (method) {
+      case mfaMethodTotp:
+        return _verifyTotpCode(code);
+      case mfaMethodSms:
+      case mfaMethodEmail:
+        return _verifyOtpCode(code);
+      case mfaMethodBiometric:
+        return await verifyBiometric();
+      default:
+        return false;
+    }
+  }
+
+  /// 验证 TOTP 代码（简化实现，生产环境应使用 speakeasy 等库）
+  static bool _verifyTotpCode(String code) {
+    // 简化的 TOTP 验证：检查 6 位数字格式
+    if (code.length != 6 || !RegExp(r'^\d{6}$').hasMatch(code)) {
+      return false;
+    }
+    // 实际应用中应基于时间窗口和密钥计算 TOTP
+    return true;
+  }
+
+  /// 验证 OTP 代码（简化实现）
+  static bool _verifyOtpCode(String code) {
+    return code.length >= 4 && code.length <= 8 && RegExp(r'^\d+$').hasMatch(code);
+  }
+
+  /// 使用备份码验证
+  static Future<bool> verifyBackupCode(String code) async {
+    final prefs = await SharedPreferences.getInstance();
+    final backupCodes = prefs.getStringList(_mfaBackupCodesKey) ?? [];
+    if (backupCodes.contains(code)) {
+      backupCodes.remove(code);
+      await prefs.setStringList(_mfaBackupCodesKey, backupCodes);
+      return true;
+    }
+    return false;
+  }
+
+  /// 获取剩余备份码数量
+  static Future<int> getBackupCodeCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getStringList(_mfaBackupCodesKey) ?? []).length;
+  }
+
+  /// 生成备份码
+  static List<String> _generateBackupCodes() {
+    final codes = <String>[];
+    for (int i = 0; i < 8; i++) {
+      final code = (DateTime.now().microsecondsSinceEpoch + i * 7919)
+          .toString()
+          .padLeft(8, '0')
+          .substring(0, 8);
+      codes.add(code);
+    }
+    return codes;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 生物识别认证功能
+  // ═══════════════════════════════════════════════════════════
+
+  static const String _biometricEnabledKey = 'auth_biometric_enabled';
+  static const String _biometricTypeKey = 'auth_biometric_type';
+
+  /// 生物识别类型
+  static const String biometricTypeFingerprint = 'fingerprint';
+  static const String biometricTypeFace = 'face';
+  static const String biometricTypeIris = 'iris';
+
+  /// 检查生物识别是否启用
+  static Future<bool> isBiometricEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_biometricEnabledKey) ?? false;
+  }
+
+  /// 获取生物识别类型
+  static Future<String> getBiometricType() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_biometricTypeKey) ?? biometricTypeFingerprint;
+  }
+
+  /// 启用生物识别认证
+  ///
+  /// [type] 生物识别类型（fingerprint/face/iris）
+  static Future<void> enableBiometric(String type) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_biometricEnabledKey, true);
+    await prefs.setString(_biometricTypeKey, type);
+    debugPrint('[StorageService] 生物识别已启用: $type');
+  }
+
+  /// 禁用生物识别认证
+  static Future<void> disableBiometric() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_biometricEnabledKey, false);
+    debugPrint('[StorageService] 生物识别已禁用');
+  }
+
+  /// 执行生物识别验证
+  ///
+  /// 实际实现需要调用平台原生 API（如 LocalAuthentication）
+  /// 此处提供框架和模拟实现
+  static Future<bool> verifyBiometric() async {
+    try {
+      // 实际应用中应调用:
+      // final localAuth = LocalAuthentication();
+      // final didAuthenticate = await localAuth.authenticate(
+      //   localizedReason: '请验证身份以继续',
+      //   options: const AuthenticationOptions(biometricOnly: true),
+      // );
+      // return didAuthenticate;
+
+      // 模拟实现：检查生物识别是否启用
+      final enabled = await isBiometricEnabled();
+      if (!enabled) return false;
+
+      debugPrint('[StorageService] 生物识别验证（模拟通过）');
+      return true;
+    } catch (e) {
+      debugPrint('[StorageService] 生物识别验证失败: $e');
+      return false;
+    }
+  }
+
+  /// 检查设备是否支持生物识别
+  ///
+  /// 实际实现需要调用平台 API
+  static Future<bool> isBiometricAvailable() async {
+    try {
+      // 实际应用中应调用:
+      // final localAuth = LocalAuthentication();
+      // return await localAuth.canCheckBiometrics;
+      return true; // 模拟返回
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 单点登录功能
+  // ═══════════════════════════════════════════════════════════
+
+  static const String _ssoEnabledKey = 'auth_sso_enabled';
+  static const String _ssoProviderKey = 'auth_sso_provider';
+  static const String _ssoTokenKey = 'auth_sso_token';
+  static const String _ssoProfileKey = 'auth_sso_profile';
+
+  /// SSO 提供商
+  static const String ssoProviderGoogle = 'google';
+  static const String ssoProviderApple = 'apple';
+  static const String ssoProviderGithub = 'github';
+  static const String ssoProviderWechat = 'wechat';
+
+  /// 检查 SSO 是否启用
+  static Future<bool> isSsoEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_ssoEnabledKey) ?? false;
+  }
+
+  /// 获取 SSO 提供商
+  static Future<String?> getSsoProvider() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_ssoProviderKey);
+  }
+
+  /// 保存 SSO 登录信息
+  ///
+  /// [provider] SSO 提供商
+  /// [token] 认证令牌
+  /// [profile] 用户资料
+  static Future<void> saveSsoSession(
+    String provider,
+    String token,
+    Map<String, dynamic> profile,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_ssoEnabledKey, true);
+    await prefs.setString(_ssoProviderKey, provider);
+    await prefs.setString(_ssoTokenKey, token);
+    await prefs.setString(_ssoProfileKey, jsonEncode(profile));
+    debugPrint('[StorageService] SSO 会话已保存: $provider');
+  }
+
+  /// 获取 SSO 用户资料
+  static Future<Map<String, dynamic>?> getSsoProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final profileJson = prefs.getString(_ssoProfileKey);
+    if (profileJson != null) {
+      return jsonDecode(profileJson) as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  /// 清除 SSO 会话
+  static Future<void> clearSsoSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_ssoEnabledKey, false);
+    await prefs.remove(_ssoProviderKey);
+    await prefs.remove(_ssoTokenKey);
+    await prefs.remove(_ssoProfileKey);
+    debugPrint('[StorageService] SSO 会话已清除');
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 认证历史记录
+  // ═══════════════════════════════════════════════════════════
+
+  static const String _authHistoryKey = 'auth_history';
+  static const int _maxAuthHistory = 100;
+
+  /// 认证历史记录数据模型
+  static Future<void> logAuthEvent({
+    required String eventType,
+    required String method,
+    required bool success,
+    String? details,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getStringList(_authHistoryKey) ?? [];
+      final entry = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'eventType': eventType,
+        'method': method,
+        'success': success,
+        'details': details,
+      };
+      historyJson.add(jsonEncode(entry));
+      // 限制历史记录数量
+      if (historyJson.length > _maxAuthHistory) {
+        historyJson.removeRange(0, historyJson.length - _maxAuthHistory);
+      }
+      await prefs.setStringList(_authHistoryKey, historyJson);
+    } catch (e) {
+      debugPrint('[StorageService] 记录认证事件失败: $e');
+    }
+  }
+
+  /// 获取认证历史记录
+  static Future<List<Map<String, dynamic>>> getAuthHistory({int limit = 20}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getStringList(_authHistoryKey) ?? [];
+      final history = historyJson
+          .map((s) => jsonDecode(s) as Map<String, dynamic>)
+          .toList()
+          .reversed
+          .take(limit)
+          .toList();
+      return history;
+    } catch (e) {
+      debugPrint('[StorageService] 获取认证历史失败: $e');
+      return [];
+    }
+  }
+
+  /// 清除认证历史
+  static Future<void> clearAuthHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_authHistoryKey);
+  }
+
+  /// 获取认证状态摘要
+  static Future<Map<String, dynamic>> getAuthStatusSummary() async {
+    return {
+      'mfaEnabled': await isMfaEnabled(),
+      'mfaMethod': await getMfaMethod(),
+      'biometricEnabled': await isBiometricEnabled(),
+      'biometricType': await getBiometricType(),
+      'ssoEnabled': await isSsoEnabled(),
+      'ssoProvider': await getSsoProvider(),
+      'backupCodeCount': await getBackupCodeCount(),
+    };
   }
 }
 
