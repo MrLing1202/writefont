@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../models/project.dart';
 import '../theme/app_theme.dart';
 import 'font_preview_screen.dart';
+import 'font_preview_enhanced_screen.dart';
 import 'project_list_screen.dart';
 import 'settings_screen.dart';
 import 'writing_tips_screen.dart';
@@ -206,6 +207,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       WFAnimations.slideRoute(const FontPreviewScreen()),
+                    );
+                  },
+                  onEnhancedPreviewTap: () {
+                    Navigator.push(
+                      context,
+                      WFAnimations.slideRoute(const FontPreviewEnhancedScreen()),
                     );
                   },
                   onStyleTransferTap: () => HomeActions.openStyleTransfer(context),

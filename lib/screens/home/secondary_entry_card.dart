@@ -8,6 +8,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onCharGridTap;
   final VoidCallback onFontPreviewTap;
   final VoidCallback onStyleTransferTap;
+  final VoidCallback onEnhancedPreviewTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -16,6 +17,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onCharGridTap,
     required this.onFontPreviewTap,
     required this.onStyleTransferTap,
+    required this.onEnhancedPreviewTap,
   });
 
   @override
@@ -64,6 +66,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字体预览',
             subtitle: '输入文字查看手迹效果',
             onTap: onFontPreviewTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.dashboard_customize,
+            iconColor: WFColors.info,
+            title: '增强预览',
+            subtitle: '多字号 · 多场景 · 实时对比',
+            onTap: onEnhancedPreviewTap,
           ),
           const Divider(height: 1, indent: 56),
           _SecondaryListTile(
