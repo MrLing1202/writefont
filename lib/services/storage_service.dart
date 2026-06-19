@@ -19,6 +19,14 @@ class StorageService {
   static Directory? _cachedExportsDir;
   static Directory? _cachedBackupDir;
 
+  // ── 网络优化：项目列表缓存（减少重复文件 I/O） ──
+  static List<FontProject>? _cachedProjectList;
+  static DateTime? _projectListCacheTime;
+  static const Duration _projectListCacheTTL = Duration(seconds: 30);
+
+  // ── 网络优化：单项目缓存（减少重复文件读取） ──
+  static final Map<String, FontProject> _projectCache = {};
+
   /// Get the app's documents directory.
   static Future<Directory> get _documentsDir async {
     if (_cachedDocumentsDir != null) return _cachedDocumentsDir!;
@@ -195,6 +203,10 @@ class StorageService {
     for (int i = 0; i < project.sourceImages.length; i++) {
       await saveSourceImage(project.id, project.sourceImages[i], i);
     }
+
+    // 网络优化：更新缓存（保存后缓存失效）
+    _projectCache[project.id] = project;
+    _cachedProjectList = null; // 使列表缓存失效
   }
 
   /// 自动备份：在覆盖前将现有 project.json 拷贝到 backup 目录
@@ -290,7 +302,17 @@ class StorageService {
   }
 
   /// 加载所有已保存的项目（仅加载元数据，不含源图片二进制）
+  /// 网络优化：使用内存缓存，30秒内重复调用直接返回缓存结果
   static Future<List<FontProject>> loadProjects() async {
+    // 检查缓存是否有效
+    if (_cachedProjectList != null && _projectListCacheTime != null) {
+      final elapsed = DateTime.now().difference(_projectListCacheTime!);
+      if (elapsed < _projectListCacheTTL) {
+        debugPrint('loadProjects: 命中缓存 (${elapsed.inSeconds}秒前)');
+        return _cachedProjectList!;
+      }
+    }
+
     final projDir = await _projectsDir;
     final projects = <FontProject>[];
 
@@ -315,11 +337,22 @@ class StorageService {
 
     // 按更新时间倒序排列
     projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    // 写入缓存
+    _cachedProjectList = projects;
+    _projectListCacheTime = DateTime.now();
+
     return projects;
   }
 
   /// 根据 ID 加载单个项目
+  /// 网络优化：使用内存缓存减少重复文件读取
   static Future<FontProject?> loadProject(String id) async {
+    // 检查单项目缓存
+    if (_projectCache.containsKey(id)) {
+      return _projectCache[id];
+    }
+
     final projDir = await _projectsDir;
     final jsonFile = File(p.join(projDir.path, id, 'project.json'));
 
@@ -328,7 +361,9 @@ class StorageService {
     try {
       final jsonString = await jsonFile.readAsString();
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
-      return FontProject.fromJson(json);
+      final project = FontProject.fromJson(json);
+      _projectCache[id] = project; // 写入缓存
+      return project;
     } catch (e) {
       return null;
     }
@@ -341,6 +376,9 @@ class StorageService {
     if (await projectDir.exists()) {
       await projectDir.delete(recursive: true);
     }
+    // 网络优化：清除缓存
+    _projectCache.remove(id);
+    _cachedProjectList = null;
   }
 
   /// 获取项目中某个字符的原始图片

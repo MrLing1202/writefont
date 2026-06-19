@@ -58,6 +58,9 @@ class RecognitionService {
   static final List<int> _cacheAccessOrder = [];
   // 识别置信度缓存（图片哈希 → 置信度 0.0~1.0）
   static final Map<int, double> _confidenceCache = {};
+  // 内存监控：记录缓存占用的估算字节数
+  static int _estimatedCacheBytes = 0;
+  static const int _maxCacheBytes = 50 * 1024 * 1024; // 50MB 上限
 
   /// 简单的字节哈希用于缓存 key
   static int _hashBytes(Uint8List bytes) {
@@ -182,11 +185,14 @@ class RecognitionService {
         : await _recognizeLocal(imageBytes);
 
     // 写入缓存，超出上限时使用 LRU 策略淘汰最久未访问的条目
-    if (_recognitionCache.length >= _maxCacheSize) {
+    // 内存优化：同时检查条目数和内存占用
+    if (_recognitionCache.length >= _maxCacheSize ||
+        _estimatedCacheBytes >= _maxCacheBytes) {
       _evictLruCache();
     }
     _recognitionCache[cacheKey] = result;
     _cacheAccessOrder.add(cacheKey);
+    _estimatedCacheBytes += imageBytes.length; // 估算缓存内存增长
 
     return result;
   }
@@ -738,6 +744,9 @@ class RecognitionService {
     _mlKitRecognizer?.close();
     _mlKitRecognizer = null;
     _recognitionCache.clear();
+    _cacheAccessOrder.clear();
+    _confidenceCache.clear();
+    _estimatedCacheBytes = 0; // 重置内存计数
   }
 
   /// 清除配置缓存
@@ -752,6 +761,7 @@ class RecognitionService {
     _recognitionCache.clear();
     _cacheAccessOrder.clear();
     _confidenceCache.clear();
+    _estimatedCacheBytes = 0; // 重置内存计数
   }
 
   /// 获取缓存命中率（用于调试和统计）

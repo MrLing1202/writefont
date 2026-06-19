@@ -18,6 +18,7 @@ import 'screens/project_list_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/app_config_service.dart';
 import 'services/recognition_service.dart';
+import 'services/image_processor.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
 
@@ -124,6 +125,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   bool _onboardingChecked = false;
   Locale _locale = const Locale('zh');
   bool _useBottomNav = true; // 是否使用底部导航栏
+  bool _isAppInForeground = true; // 电池优化：追踪应用前后台状态
 
   /// SharedPreferences 缓存，避免重复同步 I/O
   static SharedPreferences? _prefsCache;
@@ -198,8 +200,24 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.detached) {
-      RecognitionService.instance.dispose();
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // 电池优化：应用回到前台时恢复状态
+        _isAppInForeground = true;
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        // 电池优化：应用进入后台时释放非必要资源
+        _isAppInForeground = false;
+        // 清理轮廓提取缓存，释放内存
+        ImageProcessor.clearContourCache();
+        break;
+      case AppLifecycleState.detached:
+        RecognitionService.instance.dispose();
+        ImageProcessor.clearContourCache();
+        break;
+      case AppLifecycleState.hidden:
+        break;
     }
   }
 

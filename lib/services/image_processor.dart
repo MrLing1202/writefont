@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
@@ -92,9 +93,15 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
     (_) => List.filled(binary.width, false),
   );
 
+  // 性能优化：缓存像素数据为 bool 数组，避免重复 getPixel 调用
+  final blackMap = List.generate(
+    binary.height,
+    (y) => List.generate(binary.width, (x) => ImageProcessor._isBlack(binary, x, y)),
+  );
+
   for (int y = 0; y < binary.height; y++) {
     for (int x = 0; x < binary.width; x++) {
-      if (!visited[y][x] && ImageProcessor._isBlack(binary, x, y)) {
+      if (!visited[y][x] && blackMap[y][x]) {
         final contour =
             ImageProcessor._traceContour(binary, x, y, visited);
         if (contour.length > 4) {
@@ -123,29 +130,30 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
   ];
 
   // BFS from edge pixels to mark exterior white regions
-  final queue = <List<int>>[];
+  // 性能优化：使用 Queue 替代 List，removeFirst 为 O(1) vs removeAt(0) 为 O(n)
+  final queue = Queue<List<int>>();
   for (int x = 0; x < w; x++) {
-    if (!ImageProcessor._isBlack(binary, x, 0)) {
-      queue.add([x, 0]);
+    if (!blackMap[0][x]) {
+      queue.addLast([x, 0]);
       isExterior[0][x] = true;
     }
-    if (!ImageProcessor._isBlack(binary, x, h - 1)) {
-      queue.add([x, h - 1]);
+    if (!blackMap[h - 1][x]) {
+      queue.addLast([x, h - 1]);
       isExterior[h - 1][x] = true;
     }
   }
   for (int y = 1; y < h - 1; y++) {
-    if (!ImageProcessor._isBlack(binary, 0, y)) {
-      queue.add([0, y]);
+    if (!blackMap[y][0]) {
+      queue.addLast([0, y]);
       isExterior[y][0] = true;
     }
-    if (!ImageProcessor._isBlack(binary, w - 1, y)) {
-      queue.add([w - 1, y]);
+    if (!blackMap[y][w - 1]) {
+      queue.addLast([w - 1, y]);
       isExterior[y][w - 1] = true;
     }
   }
   while (queue.isNotEmpty) {
-    final p = queue.removeAt(0);
+    final p = queue.removeFirst();
     for (final d in bfsDirs4) {
       final nx = p[0] + d[0], ny = p[1] + d[1];
       if (nx >= 0 &&
@@ -155,7 +163,7 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
           !isExterior[ny][nx] &&
           !ImageProcessor._isBlack(binary, nx, ny)) {
         isExterior[ny][nx] = true;
-        queue.add([nx, ny]);
+        queue.addLast([nx, ny]);
       }
     }
   }
@@ -165,18 +173,18 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
 
   for (int y = 0; y < h; y++) {
     for (int x = 0; x < w; x++) {
-      if (ImageProcessor._isBlack(binary, x, y) ||
+      if (blackMap[y][x] ||
           isExterior[y][x] ||
           holeVisited[y][x]) continue;
 
       final holePixels = <Point>[];
       int minX = x, maxX = x, minY = y, maxY = y;
-      final holeQueue = <List<int>>[];
-      holeQueue.add([x, y]);
+      final holeQueue = Queue<List<int>>();
+      holeQueue.addLast([x, y]);
       holeVisited[y][x] = true;
 
       while (holeQueue.isNotEmpty) {
-        final p = holeQueue.removeAt(0);
+        final p = holeQueue.removeFirst();
         final px = p[0], py = p[1];
         holePixels.add(Point(px, py));
         if (px < minX) minX = px;
@@ -191,10 +199,10 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
               ny >= 0 &&
               ny < h &&
               !holeVisited[ny][nx] &&
-              !ImageProcessor._isBlack(binary, nx, ny) &&
+              !blackMap[ny][nx] &&
               !isExterior[ny][nx]) {
             holeVisited[ny][nx] = true;
-            holeQueue.add([nx, ny]);
+            holeQueue.addLast([nx, ny]);
           }
         }
       }
@@ -206,7 +214,7 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
 
       int bx = -1, by = -1;
       for (final p in holePixels) {
-        if (p.x > 0 && ImageProcessor._isBlack(binary, p.x - 1, p.y)) {
+        if (p.x > 0 && blackMap[p.y][p.x - 1]) {
           bx = p.x;
           by = p.y;
           break;
@@ -221,7 +229,7 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
                 nx < w &&
                 ny >= 0 &&
                 ny < h &&
-                ImageProcessor._isBlack(binary, nx, ny)) {
+                blackMap[ny][nx]) {
               hasBlackNeighbor = true;
               break;
             }
@@ -256,7 +264,7 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
               nx < w &&
               ny >= 0 &&
               ny < h &&
-              ImageProcessor._isBlack(binary, nx, ny)) {
+              blackMap[ny][nx]) {
             bx = nx;
             by = ny;
             dir = d;
@@ -304,6 +312,13 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
 
 /// Service for processing handwriting images into glyph data.
 class ImageProcessor {
+  // ── 轮廓提取结果缓存（避免重复计算相同图片的轮廓） ──
+  static final Map<int, List<Contour>> _contourCache = {};
+  static const int _maxContourCacheSize = 50;
+
+  /// 清除轮廓缓存（用于释放内存）
+  static void clearContourCache() => _contourCache.clear();
+
   /// Process a source image into individual character glyphs.
   /// Assumes characters are written on a grid (e.g., graph paper).
   /// Returns a map of character string -> binary image data.
@@ -385,22 +400,27 @@ class ImageProcessor {
     final directions = const [
       [1, 0], [-1, 0], [0, 1], [0, -1],
     ];
+    // 性能优化：缓存像素数据为 bool 数组，避免重复 getPixel 调用
+    final blackRows = List.generate(
+      h,
+      (y) => List.generate(w, (x) => _isBlack(processed, x, y)),
+    );
 
     // Each entry: [minX, minY, maxX, maxY, area]
     final List<List<int>> bboxes = [];
 
     for (int sy = 0; sy < h; sy++) {
       for (int sx = 0; sx < w; sx++) {
-        if (visited[sy][sx] || !_isBlack(processed, sx, sy)) continue;
+        if (visited[sy][sx] || !blackRows[sy][sx]) continue;
 
-        // BFS
+        // BFS - 性能优化：使用 Queue 替代 List，removeFirst 为 O(1)
         int minX = sx, maxX = sx, minY = sy, maxY = sy, area = 0;
-        final queue = <List<int>>[];
-        queue.add([sx, sy]);
+        final queue = Queue<List<int>>();
+        queue.addLast([sx, sy]);
         visited[sy][sx] = true;
 
         while (queue.isNotEmpty) {
-          final p = queue.removeAt(0);
+          final p = queue.removeFirst();
           final px = p[0], py = p[1];
           area++;
           if (px < minX) minX = px;
@@ -411,9 +431,9 @@ class ImageProcessor {
           for (final d in directions) {
             final nx = px + d[0], ny = py + d[1];
             if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
-                !visited[ny][nx] && _isBlack(processed, nx, ny)) {
+                !visited[ny][nx] && blackRows[ny][nx]) {
               visited[ny][nx] = true;
-              queue.add([nx, ny]);
+              queue.addLast([nx, ny]);
             }
           }
         }
@@ -541,6 +561,14 @@ class ImageProcessor {
     ProgressCallback? onProgress,
     Duration timeout = const Duration(seconds: 60),
   }) async {
+    // 性能优化：缓存命中检查
+    final cacheKey = _fastHash(imageBytes, params);
+    if (_contourCache.containsKey(cacheKey)) {
+      debugPrint('轮廓提取: 命中缓存 (hash=$cacheKey)');
+      onProgress?.call(1.0, '轮廓提取完成（缓存）');
+      return _contourCache[cacheKey]!;
+    }
+
     onProgress?.call(0.0, '正在解码图片...');
 
     // 快速校验图片是否可解码
@@ -569,6 +597,12 @@ class ImageProcessor {
 
     debugPrint('轮廓提取完成: 共 ${allContours.length} 个轮廓, '
         '点数=[${allContours.map((c) => c.points.length).join(", ")}]');
+
+    // 写入缓存，超出上限时清除最旧条目
+    if (_contourCache.length >= _maxContourCacheSize) {
+      _contourCache.remove(_contourCache.keys.first);
+    }
+    _contourCache[cacheKey] = allContours;
 
     onProgress?.call(1.0, '轮廓提取完成');
     return allContours;
@@ -607,6 +641,32 @@ class ImageProcessor {
   }
 
   // --- Private helpers ---
+
+  /// 快速哈希：结合图片字节和处理参数生成缓存 key
+  static int _fastHash(Uint8List bytes, ProcessingParams params) {
+    int hash = 0x811c9dc5;
+    // 混入参数
+    hash ^= (params.threshold * 1000).toInt();
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    hash ^= (params.strokeWidth * 100).toInt();
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    hash ^= (params.smoothness * 100).toInt();
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    hash ^= params.invertColors ? 1 : 0;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    // 采样字节（首尾各 128 字节）
+    final len = bytes.length;
+    final sampleSize = len < 256 ? len : 256;
+    for (int i = 0; i < sampleSize ~/ 2; i++) {
+      hash ^= bytes[i];
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    for (int i = (len - sampleSize ~/ 2).clamp(0, len); i < len; i++) {
+      hash ^= bytes[i];
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash & 0x7FFFFFFF;
+  }
 
   static img.Image _binarize(img.Image gray, double threshold, bool invert) {
     final result = img.Image(width: gray.width, height: gray.height);
