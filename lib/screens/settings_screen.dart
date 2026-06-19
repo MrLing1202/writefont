@@ -72,6 +72,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const int _maxFeedbackEntries = 100;
   static const String _feedbackStorageKey = 'user_feedback_entries';
 
+  // 支持历史记录
+  final List<_SupportRecord> _supportHistory = [];
+  static const String _supportHistoryKey = 'support_history_entries';
+  static const int _maxSupportRecords = 50;
+
   // 反馈分类
   static const Map<String, Map<String, dynamic>> _feedbackCategories = {
     'bug': {'icon': '🐛', 'label': 'Bug 报告', 'priority': 1},
@@ -93,6 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadSettings();
     _loadFeedbackEntries();
+    _loadSupportHistory();
   }
 
   @override
@@ -749,6 +755,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ═══ 用户反馈 ═══
                 _buildSectionHeader('用户反馈', Icons.feedback_outlined),
                 _buildFeedbackCard(),
+                const SizedBox(height: 16),
+
+                // ═══ 帮助与支持 ═══
+                _buildSectionHeader('帮助与支持', Icons.support_agent),
+                _buildSupportCard(),
                 const SizedBox(height: 32),
               ],
             ),
@@ -1794,6 +1805,233 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (diff.inDays < 7) return '${diff.inDays}天前';
     return '${time.month}/${time.day}';
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 帮助与支持功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载支持历史记录
+  Future<void> _loadSupportHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_supportHistoryKey);
+      if (json != null && mounted) {
+        final list = jsonDecode(json) as List;
+        setState(() {
+          _supportHistory.clear();
+          _supportHistory.addAll(
+            list.map((e) => _SupportRecord.fromJson(e as Map<String, dynamic>)),
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('[Settings] 加载支持历史失败: $e');
+    }
+  }
+
+  /// 保存支持历史记录
+  Future<void> _saveSupportHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_supportHistory.map((e) => e.toJson()).toList());
+      await prefs.setString(_supportHistoryKey, json);
+    } catch (e) {
+      debugPrint('[Settings] 保存支持历史失败: $e');
+    }
+  }
+
+  /// 记录支持操作
+  void _recordSupportAction(String type, String detail) {
+    final record = _SupportRecord(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      type: type,
+      detail: detail,
+      timestamp: DateTime.now(),
+    );
+    setState(() {
+      _supportHistory.insert(0, record);
+      if (_supportHistory.length > _maxSupportRecords) {
+        _supportHistory.removeLast();
+      }
+    });
+    _saveSupportHistory();
+  }
+
+  /// 打开在线支持
+  Future<void> _openOnlineSupport() async {
+    try {
+      final uri = Uri.parse('https://github.com/MrLing1202/writefont/issues');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        _recordSupportAction('online', '访问在线支持页面');
+      } else {
+        if (mounted) WFSnackBar.error(context, '无法打开链接');
+      }
+    } catch (e) {
+      if (mounted) WFSnackBar.error(context, '打开在线支持失败: $e');
+    }
+  }
+
+  /// 发送支持邮件
+  Future<void> _sendSupportEmail() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final uri = Uri(
+        scheme: 'mailto',
+        path: 'support@writefont.app',
+        queryParameters: {
+          'subject': 'WriteFont 支持请求 - v${packageInfo.version}',
+          'body': '请描述您遇到的问题：\n\n'
+              '设备信息：\n'
+              '应用版本：v${packageInfo.version}\n'
+              'Build：${packageInfo.buildNumber}\n',
+        },
+      );
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+        _recordSupportAction('email', '发送支持邮件');
+      } else {
+        if (mounted) WFSnackBar.error(context, '无法打开邮件客户端');
+      }
+    } catch (e) {
+      if (mounted) WFSnackBar.error(context, '发送邮件失败: $e');
+    }
+  }
+
+  /// 打开社区支持
+  Future<void> _openCommunitySupport() async {
+    try {
+      final uri = Uri.parse('https://github.com/MrLing1202/writefont/discussions');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        _recordSupportAction('community', '访问社区讨论');
+      } else {
+        if (mounted) WFSnackBar.error(context, '无法打开链接');
+      }
+    } catch (e) {
+      if (mounted) WFSnackBar.error(context, '打开社区失败: $e');
+    }
+  }
+
+  /// 显示支持历史记录对话框
+  void _showSupportHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('支持历史'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: _supportHistory.isEmpty
+              ? const Center(child: Text('暂无支持记录'))
+              : ListView.builder(
+                  itemCount: _supportHistory.length,
+                  itemBuilder: (ctx, i) {
+                    final record = _supportHistory[i];
+                    return ListTile(
+                      leading: Icon(
+                        _getSupportTypeIcon(record.type),
+                        color: _getSupportTypeColor(record.type),
+                      ),
+                      title: Text(record.detail, style: const TextStyle(fontSize: 13)),
+                      subtitle: Text(
+                        _formatFeedbackTime(record.timestamp),
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          if (_supportHistory.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() => _supportHistory.clear());
+                _saveSupportHistory();
+                Navigator.pop(ctx);
+              },
+              child: const Text('清除记录', style: TextStyle(color: WFColors.error)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 获取支持类型图标
+  IconData _getSupportTypeIcon(String type) {
+    switch (type) {
+      case 'online':
+        return Icons.language;
+      case 'email':
+        return Icons.email;
+      case 'community':
+        return Icons.forum;
+      default:
+        return Icons.support;
+    }
+  }
+
+  /// 获取支持类型颜色
+  Color _getSupportTypeColor(String type) {
+    switch (type) {
+      case 'online':
+        return WFColors.info;
+      case 'email':
+        return WFColors.primary;
+      case 'community':
+        return WFColors.success;
+      default:
+        return WFColors.textSecondary;
+    }
+  }
+
+  /// 构建帮助与支持卡片
+  Widget _buildSupportCard() {
+    return WFCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.language, color: WFColors.info),
+            title: const Text('在线支持'),
+            subtitle: const Text('通过 GitHub Issues 提交问题'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: _openOnlineSupport,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.email, color: WFColors.primary),
+            title: const Text('邮件支持'),
+            subtitle: const Text('发送邮件至技术支持'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _sendSupportEmail,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.forum, color: WFColors.success),
+            title: const Text('社区讨论'),
+            subtitle: const Text('加入社区讨论和交流'),
+            trailing: const Icon(Icons.open_in_new, size: 18),
+            onTap: _openCommunitySupport,
+          ),
+          if (_supportHistory.isNotEmpty) ...[
+            _buildDivider(),
+            ListTile(
+              leading: const Icon(Icons.history, color: WFColors.accent),
+              title: const Text('支持历史'),
+              subtitle: Text('已记录 ${_supportHistory.length} 次支持操作'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showSupportHistoryDialog,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// 错误日志条目数据类
@@ -1843,5 +2081,34 @@ class _FeedbackEntry {
         timestamp: DateTime.parse(json['timestamp'] as String),
         appVersion: json['appVersion'] as String? ?? '',
         status: json['status'] as String? ?? 'submitted',
+      );
+}
+
+/// 支持历史记录数据类
+class _SupportRecord {
+  final String id;
+  final String type;
+  final String detail;
+  final DateTime timestamp;
+
+  const _SupportRecord({
+    required this.id,
+    required this.type,
+    required this.detail,
+    required this.timestamp,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type,
+        'detail': detail,
+        'timestamp': timestamp.toIso8601String(),
+      };
+
+  factory _SupportRecord.fromJson(Map<String, dynamic> json) => _SupportRecord(
+        id: json['id'] as String,
+        type: json['type'] as String,
+        detail: json['detail'] as String,
+        timestamp: DateTime.parse(json['timestamp'] as String),
       );
 }

@@ -82,6 +82,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _showOnboarding = false;
   int _onboardingStep = 0;
   bool _isRefreshing = false;
+  // 功能引导状态
+  bool _showFeatureGuide = false;
+  int _featureGuideStep = 0;
+  final List<String> _completedFeatureGuides = [];
+  // 操作引导状态
+  bool _showOperationGuide = false;
+  String _operationGuideTarget = '';
   // 手势状态
   double _scaleFactor = 1.0; // 捏合缩放比例
   double _previousScale = 1.0;
@@ -106,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadProjectData();
     _loadAppVersion();
     _checkOnboardingGuide();
+    _checkFeatureGuideProgress();
     _loadPushSettings();
     _loadNotificationCount();
     _quickActionAnimController = AnimationController(
@@ -146,6 +154,100 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } catch (_) {}
   }
 
+  /// 检查功能引导进度
+  Future<void> _checkFeatureGuideProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final completed = prefs.getStringList('completed_feature_guides') ?? [];
+      if (mounted) {
+        setState(() {
+          _completedFeatureGuides.clear();
+          _completedFeatureGuides.addAll(completed);
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 完成功能引导步骤
+  Future<void> _completeFeatureGuide(String guideId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _completedFeatureGuides.add(guideId);
+      await prefs.setStringList('completed_feature_guides', _completedFeatureGuides);
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  /// 显示功能引导
+  void _showFeatureGuideFor(String featureId) {
+    setState(() {
+      _showFeatureGuide = true;
+      _featureGuideStep = 0;
+    });
+  }
+
+  /// 下一步功能引导
+  void _nextFeatureGuideStep() {
+    final steps = _getFeatureGuideSteps();
+    if (_featureGuideStep < steps.length - 1) {
+      setState(() => _featureGuideStep++);
+    } else {
+      _completeFeatureGuide('main_features');
+      setState(() => _showFeatureGuide = false);
+    }
+  }
+
+  /// 获取功能引导步骤
+  List<Map<String, dynamic>> _getFeatureGuideSteps() {
+    return [
+      {
+        'icon': Icons.auto_awesome,
+        'title': '一键生成字体',
+        'desc': '拍照或选择手写图片，系统自动识别字符并生成可安装的手写字体',
+        'tip': '建议使用白色背景、黑色字体的清晰图片',
+      },
+      {
+        'icon': Icons.grid_on,
+        'title': '标准字表模式',
+        'desc': '使用标准字表逐字拍摄，确保覆盖常用汉字，生成完整字体',
+        'tip': '标准字表包含3500个常用字',
+      },
+      {
+        'icon': Icons.bolt,
+        'title': '快速体验模式',
+        'desc': '无需完整拍摄，快速生成体验版字体，感受手写字体的魅力',
+        'tip': '适合初次体验的用户',
+      },
+      {
+        'icon': Icons.auto_awesome_outlined,
+        'title': 'AI 智能生成',
+        'desc': '通过文字描述风格，AI 自动生成独特字体，无需手写',
+        'tip': '支持多种风格描述，如"优雅"、"粗犷"等',
+      },
+      {
+        'icon': Icons.folder_special,
+        'title': '项目管理',
+        'desc': '所有字体项目集中管理，支持编辑、预览、导出和分享',
+        'tip': '长按项目可快速操作',
+      },
+    ];
+  }
+
+  /// 显示操作引导（针对特定功能的上下文引导）
+  void _showOperationGuideFor(String target) {
+    setState(() {
+      _showOperationGuide = true;
+      _operationGuideTarget = target;
+    });
+  }
+
+  /// 获取引导进度百分比
+  double _getGuideProgress() {
+    const totalGuides = ['main_features', 'capture_tips', 'font_editing', 'export_share'];
+    final completed = totalGuides.where((g) => _completedFeatureGuides.contains(g)).length;
+    return completed / totalGuides.length;
+  }
+
   /// 完成新手引导
   Future<void> _completeOnboarding() async {
     try {
@@ -158,7 +260,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (_) {}
   }
-  void _nextOnboardingStep() { @@
   /// 加载推送设置
   Future<void> _loadPushSettings() async {
     try {
@@ -502,6 +603,86 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// 显示功能引导入口提示
+  Widget _buildGuideEntryPoint() {
+    final progress = _getGuideProgress();
+    if (progress >= 1.0) return const SizedBox.shrink();
+
+    return WFAnimations.fadeInSlide(
+      GestureDetector(
+        onTap: () => _showFeatureGuideFor('main_features'),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                WFColors.primary.withValues(alpha: 0.08),
+                WFColors.info.withValues(alpha: 0.06),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: WFColors.primary.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            children: [
+              // 引导图标
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: WFColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.explore, color: WFColors.primary, size: 22),
+              ),
+              const SizedBox(width: 12),
+              // 引导信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '功能引导',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: WFColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '了解应用的核心功能 (${(progress * 100).toInt()}% 已完成)',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: WFColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 进度环
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 3,
+                  backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                  valueColor: const AlwaysStoppedAnimation<Color>(WFColors.primary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: WFColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
+      delay: const Duration(milliseconds: 120),
+    );
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -755,6 +936,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 20),
 
+                  // ── 功能引导入口（未完成时显示）──
+                  _buildGuideEntryPoint(),
+                  if (_getGuideProgress() < 1.0) const SizedBox(height: 14),
+
                   // ── 主要功能入口 ──
                   WFAnimations.fadeInSlide(
                     WFActionCard(
@@ -923,6 +1108,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
           // 新手引导遮罩
           if (_showOnboarding) _buildOnboardingOverlay(context),
+          // 功能引导遮罩
+          if (_showFeatureGuide) _buildFeatureGuideOverlay(context),
+          // 操作引导浮层
+          if (_showOperationGuide) _buildOperationGuideOverlay(context),
         ],
           ),
         ),
@@ -1643,6 +1832,273 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  /// 构建功能引导覆盖层
+  Widget _buildFeatureGuideOverlay(BuildContext context) {
+    final steps = _getFeatureGuideSteps();
+    final step = steps[_featureGuideStep];
+    final progress = (_featureGuideStep + 1) / steps.length;
+
+    return GestureDetector(
+      onTap: _nextFeatureGuideStep,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.75),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: WFColors.bgCard,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: WFColors.primary.withValues(alpha: 0.15),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 顶部进度条
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                    valueColor: const AlwaysStoppedAnimation<Color>(WFColors.primary),
+                    minHeight: 4,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // 功能图标
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: WFColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    step['icon'] as IconData,
+                    size: 40,
+                    color: WFColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 步骤计数
+                Text(
+                  '${_featureGuideStep + 1} / ${steps.length}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: WFColors.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // 功能标题
+                Text(
+                  step['title'] as String,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: WFColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                // 功能描述
+                Text(
+                  step['desc'] as String,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: WFColors.textSecondary,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                // 提示信息
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: WFColors.info.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lightbulb_outline, size: 16, color: WFColors.info),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          step['tip'] as String,
+                          style: const TextStyle(fontSize: 12, color: WFColors.info),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // 进度指示点
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    steps.length,
+                    (i) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: i == _featureGuideStep ? 20 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        color: i == _featureGuideStep
+                            ? WFColors.primary
+                            : i < _featureGuideStep
+                                ? WFColors.primary.withValues(alpha: 0.4)
+                                : WFColors.textLight,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // 操作按钮
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      onPressed: () => setState(() => _showFeatureGuide = false),
+                      child: const Text('稍后再看', style: TextStyle(color: WFColors.textSecondary)),
+                    ),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            _completeFeatureGuide('main_features');
+                            setState(() => _showFeatureGuide = false);
+                          },
+                          child: const Text('跳过全部'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _nextFeatureGuideStep,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: WFColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: Text(
+                            _featureGuideStep < steps.length - 1 ? '下一步' : '完成',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建操作引导浮层（上下文相关的引导提示）
+  Widget _buildOperationGuideOverlay(BuildContext context) {
+    final tips = _getOperationGuideTips(_operationGuideTarget);
+    if (tips.isEmpty) return const SizedBox.shrink();
+
+    return Positioned(
+      bottom: 100,
+      left: 20,
+      right: 20,
+      child: Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: WFColors.bgCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: WFColors.primary.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.tips_and_updates, color: WFColors.primary, size: 20),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      '操作提示',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: WFColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => setState(() => _showOperationGuide = false),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...tips.map((tip) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.check_circle_outline, size: 14, color: WFColors.success),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        tip,
+                        style: const TextStyle(fontSize: 13, color: WFColors.textSecondary, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 获取操作引导提示内容
+  List<String> _getOperationGuideTips(String target) {
+    switch (target) {
+      case 'capture':
+        return [
+          '建议在光线充足的环境下拍摄',
+          '使用白色背景、黑色字体效果最佳',
+          '每个字符独立拍摄可提高识别准确率',
+        ];
+      case 'editing':
+        return [
+          '长按字符可手动修改识别结果',
+          '使用参数面板调节识别灵敏度',
+          '低置信度字符建议手动确认',
+        ];
+      case 'export':
+        return [
+          '预览满意后可导出为 TTF/OTF 字体',
+          '导出的字体可安装到系统使用',
+          '支持分享给朋友使用',
+        ];
+      default:
+        return [];
+    }
   }
 }
 

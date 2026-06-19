@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
@@ -36,6 +37,44 @@ class _CaptureScreenState extends State<CaptureScreen> {
   // 帮助引导状态
   bool _showHelpOverlay = false;
   int _helpStep = 0;
+  // 教程状态
+  bool _showTutorial = false;
+  int _tutorialStep = 0;
+  final List<int> _completedTutorials = [];
+  // 教程进度跟踪
+  int _totalTutorialSteps = 0;
+  int _viewedTutorialSteps = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTutorialProgress();
+  }
+
+  /// 加载教程进度
+  Future<void> _loadTutorialProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final completed = prefs.getStringList('capture_completed_tutorials');
+      if (completed != null && mounted) {
+        setState(() {
+          _completedTutorials.clear();
+          _completedTutorials.addAll(completed.map(int.parse));
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 保存教程进度
+  Future<void> _saveTutorialProgress() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        'capture_completed_tutorials',
+        _completedTutorials.map((e) => e.toString()).toList(),
+      );
+    } catch (_) {}
+  }
 
   // ── 声音反馈方法 ──
 
@@ -268,6 +307,84 @@ class _CaptureScreenState extends State<CaptureScreen> {
     ];
   }
 
+  // ── 教程功能 ──
+
+  /// 获取图文教程内容
+  List<Map<String, dynamic>> _getTutorialSteps() {
+    return [
+      {
+        'icon': Icons.camera_alt_outlined,
+        'title': '第1步：准备拍摄',
+        'desc': '选择光线充足的环境，准备白色纸张和黑色签字笔',
+        'detail': '建议：\n• 使用A4白色纸张\n• 黑色签字笔或马克笔\n• 自然光或台灯照明\n• 避免阴影和反光',
+        'videoId': 'prepare_capture',
+      },
+      {
+        'icon': Icons.edit_note,
+        'title': '第2步：书写字符',
+        'desc': '在纸张上逐个书写汉字，保持间距均匀',
+        'detail': '建议：\n• 每个字符大小约1-2厘米\n• 字符间距保持一致\n• 书写清晰，笔画完整\n• 按照标准字表顺序书写',
+        'videoId': 'write_chars',
+      },
+      {
+        'icon': Icons.photo_camera,
+        'title': '第3步：拍摄图片',
+        'desc': '使用应用拍照功能，确保图片清晰完整',
+        'detail': '建议：\n• 手机保持稳定\n• 镜头对准字符区域\n• 避免倾斜和变形\n• 可使用网格引导辅助',
+        'videoId': 'take_photo',
+      },
+      {
+        'icon': Icons.tune,
+        'title': '第4步：调节参数',
+        'desc': '根据图片情况调节识别参数，优化识别效果',
+        'detail': '建议：\n• 阈值：控制识别灵敏度\n• 对比度：增强字符边缘\n• 平滑度：优化轮廓质量\n• 线宽：调整笔画粗细',
+        'videoId': 'adjust_params',
+      },
+      {
+        'icon': Icons.font_download,
+        'title': '第5步：生成字体',
+        'desc': '预览并导出手写字体，安装到设备使用',
+        'detail': '建议：\n• 预览检查每个字符\n• 手动修正识别错误\n• 导出TTF格式字体\n• 安装到系统字体库',
+        'videoId': 'generate_font',
+      },
+    ];
+  }
+
+  /// 显示教程
+  void _showTutorialDialog() {
+    setState(() {
+      _showTutorial = true;
+      _tutorialStep = 0;
+    });
+  }
+
+  /// 下一步教程
+  void _nextTutorialStep() {
+    final steps = _getTutorialSteps();
+    if (!_completedTutorials.contains(_tutorialStep)) {
+      _completedTutorials.add(_tutorialStep);
+      _saveTutorialProgress();
+    }
+    if (_tutorialStep < steps.length - 1) {
+      setState(() {
+        _tutorialStep++;
+        _viewedTutorialSteps++;
+      });
+    } else {
+      setState(() {
+        _showTutorial = false;
+        _viewedTutorialSteps = _totalTutorialSteps;
+      });
+    }
+  }
+
+  /// 获取教程进度
+  double _getTutorialProgress() {
+    final total = _getTutorialSteps().length;
+    if (total == 0) return 0;
+    return _completedTutorials.length / total;
+  }
+
   /// 显示常见问题解答
   void _showFAQDialog() {
     showDialog(
@@ -394,6 +511,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
       appBar: WFAppBar(
         title: '拍照 / 选图',
         actions: [
+          // 教程按钮
+          IconButton(
+            onPressed: _showTutorialDialog,
+            icon: Icon(
+              Icons.menu_book,
+              color: _getTutorialProgress() >= 1.0 ? WFColors.success : null,
+            ),
+            tooltip: '使用教程',
+          ),
           // 帮助按钮
           IconButton(
             onPressed: _toggleHelp,
@@ -487,6 +613,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
           // 帮助引导覆盖层
           if (_showHelpOverlay) _buildHelpOverlay(),
+          // 教程覆盖层
+          if (_showTutorial) _buildTutorialOverlay(),
         ],
       ),
     );
@@ -594,4 +722,179 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
+  /// 构建图文教程覆盖层
+  Widget _buildTutorialOverlay() {
+    final steps = _getTutorialSteps();
+    final step = steps[_tutorialStep];
+    final progress = (_tutorialStep + 1) / steps.length;
+
+    return GestureDetector(
+      onTap: _nextTutorialStep,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.8),
+        child: SafeArea(
+          child: Center(
+            child: Container(
+              margin: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: WFColors.bgCard,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 顶部进度条
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                        valueColor: const AlwaysStoppedAnimation<Color>(WFColors.primary),
+                        minHeight: 4,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // 步骤图标
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: WFColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        step['icon'] as IconData,
+                        size: 36,
+                        color: WFColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // 步骤标题
+                    Text(
+                      step['title'] as String,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: WFColors.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    // 步骤描述
+                    Text(
+                      step['desc'] as String,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: WFColors.textSecondary,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    // 详细说明（图文教程内容）
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: WFColors.textLight.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: WFColors.textLight.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Text(
+                        step['detail'] as String,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: WFColors.textSecondary,
+                          height: 1.6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // 交互提示
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: WFColors.info.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.touch_app, size: 18, color: WFColors.info),
+                          SizedBox(width: 6),
+                          Text(
+                            '点击任意位置继续',
+                            style: TextStyle(fontSize: 12, color: WFColors.info),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // 进度指示点
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        steps.length,
+                        (i) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: i == _tutorialStep ? 20 : 8,
+                          height: 8,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            color: i == _tutorialStep
+                                ? WFColors.primary
+                                : _completedTutorials.contains(i)
+                                    ? WFColors.success.withValues(alpha: 0.5)
+                                    : WFColors.textLight,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // 底部按钮
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () => setState(() => _showTutorial = false),
+                          child: const Text('关闭教程', style: TextStyle(color: WFColors.textSecondary)),
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              '${_tutorialStep + 1}/${steps.length}',
+                              style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton(
+                              onPressed: _nextTutorialStep,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: WFColors.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                              ),
+                              child: Text(
+                                _tutorialStep < steps.length - 1 ? '下一步' : '完成',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
