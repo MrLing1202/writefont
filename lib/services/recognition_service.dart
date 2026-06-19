@@ -180,7 +180,7 @@ class RecognitionService {
       'maxCacheSize': _maxCacheSize,
       'estimatedCacheBytes': _estimatedCacheBytes,
       'maxCacheBytes': _maxCacheBytes,
-      'activeMode': await getUseCloud() ? 'cloud' : 'local',
+      'activeMode': await instance.getUseCloud() ? 'cloud' : 'local',
       'debugLogCount': _debugLogBuffer.length,
     };
   }
@@ -198,11 +198,11 @@ class RecognitionService {
       'stats': stats,
       'debugLogs': logs,
       'config': {
-        'useCloud': await getUseCloud(),
-        'cloudUrl': await getCloudUrl(),
-        'hasCloudKey': (await getCloudKey())?.isNotEmpty ?? false,
-        'model': await getModel(),
-        'customModel': await getCustomModel(),
+        'useCloud': await instance.getUseCloud(),
+        'cloudUrl': await instance.getCloudUrl(),
+        'hasCloudKey': (await instance.getCloudKey())?.isNotEmpty ?? false,
+        'model': await instance.getModel(),
+        'customModel': await instance.getCustomModel(),
       },
       'cacheSummary': {
         'recognitionCacheKeys': _recognitionCache.keys.take(50).toList(),
@@ -1277,7 +1277,7 @@ class RecognitionService {
 
       // 版本更新时清理缓存，确保新版本逻辑生效
       clearRecognitionCache();
-      clearCache();
+      instance.clearCache();
 
       _addDebugLog('system', '引擎版本已更新: $_currentEngineVersion -> $newVersion');
       debugPrint('[RecognitionService] 引擎版本已更新: $newVersion');
@@ -1335,7 +1335,7 @@ class RecognitionService {
 
       // 清理缓存
       clearRecognitionCache();
-      clearCache();
+      instance.clearCache();
 
       _addDebugLog('system', '引擎版本已回滚: $_currentEngineVersion -> $targetVersion ($reason)');
       debugPrint('[RecognitionService] 引擎版本已回滚: $targetVersion');
@@ -1421,7 +1421,7 @@ class RecognitionService {
       await prefs.remove(_prefKeyVersionHistory);
       await prefs.remove(_prefKeyEngineConfig);
       clearRecognitionCache();
-      clearCache();
+      instance.clearCache();
       _addDebugLog('system', '引擎已重置到出厂版本: $_currentEngineVersion');
       debugPrint('[RecognitionService] 引擎已重置到出厂版本');
     } catch (e) {

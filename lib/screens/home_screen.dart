@@ -1984,6 +1984,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             ), // end ConstrainedBox
+            ), // end Center
           ), // end RefreshIndicator
 
           // 新手引导遮罩
