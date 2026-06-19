@@ -295,7 +295,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '参考字体',
                       style: TextStyle(
                         fontSize: 16,
@@ -358,7 +358,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -465,7 +465,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: WFColors.textSecondaryColor(context),
             ),
@@ -498,7 +498,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -526,7 +526,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
           const SizedBox(height: 16),
 
           // 项目选择
-          const Text(
+          Text(
             '选择项目',
             style: TextStyle(
               fontSize: 14,
@@ -542,7 +542,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 '迁移强度',
                 style: TextStyle(
                   fontSize: 14,
@@ -638,7 +638,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
           border: Border.all(color: WFColors.textLightColor(context)),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Row(
+        child: Row(
           children: [
             Icon(Icons.info_outline, size: 18, color: WFColors.textSecondaryColor(context)),
             SizedBox(width: 8),

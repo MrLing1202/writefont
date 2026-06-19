@@ -19,17 +19,17 @@ class PreviewArea extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildPreviewCard('大字预览', 48),
+        _buildPreviewCard(context, '大字预览', 48),
         const SizedBox(height: 12),
-        _buildPreviewCard('中字预览', 28),
+        _buildPreviewCard(context, '中字预览', 28),
         const SizedBox(height: 12),
-        _buildPreviewCard('小字预览', 16),
+        _buildPreviewCard(context, '小字预览', 16),
       ],
     );
   }
 
   /// 预览卡片 — WFCard 包裹
-  Widget _buildPreviewCard(String label, double fontSize) {
+  Widget _buildPreviewCard(BuildContext context, String label, double fontSize) {
     return WFCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,14 +39,14 @@ class PreviewArea extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
           ),
           const SizedBox(height: 8),
-          _buildGlyphPreviewText(previewText, fontSize),
+          _buildGlyphPreviewText(context, previewText, fontSize),
         ],
       ),
     );
   }
 
   /// 构建字形预览文本
-  Widget _buildGlyphPreviewText(String text, double fontSize) {
+  Widget _buildGlyphPreviewText(BuildContext context, String text, double fontSize) {
     final List<InlineSpan> spans = [];
     for (int i = 0; i < text.length; i++) {
       final char = text[i];

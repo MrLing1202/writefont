@@ -519,7 +519,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               children: [
                 Icon(Icons.phone_android, color: WFColors.info, size: 20),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -546,7 +546,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               children: [
                 Icon(Icons.cloud_download, color: WFColors.success, size: 20),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -851,7 +851,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               children: [
                 Text(
                   _sync.userEmail ?? '已登录',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: WFColors.textPrimaryColor(context),
@@ -894,7 +894,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             children: [
               Icon(Icons.cloud_done, color: WFColors.success, size: 20),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '同步状态',
                 style: TextStyle(
                   fontSize: 15,
@@ -1029,7 +1029,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '自动同步',
                   style: TextStyle(
                     fontSize: 15,
@@ -1222,7 +1222,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             children: [
               Icon(Icons.people, color: WFColors.success, size: 20),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '在线协作者',
                 style: TextStyle(
                   fontSize: 15,
@@ -1281,7 +1281,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             children: [
               Icon(Icons.group_add, color: WFColors.primary, size: 20),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '协作管理',
                 style: TextStyle(
                   fontSize: 15,
@@ -1578,7 +1578,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             children: [
               Icon(Icons.people_alt, color: WFColors.accent, size: 20),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '社交互动',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),

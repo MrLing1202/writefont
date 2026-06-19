@@ -1493,7 +1493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           width: 72,
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: WFColors.textPrimaryColor(context),
             ),
@@ -1520,7 +1520,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           width: 40,
           child: Text(
             value.toStringAsFixed(2),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontFamily: 'monospace',
               color: WFColors.textSecondaryColor(context),
@@ -1538,7 +1538,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.only(left: 72, top: 2, bottom: 6),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           color: WFColors.textLightColor(context),
           height: 1.3,

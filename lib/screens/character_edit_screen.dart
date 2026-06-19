@@ -594,7 +594,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                 ),
                 Text(
                   '${strokeWidth.round()}px',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: WFColors.textPrimaryColor(context),

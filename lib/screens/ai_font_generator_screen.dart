@@ -272,7 +272,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
         children: [
           const Icon(Icons.vpn_key, size: 48, color: WFColors.warning),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             '请先在设置中配置智谱AI的API Key才能使用AI生成功能。\n\n'
             'API Key 可在 https://open.bigmodel.cn 免费获取。',
             style: TextStyle(fontSize: 14, color: WFColors.textSecondaryColor(context), height: 1.5),
@@ -399,7 +399,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                     children: [
                       const CircularProgressIndicator(color: WFColors.primary),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'AI 正在生成字体风格...',
                         style: TextStyle(
                           fontSize: 16,
@@ -443,7 +443,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 child: const Icon(Icons.edit_note, size: 22, color: WFColors.accent),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -491,7 +491,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
           const SizedBox(height: 12),
 
           // 示例按钮
-          const Text(
+          Text(
             '快速选择示例：',
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: WFColors.textSecondaryColor(context)),
           ),
@@ -539,7 +539,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 child: const Icon(Icons.tune, size: 22, color: WFColors.info),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -706,7 +706,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 child: const Icon(Icons.preview, size: 22, color: WFColors.success),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -957,7 +957,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 child: const Icon(Icons.auto_fix_high, size: 22, color: WFColors.warning),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -986,7 +986,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             children: [
               const Icon(Icons.opacity, size: 18, color: WFColors.warning),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '应用强度',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: WFColors.textPrimaryColor(context)),
               ),
@@ -1041,7 +1041,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             children: [
               Icon(Icons.history, size: 20, color: WFColors.textSecondaryColor(context)),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '生成历史',
                 style: TextStyle(
                   fontSize: 16,

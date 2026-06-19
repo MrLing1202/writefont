@@ -96,7 +96,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: WFColors.info.withValues(alpha: 0.2)),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.info_outline, size: 18, color: WFColors.info),
                 SizedBox(width: 8),
@@ -142,7 +142,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: WFColors.textPrimaryColor(context),
@@ -205,7 +205,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.preview, size: 18, color: WFColors.primary),
               SizedBox(width: 6),
@@ -226,7 +226,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
             builder: (context, value, _) {
               return Text(
                 value.text.isEmpty ? '字体名称' : value.text,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: WFColors.textPrimaryColor(context),
@@ -237,7 +237,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
           const SizedBox(height: 4),
           Text(
             _subfamilyName,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               color: WFColors.textSecondaryColor(context),
             ),
@@ -280,7 +280,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.edit, size: 18, color: WFColors.primary),
               SizedBox(width: 6),
@@ -372,7 +372,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.info, size: 18, color: WFColors.textSecondaryColor(context)),
               SizedBox(width: 6),
@@ -431,7 +431,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Icon(Icons.settings, size: 18, color: WFColors.success),
               SizedBox(width: 6),

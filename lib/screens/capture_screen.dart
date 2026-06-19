@@ -648,7 +648,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 const SizedBox(height: 16),
                 Text(
                   step['title'] as String,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
                     color: WFColors.textPrimaryColor(context),
@@ -658,7 +658,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 const SizedBox(height: 12),
                 Text(
                   step['desc'] as String,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     color: WFColors.textSecondaryColor(context),
                     height: 1.5,
@@ -774,7 +774,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     // 步骤标题
                     Text(
                       step['title'] as String,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: WFColors.textPrimaryColor(context),
@@ -785,7 +785,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     // 步骤描述
                     Text(
                       step['desc'] as String,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         color: WFColors.textSecondaryColor(context),
                         height: 1.5,
@@ -806,7 +806,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       ),
                       child: Text(
                         step['detail'] as String,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           color: WFColors.textSecondaryColor(context),
                           height: 1.6,

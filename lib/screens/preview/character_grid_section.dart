@@ -31,7 +31,7 @@ class CharacterGridSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           '已收录字符',
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: WFColors.textSecondaryColor(context)),
         ),
@@ -63,13 +63,13 @@ class CharacterGridSection extends StatelessWidget {
           onChanged: onSearchChanged,
         ),
         const SizedBox(height: 8),
-        _buildCharacterGrid(),
+        _buildCharacterGrid(context),
       ],
     );
   }
 
   /// 字符网格 — 每个字符用容器包裹，编辑状态用绿色边框
-  Widget _buildCharacterGrid() {
+  Widget _buildCharacterGrid(BuildContext context) {
     final filteredEntries = glyphs.entries.where((entry) {
       if (searchQuery.isEmpty) return true;
       final query = searchQuery.toLowerCase();
@@ -84,7 +84,7 @@ class CharacterGridSection extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 24),
         alignment: Alignment.center,
-        child: const Text(
+        child: Text(
           '未找到匹配的字符',
           style: TextStyle(color: WFColors.textLightColor(context), fontSize: 14),
         ),
@@ -183,7 +183,7 @@ class CharacterGridSection extends StatelessWidget {
                   ),
                   Text(
                     unicodeHex.substring(2),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 8,
                       color: WFColors.textSecondaryColor(context),
                       fontFamily: 'monospace',

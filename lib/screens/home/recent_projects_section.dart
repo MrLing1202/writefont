@@ -91,7 +91,7 @@ class _RecentProjectCard extends StatelessWidget {
               children: [
                 Text(
                   project.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: WFColors.textPrimaryColor(context),
@@ -102,7 +102,7 @@ class _RecentProjectCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '$glyphCount 个字符 · $timeDesc',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: WFColors.textSecondaryColor(context),
                   ),

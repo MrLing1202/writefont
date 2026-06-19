@@ -31,7 +31,7 @@ class FontInfoHeader extends StatelessWidget {
                 children: [
                   Text(
                     fontName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: WFColors.textPrimaryColor(context),
@@ -46,7 +46,7 @@ class FontInfoHeader extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         '$editedCount / $totalCount 个字符',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           color: WFColors.textSecondaryColor(context),
                         ),
@@ -56,7 +56,7 @@ class FontInfoHeader extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text(
                         dateStr,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13,
                           color: WFColors.textSecondaryColor(context),
                         ),

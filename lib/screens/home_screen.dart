@@ -358,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '个性化设置',
                     style: TextStyle(
                       fontSize: 20,
@@ -1193,7 +1193,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '推送设置',
                   style: TextStyle(
                     fontSize: 20,
@@ -1380,7 +1380,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             // 通知列表
             Expanded(
               child: notifications.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1519,7 +1519,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '功能引导',
                       style: TextStyle(
                         fontSize: 14,
@@ -1530,7 +1530,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     const SizedBox(height: 4),
                     Text(
                       '了解应用的核心功能 (${(progress * 100).toInt()}% 已完成)',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: WFColors.textSecondaryColor(context),
                       ),
@@ -2078,7 +2078,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             color: WFColors.textSecondaryColor(context),
           ),
@@ -2113,7 +2113,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               children: [
                 const Icon(Icons.category_outlined, size: 20, color: WFColors.primary),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   '项目分类',
                   style: TextStyle(
                     fontSize: 16,
@@ -2197,7 +2197,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.pie_chart_outline, size: 20, color: WFColors.primary),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '项目进度概览',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
@@ -2280,7 +2280,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.bar_chart, size: 20, color: WFColors.info),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '字符使用统计',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
@@ -2327,7 +2327,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.timeline, size: 20, color: WFColors.accent),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '创作时间线',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
@@ -2424,7 +2424,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               const Icon(Icons.trending_up, size: 20, color: WFColors.success),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 '创作趋势',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
@@ -2767,7 +2767,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 children: [
                   const Icon(Icons.tips_and_updates, color: WFColors.primary, size: 20),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       '操作提示',
                       style: TextStyle(

@@ -238,7 +238,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
           // 预览区域 + 字符网格
           Expanded(
             child: _previewText.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       '输入文字查看预览效果',
                       style: TextStyle(color: WFColors.textLightColor(context), fontSize: 16),
