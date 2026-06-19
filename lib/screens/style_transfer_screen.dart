@@ -664,7 +664,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
         child: DropdownButton<FontProject>(
           isExpanded: true,
           value: _selectedProject,
-          hint: const Text(
+          hint: Text(
             '请选择要迁移的项目',
             style: TextStyle(
               fontSize: 14,
@@ -698,7 +698,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                   ),
                   Text(
                     '$glyphCount 字',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: WFColors.textSecondaryColor(context),
                     ),

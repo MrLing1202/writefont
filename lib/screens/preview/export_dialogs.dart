@@ -8,19 +8,19 @@ import '../../widgets/glyph_widget.dart';
 Widget buildInfoRow(IconData icon, String label, String value) {
   return Row(
     children: [
-      Icon(icon, size: 16, color: WFColors.textSecondaryColor(context)),
+      Icon(icon, size: 16, color: WFColors.textSecondary),
       const SizedBox(width: 8),
       Text(
         '$label：',
-        style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
+        style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
       ),
       Expanded(
         child: Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: WFColors.textPrimaryColor(context),
+            color: WFColors.textPrimary,
           ),
         ),
       ),
@@ -57,7 +57,7 @@ Future<bool?> showExportConfirmDialog(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: WFColors.info.withValues(alpha: 0.2)),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.info_outline, size: 18, color: WFColors.info),
               SizedBox(width: 8),
@@ -114,7 +114,7 @@ Future<String?> showFontNameDialog(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     '这个名字将作为字体文件名和项目标题',
                     style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                   ),
@@ -155,7 +155,7 @@ Future<String?> showFontNameDialog(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
                               Icon(Icons.preview, size: 16, color: WFColors.primary),
                               SizedBox(width: 6),
@@ -172,7 +172,7 @@ Future<String?> showFontNameDialog(
                           const SizedBox(height: 12),
                           Text(
                             controller.text.isEmpty ? '字体名称' : controller.text,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: WFColors.textPrimaryColor(context),
@@ -313,7 +313,7 @@ void showExportSuccessDialog(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: WFColors.success.withValues(alpha: 0.2)),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.check_circle_outline, size: 18, color: WFColors.success),
               SizedBox(width: 8),

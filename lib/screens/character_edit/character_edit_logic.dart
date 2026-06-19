@@ -178,7 +178,7 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
         children: [
           const Icon(Icons.save_outlined, color: WFColors.primary, size: 36),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             '有未保存的修改，是否保存？',
             style: TextStyle(
               fontSize: 15,
