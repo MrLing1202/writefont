@@ -90,6 +90,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   PushSettings _pushSettings = PushSettings();
   int _unreadNotificationCount = 0;
 
+  // 分类统计
+  Map<String, int> _categoryStats = {};
+
   // 快捷操作动画控制器
   late AnimationController _quickActionAnimController;
   late Animation<double> _quickActionScale;
@@ -505,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadProjectData();
   }
 
-  /// 加载项目数据（数量 + 最近项目 + 统计）
+  /// 加载项目数据（数量 + 最近项目 + 统计 + 分类统计）
   Future<void> _loadProjectData() async {
     try {
       final projects = await StorageService.loadProjects();
@@ -520,11 +523,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           lastTime = projects.first.updatedAt;
         }
 
+        // 计算分类统计
+        final categoryStats = CategoryService.instance.getCategoryStats(projects);
+
         setState(() {
           _savedProjectCount = projects.length;
           _totalCharCount = charCount;
           _lastActivityTime = lastTime;
           _recentProjects = projects.take(2).toList();
+          _categoryStats = categoryStats;
         });
       }
     } catch (e) {
@@ -847,7 +854,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     _buildUsageStatsCard(context),
                     delay: const Duration(milliseconds: 640),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+
+                  // ── 分类统计卡片 ──
+                  if (_savedProjectCount > 0)
+                    WFAnimations.fadeInSlide(
+                      _buildCategoryStatsCard(context),
+                      delay: const Duration(milliseconds: 680),
+                    ),
+                  if (_savedProjectCount > 0) const SizedBox(height: 24),
 
                   // ── 最近项目快捷入口 ──
                   if (_recentProjects.isNotEmpty) ...[
@@ -1112,6 +1127,93 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+
+  /// 构建分类统计卡片
+  Widget _buildCategoryStatsCard(BuildContext context) {
+    final completed = _categoryStats['completed'] ?? 0;
+    final inProgress = _categoryStats['inProgress'] ?? 0;
+    final empty = _categoryStats['empty'] ?? 0;
+    final recent = _categoryStats['recent'] ?? 0;
+
+    return Semantics(
+      label: '分类统计: 已完成$completed, 进行中$inProgress, 未开始$empty',
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: WFColors.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: WFColors.textLight.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.category_outlined, size: 20, color: WFColors.primary),
+                const SizedBox(width: 8),
+                const Text(
+                  '项目分类',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: WFColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildCategoryChip('已完成', completed, Colors.green, Icons.check_circle),
+                _buildCategoryChip('进行中', inProgress, WFColors.primary, Icons.edit_note),
+                _buildCategoryChip('未开始', empty, WFColors.textSecondary, Icons.inbox_outlined),
+                _buildCategoryChip('最近活跃', recent, WFColors.accent, Icons.access_time),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建分类标签
+  Widget _buildCategoryChip(String label, int count, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              count.toString(),
+              style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

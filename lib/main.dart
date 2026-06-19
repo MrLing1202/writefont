@@ -99,6 +99,7 @@ class AppNotification {
 /// - 通知分类（系统、同步、提醒、更新、社交）
 /// - 通知优先级（低、普通、高、紧急）
 /// - 通知历史记录（持久化存储）
+/// - 项目分类管理（自动分类、手动分类、分类统计）
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
   static NotificationService get instance => _instance;
@@ -250,6 +251,320 @@ class NotificationService {
     } catch (e) {
       debugPrint('[NotificationService] 保存通知失败: $e');
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// 项目分类服务：自动分类、手动分类、分类统计、分类管理
+// ═══════════════════════════════════════════════════════════
+
+/// 项目分类枚举
+enum ProjectCategory {
+  all,         // 全部
+  recent,      // 最近编辑（7天内）
+  inProgress,  // 进行中（有编辑但未完成）
+  completed,   // 已完成（进度>=80%）
+  empty,       // 未开始（无编辑）
+  small,       // 小型项目（<20字符）
+  medium,      // 中型项目（20-50字符）
+  large,       // 大型项目（>50字符）
+  custom,      // 自定义分类
+}
+
+/// 项目分类数据模型
+class ProjectCategoryData {
+  final String id;
+  final String name;
+  final String? description;
+  final String? icon;
+  final List<String> projectIds;
+  final DateTime createdAt;
+
+  ProjectCategoryData({
+    required this.id,
+    required this.name,
+    this.description,
+    this.icon,
+    List<String>? projectIds,
+    DateTime? createdAt,
+  })  : projectIds = projectIds ?? [],
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'icon': icon,
+        'projectIds': projectIds,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory ProjectCategoryData.fromJson(Map<String, dynamic> json) =>
+      ProjectCategoryData(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        description: json['description'] as String?,
+        icon: json['icon'] as String?,
+        projectIds: (json['projectIds'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            [],
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
+}
+
+/// 项目分类服务
+///
+/// 功能：
+/// - 自动分类（根据项目属性自动归类）
+/// - 手动分类（用户自定义分类）
+/// - 分类统计（各类别项目数量和进度）
+/// - 分类管理（增删改查分类）
+class CategoryService {
+  static final CategoryService _instance = CategoryService._();
+  static CategoryService get instance => _instance;
+  CategoryService._();
+
+  static const String _customCategoriesKey = 'custom_categories';
+  static const String _projectCategoriesKey = 'project_categories';
+  List<ProjectCategoryData> _customCategories = [];
+  Map<String, List<String>> _projectCategoryMap = {}; // projectId -> categoryIds
+
+  /// 初始化分类服务
+  Future<void> init() async {
+    await _loadCustomCategories();
+    await _loadProjectCategoryMap();
+  }
+
+  /// 加载自定义分类
+  Future<void> _loadCustomCategories() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_customCategoriesKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _customCategories = list
+            .map((e) => ProjectCategoryData.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('[CategoryService] 加载自定义分类失败: $e');
+    }
+  }
+
+  /// 保存自定义分类
+  Future<void> _saveCustomCategories() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_customCategories.map((e) => e.toJson()).toList());
+      await prefs.setString(_customCategoriesKey, json);
+    } catch (e) {
+      debugPrint('[CategoryService] 保存自定义分类失败: $e');
+    }
+  }
+
+  /// 加载项目分类映射
+  Future<void> _loadProjectCategoryMap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_projectCategoriesKey);
+      if (json != null) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        _projectCategoryMap = map.map(
+          (k, v) => MapEntry(k, (v as List).map((e) => e as String).toList()),
+        );
+      }
+    } catch (e) {
+      debugPrint('[CategoryService] 加载项目分类映射失败: $e');
+    }
+  }
+
+  /// 保存项目分类映射
+  Future<void> _saveProjectCategoryMap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_projectCategoryMap);
+      await prefs.setString(_projectCategoriesKey, json);
+    } catch (e) {
+      debugPrint('[CategoryService] 保存项目分类映射失败: $e');
+    }
+  }
+
+  /// 自动分类项目（根据项目属性自动归类到内置分类）
+  ///
+  /// 返回项目所属的自动分类列表
+  List<ProjectCategory> autoClassify(dynamic project) {
+    final categories = <ProjectCategory>[];
+    final now = DateTime.now();
+
+    // 时间分类
+    if (now.difference(project.updatedAt).inDays <= 7) {
+      categories.add(ProjectCategory.recent);
+    }
+
+    // 进度分类
+    final totalGlyphs = project.glyphs.length;
+    if (totalGlyphs > 0) {
+      final editedCount = project.glyphs.values
+          .where((g) => g.contours.isNotEmpty)
+          .length;
+      final progress = editedCount / totalGlyphs;
+
+      if (progress >= 0.8) {
+        categories.add(ProjectCategory.completed);
+      } else if (editedCount > 0) {
+        categories.add(ProjectCategory.inProgress);
+      } else {
+        categories.add(ProjectCategory.empty);
+      }
+    } else {
+      categories.add(ProjectCategory.empty);
+    }
+
+    // 规模分类
+    if (totalGlyphs < 20) {
+      categories.add(ProjectCategory.small);
+    } else if (totalGlyphs <= 50) {
+      categories.add(ProjectCategory.medium);
+    } else {
+      categories.add(ProjectCategory.large);
+    }
+
+    return categories;
+  }
+
+  /// 创建自定义分类
+  Future<ProjectCategoryData> createCategory({
+    required String name,
+    String? description,
+    String? icon,
+  }) async {
+    final category = ProjectCategoryData(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: name,
+      description: description,
+      icon: icon,
+    );
+    _customCategories.add(category);
+    await _saveCustomCategories();
+    debugPrint('[CategoryService] 创建分类: $name');
+    return category;
+  }
+
+  /// 更新自定义分类
+  Future<void> updateCategory(String categoryId, {
+    String? name,
+    String? description,
+    String? icon,
+  }) async {
+    final index = _customCategories.indexWhere((c) => c.id == categoryId);
+    if (index >= 0) {
+      final old = _customCategories[index];
+      _customCategories[index] = ProjectCategoryData(
+        id: old.id,
+        name: name ?? old.name,
+        description: description ?? old.description,
+        icon: icon ?? old.icon,
+        projectIds: old.projectIds,
+        createdAt: old.createdAt,
+      );
+      await _saveCustomCategories();
+    }
+  }
+
+  /// 删除自定义分类
+  Future<void> deleteCategory(String categoryId) async {
+    _customCategories.removeWhere((c) => c.id == categoryId);
+    // 同时移除所有项目对该分类的引用
+    for (final entry in _projectCategoryMap.entries) {
+      entry.value.remove(categoryId);
+    }
+    await _saveCustomCategories();
+    await _saveProjectCategoryMap();
+  }
+
+  /// 获取所有自定义分类
+  List<ProjectCategoryData> get customCategories =>
+      List.unmodifiable(_customCategories);
+
+  /// 将项目添加到自定义分类
+  Future<void> addProjectToCategory(String projectId, String categoryId) async {
+    final categoryIds = _projectCategoryMap[projectId] ?? [];
+    if (!categoryIds.contains(categoryId)) {
+      categoryIds.add(categoryId);
+      _projectCategoryMap[projectId] = categoryIds;
+      await _saveProjectCategoryMap();
+    }
+  }
+
+  /// 将项目从自定义分类中移除
+  Future<void> removeProjectFromCategory(String projectId, String categoryId) async {
+    final categoryIds = _projectCategoryMap[projectId];
+    if (categoryIds != null) {
+      categoryIds.remove(categoryId);
+      if (categoryIds.isEmpty) {
+        _projectCategoryMap.remove(projectId);
+      }
+      await _saveProjectCategoryMap();
+    }
+  }
+
+  /// 获取项目所属的自定义分类 ID 列表
+  List<String> getProjectCategories(String projectId) {
+    return _projectCategoryMap[projectId] ?? [];
+  }
+
+  /// 获取分类统计信息
+  ///
+  /// [projects] 所有项目列表
+  /// 返回各类别的项目数量 Map
+  Map<String, int> getCategoryStats(List<dynamic> projects) {
+    final stats = <String, int>{
+      'all': projects.length,
+      'recent': 0,
+      'inProgress': 0,
+      'completed': 0,
+      'empty': 0,
+      'small': 0,
+      'medium': 0,
+      'large': 0,
+    };
+
+    for (final project in projects) {
+      final categories = autoClassify(project);
+      for (final cat in categories) {
+        stats[cat.name] = (stats[cat.name] ?? 0) + 1;
+      }
+    }
+
+    // 统计自定义分类
+    for (final customCat in _customCategories) {
+      stats['custom_${customCat.id}'] = customCat.projectIds.length;
+    }
+
+    return stats;
+  }
+
+  /// 按分类过滤项目列表
+  ///
+  /// [projects] 所有项目列表
+  /// [category] 目标分类
+  /// [categoryId] 自定义分类 ID（当 category 为 custom 时使用）
+  List<dynamic> filterByCategory(
+    List<dynamic> projects,
+    ProjectCategory category, {
+    String? categoryId,
+  }) {
+    if (category == ProjectCategory.all) return projects;
+
+    return projects.where((project) {
+      if (category == ProjectCategory.custom && categoryId != null) {
+        final projectCategories = getProjectCategories(project.id);
+        return projectCategories.contains(categoryId);
+      }
+      final autoCategories = autoClassify(project);
+      return autoCategories.contains(category);
+    }).toList();
   }
 }
 
@@ -559,6 +874,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   AppAnalytics.init(); // 初始化分析服务
   await NotificationService.instance.init(); // 初始化通知服务
+  await CategoryService.instance.init(); // 初始化分类服务
   FlutterError.onError = (details) {
     AppAnalytics.trackError(
       details.exceptionAsString(),

@@ -117,8 +117,125 @@ class AppReminder {
 /// - 安全删除（三次覆写后删除）
 /// - 数据恢复（自动备份 + JSON 修复）
 /// - 备份版本管理（最多保留 10 个版本）
+/// - 排序历史和预设管理
 class StorageService {
   static const _uuid = Uuid();
+
+  // ═══════════════════════════════════════════════════════════
+  // 排序历史和预设管理
+  // ═══════════════════════════════════════════════════════════
+
+  static const String _sortHistoryKey = 'sort_history';
+  static const String _sortPresetsKey = 'sort_presets';
+  static const int _maxSortHistory = 20;
+
+  /// 保存排序历史记录
+  ///
+  /// [sortConfig] 排序配置 Map，包含 sortMode、secondarySortMode 等
+  static Future<void> saveSortHistory(Map<String, dynamic> sortConfig) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getStringList(_sortHistoryKey) ?? [];
+      final entry = {
+        ...sortConfig,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      historyJson.add(jsonEncode(entry));
+      // 限制历史记录数量
+      if (historyJson.length > _maxSortHistory) {
+        historyJson.removeRange(0, historyJson.length - _maxSortHistory);
+      }
+      await prefs.setStringList(_sortHistoryKey, historyJson);
+    } catch (e) {
+      debugPrint('保存排序历史失败: $e');
+    }
+  }
+
+  /// 加载排序历史记录
+  static Future<List<Map<String, dynamic>>> loadSortHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getStringList(_sortHistoryKey) ?? [];
+      return historyJson.map((s) => jsonDecode(s) as Map<String, dynamic>).toList();
+    } catch (e) {
+      debugPrint('加载排序历史失败: $e');
+      return [];
+    }
+  }
+
+  /// 清除排序历史
+  static Future<void> clearSortHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_sortHistoryKey);
+    } catch (_) {}
+  }
+
+  /// 保存排序预设
+  ///
+  /// [name] 预设名称
+  /// [config] 排序配置 Map
+  static Future<void> saveSortPreset(String name, Map<String, dynamic> config) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final presetsJson = prefs.getStringList(_sortPresetsKey) ?? [];
+      final preset = {
+        'name': name,
+        ...config,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+      presetsJson.add(jsonEncode(preset));
+      await prefs.setStringList(_sortPresetsKey, presetsJson);
+    } catch (e) {
+      debugPrint('保存排序预设失败: $e');
+    }
+  }
+
+  /// 加载排序预设列表
+  static Future<List<Map<String, dynamic>>> loadSortPresets() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final presetsJson = prefs.getStringList(_sortPresetsKey) ?? [];
+      return presetsJson.map((s) => jsonDecode(s) as Map<String, dynamic>).toList();
+    } catch (e) {
+      debugPrint('加载排序预设失败: $e');
+      return [];
+    }
+  }
+
+  /// 删除排序预设
+  static Future<void> deleteSortPreset(int index) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final presetsJson = prefs.getStringList(_sortPresetsKey) ?? [];
+      if (index >= 0 && index < presetsJson.length) {
+        presetsJson.removeAt(index);
+        await prefs.setStringList(_sortPresetsKey, presetsJson);
+      }
+    } catch (e) {
+      debugPrint('删除排序预设失败: $e');
+    }
+  }
+
+  /// 通用多字段排序方法
+  ///
+  /// [projects] 待排序的项目列表
+  /// [comparators] 比较器列表，按优先级排序
+  /// 返回排序后的新列表（不修改原列表）
+  static List<FontProject> multiFieldSort(
+    List<FontProject> projects,
+    List<int Function(FontProject, FontProject)> comparators,
+  ) {
+    final sorted = List<FontProject>.from(projects);
+    sorted.sort((a, b) {
+      for (final comparator in comparators) {
+        final result = comparator(a, b);
+        if (result != 0) return result;
+      }
+      return 0;
+    });
+    return sorted;
+  }
 
   // ═══════════════════════════════════════════════════════════
   // 测试支持：单元测试、集成测试、性能测试、测试数据生成

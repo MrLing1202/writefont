@@ -14,12 +14,15 @@ mixin ProjectListWidgets {
     required String searchQuery,
     required ValueChanged<String> onChanged,
     required VoidCallback onClear,
+    ValueChanged<String>? onSubmitted,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: TextField(
         controller: searchController,
         onChanged: onChanged,
+        onSubmitted: onSubmitted,
+        textInputAction: TextInputAction.search,
         decoration: InputDecoration(
           hintText: '搜索项目名称...',
           hintStyle: TextStyle(
