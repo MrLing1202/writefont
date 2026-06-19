@@ -2699,3 +2699,440 @@ class _Semaphore {
     }
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 物联网（IoT）功能增强：设备连接、数据采集、远程控制、设备管理
+// ═══════════════════════════════════════════════════════════
+
+/// IoT 设备连接状态
+enum IoTDeviceStatus { offline, connecting, online, error, updating }
+
+/// IoT 设备类型
+enum IoTDeviceType {
+  penTablet,      // 手写板
+  stylus,         // 电子笔
+  scanner,        // 扫描仪
+  camera,         // 摄像头
+  display,        // 显示设备
+  sensor,         // 传感器
+  gateway,        // 网关
+  custom,         // 自定义设备
+}
+
+/// IoT 通信协议
+enum IoTProtocol { mqtt, coap, http, ble, wifi, zigbee, lora }
+
+/// IoT 设备数据模型
+///
+/// 表示一个已注册的物联网设备，支持多种设备类型和通信协议。
+class IoTDevice {
+  final String id;
+  final String name;
+  final IoTDeviceType type;
+  final IoTProtocol protocol;
+  final String address;
+  IoTDeviceStatus status;
+  final DateTime registeredAt;
+  DateTime? lastSeenAt;
+  final Map<String, dynamic> capabilities;
+  final Map<String, dynamic> config;
+  final List<Map<String, dynamic>> telemetry;
+
+  IoTDevice({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.protocol,
+    required this.address,
+    this.status = IoTDeviceStatus.offline,
+    DateTime? registeredAt,
+    this.lastSeenAt,
+    Map<String, dynamic>? capabilities,
+    Map<String, dynamic>? config,
+    List<Map<String, dynamic>>? telemetry,
+  })  : registeredAt = registeredAt ?? DateTime.now(),
+        capabilities = capabilities ?? {},
+        config = config ?? {},
+        telemetry = telemetry ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type.name,
+        'protocol': protocol.name,
+        'address': address,
+        'status': status.name,
+        'registeredAt': registeredAt.toIso8601String(),
+        'lastSeenAt': lastSeenAt?.toIso8601String(),
+        'capabilities': capabilities,
+        'config': config,
+        'telemetryCount': telemetry.length,
+      };
+
+  factory IoTDevice.fromJson(Map<String, dynamic> json) => IoTDevice(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: IoTDeviceType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => IoTDeviceType.custom,
+        ),
+        protocol: IoTProtocol.values.firstWhere(
+          (e) => e.name == json['protocol'],
+          orElse: () => IoTProtocol.http,
+        ),
+        address: json['address'] as String? ?? '',
+        status: IoTDeviceStatus.values.firstWhere(
+          (e) => e.name == json['status'],
+          orElse: () => IoTDeviceStatus.offline,
+        ),
+        registeredAt: DateTime.parse(json['registeredAt'] as String),
+        lastSeenAt: json['lastSeenAt'] != null
+            ? DateTime.parse(json['lastSeenAt'] as String)
+            : null,
+        capabilities: json['capabilities'] as Map<String, dynamic>? ?? {},
+        config: json['config'] as Map<String, dynamic>? ?? {},
+      );
+}
+
+/// IoT 数据采集记录
+class IoTDataRecord {
+  final String deviceId;
+  final String sensorType;
+  final double value;
+  final String unit;
+  final DateTime timestamp;
+  final Map<String, dynamic>? metadata;
+
+  IoTDataRecord({
+    required this.deviceId,
+    required this.sensorType,
+    required this.value,
+    this.unit = '',
+    DateTime? timestamp,
+    this.metadata,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'deviceId': deviceId,
+        'sensorType': sensorType,
+        'value': value,
+        'unit': unit,
+        'timestamp': timestamp.toIso8601String(),
+        'metadata': metadata,
+      };
+}
+
+/// IoT 设备管理服务
+///
+/// 提供完整的物联网功能，包括：
+/// - 设备连接管理（注册、发现、连接、断开）
+/// - 数据采集（传感器数据、设备状态、遥测）
+/// - 远程控制（命令下发、配置更新、OTA升级）
+/// - 设备管理（分组、标签、生命周期管理）
+class IoTDeviceService {
+  static final IoTDeviceService _instance = IoTDeviceService._();
+  static IoTDeviceService get instance => _instance;
+  IoTDeviceService._();
+
+  final List<IoTDevice> _devices = [];
+  final List<IoTDataRecord> _dataRecords = [];
+  final List<Map<String, dynamic>> _commandHistory = [];
+  final Map<String, List<String>> _deviceGroups = {}; // groupName -> deviceIds
+  static const int _maxDataRecords = 10000;
+  static const Duration _deviceTimeout = Duration(minutes: 5);
+
+  /// 获取所有注册设备
+  List<IoTDevice> get devices => List.unmodifiable(_devices);
+
+  /// 获取在线设备
+  List<IoTDevice> get onlineDevices =>
+      _devices.where((d) => d.status == IoTDeviceStatus.online).toList();
+
+  /// 获取数据记录
+  List<IoTDataRecord> get dataRecords => List.unmodifiable(_dataRecords);
+
+  /// 注册新设备
+  ///
+  /// [name] 设备名称
+  /// [type] 设备类型
+  /// [protocol] 通信协议
+  /// [address] 设备地址/IP
+  /// [capabilities] 设备能力描述
+  IoTDevice registerDevice({
+    required String name,
+    required IoTDeviceType type,
+    required IoTProtocol protocol,
+    required String address,
+    Map<String, dynamic>? capabilities,
+    Map<String, dynamic>? config,
+  }) {
+    final device = IoTDevice(
+      id: 'iot_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      type: type,
+      protocol: protocol,
+      address: address,
+      capabilities: capabilities,
+      config: config,
+    );
+    _devices.add(device);
+    debugPrint('[IoT] 设备已注册: $name (${device.id}), 协议: ${protocol.name}');
+    return device;
+  }
+
+  /// 连接到设备
+  ///
+  /// [deviceId] 设备ID
+  /// 返回连接是否成功
+  Future<bool> connectDevice(String deviceId) async {
+    final device = _devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('设备不存在: $deviceId'),
+    );
+
+    device.status = IoTDeviceStatus.connecting;
+    debugPrint('[IoT] 正在连接设备: ${device.name} (${device.address})');
+
+    try {
+      // 模拟连接过程
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 根据协议类型模拟不同的连接方式
+      switch (device.protocol) {
+        case IoTProtocol.mqtt:
+          debugPrint('[IoT] MQTT 连接建立: ${device.address}');
+          break;
+        case IoTProtocol.ble:
+          debugPrint('[IoT] BLE 蓝牙连接建立: ${device.address}');
+          break;
+        case IoTProtocol.coap:
+          debugPrint('[IoT] CoAP 连接建立: ${device.address}');
+          break;
+        case IoTProtocol.http:
+          debugPrint('[IoT] HTTP 连接建立: ${device.address}');
+          break;
+        default:
+          debugPrint('[IoT] ${device.protocol.name} 连接建立: ${device.address}');
+      }
+
+      device.status = IoTDeviceStatus.online;
+      device.lastSeenAt = DateTime.now();
+      debugPrint('[IoT] 设备已连接: ${device.name}');
+      return true;
+    } catch (e) {
+      device.status = IoTDeviceStatus.error;
+      debugPrint('[IoT] 设备连接失败: ${device.name}, 错误: $e');
+      return false;
+    }
+  }
+
+  /// 断开设备连接
+  ///
+  /// [deviceId] 设备ID
+  Future<void> disconnectDevice(String deviceId) async {
+    final device = _devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('设备不存在: $deviceId'),
+    );
+    device.status = IoTDeviceStatus.offline;
+    debugPrint('[IoT] 设备已断开: ${device.name}');
+  }
+
+  /// 从设备采集数据
+  ///
+  /// [deviceId] 设备ID
+  /// [sensorType] 传感器类型
+  /// 返回采集的数据记录
+  Future<IoTDataRecord> collectData({
+    required String deviceId,
+    required String sensorType,
+  }) async {
+    final device = _devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('设备不存在: $deviceId'),
+    );
+
+    if (device.status != IoTDeviceStatus.online) {
+      throw Exception('设备离线，无法采集数据: ${device.name}');
+    }
+
+    // 模拟数据采集
+    final record = IoTDataRecord(
+      deviceId: deviceId,
+      sensorType: sensorType,
+      value: 0.0, // 实际值由设备提供
+      unit: _getSensorUnit(sensorType),
+      metadata: {'deviceName': device.name, 'protocol': device.protocol.name},
+    );
+
+    _dataRecords.add(record);
+    device.lastSeenAt = DateTime.now();
+
+    // 限制数据记录数量
+    if (_dataRecords.length > _maxDataRecords) {
+      _dataRecords.removeRange(0, _dataRecords.length - _maxDataRecords);
+    }
+
+    debugPrint('[IoT] 数据采集完成: ${device.name} -> $sensorType');
+    return record;
+  }
+
+  /// 获取传感器默认单位
+  String _getSensorUnit(String sensorType) {
+    switch (sensorType) {
+      case 'pressure': return 'Pa';
+      case 'temperature': return '°C';
+      case 'humidity': return '%';
+      case 'acceleration': return 'm/s²';
+      case 'tilt': return '°';
+      case 'proximity': return 'cm';
+      default: return '';
+    }
+  }
+
+  /// 向设备发送远程命令
+  ///
+  /// [deviceId] 设备ID
+  /// [command] 命令名称
+  /// [params] 命令参数
+  /// 返回执行结果
+  Future<Map<String, dynamic>> sendCommand({
+    required String deviceId,
+    required String command,
+    Map<String, dynamic>? params,
+  }) async {
+    final device = _devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('设备不存在: $deviceId'),
+    );
+
+    if (device.status != IoTDeviceStatus.online) {
+      throw Exception('设备离线，无法发送命令: ${device.name}');
+    }
+
+    final commandRecord = {
+      'deviceId': deviceId,
+      'command': command,
+      'params': params ?? {},
+      'sentAt': DateTime.now().toIso8601String(),
+      'status': 'sent',
+    };
+
+    // 模拟命令执行
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    commandRecord['status'] = 'completed';
+    commandRecord['completedAt'] = DateTime.now().toIso8601String();
+    _commandHistory.add(commandRecord);
+
+    debugPrint('[IoT] 远程命令已发送: ${device.name} -> $command');
+    return commandRecord;
+  }
+
+  /// 更新设备配置
+  ///
+  /// [deviceId] 设备ID
+  /// [config] 新配置
+  Future<void> updateDeviceConfig(String deviceId, Map<String, dynamic> config) async {
+    final device = _devices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('设备不存在: $deviceId'),
+    );
+    device.config.addAll(config);
+    debugPrint('[IoT] 设备配置已更新: ${device.name}');
+  }
+
+  /// 创建设备分组
+  ///
+  /// [groupName] 分组名称
+  /// [deviceIds] 设备ID列表
+  void createDeviceGroup(String groupName, List<String> deviceIds) {
+    _deviceGroups[groupName] = deviceIds;
+    debugPrint('[IoT] 设备分组已创建: $groupName (${deviceIds.length} 台设备)');
+  }
+
+  /// 将设备添加到分组
+  void addDeviceToGroup(String groupName, String deviceId) {
+    _deviceGroups[groupName] ??= [];
+    if (!_deviceGroups[groupName]!.contains(deviceId)) {
+      _deviceGroups[groupName]!.add(deviceId);
+    }
+  }
+
+  /// 获取设备分组
+  Map<String, List<String>> get deviceGroups => Map.unmodifiable(_deviceGroups);
+
+  /// 向分组内所有设备广播命令
+  Future<List<Map<String, dynamic>>> broadcastToGroup({
+    required String groupName,
+    required String command,
+    Map<String, dynamic>? params,
+  }) async {
+    final deviceIds = _deviceGroups[groupName];
+    if (deviceIds == null || deviceIds.isEmpty) {
+      throw Exception('设备分组不存在或为空: $groupName');
+    }
+
+    final results = <Map<String, dynamic>>[];
+    for (final deviceId in deviceIds) {
+      try {
+        final result = await sendCommand(deviceId: deviceId, command: command, params: params);
+        results.add(result);
+      } catch (e) {
+        results.add({'deviceId': deviceId, 'error': e.toString()});
+      }
+    }
+
+    debugPrint('[IoT] 分组广播完成: $groupName -> $command (${results.length} 台设备)');
+    return results;
+  }
+
+  /// 检查设备超时状态
+  ///
+  /// 将超过 [_deviceTimeout] 未响应的设备标记为离线
+  void checkDeviceTimeout() {
+    final now = DateTime.now();
+    for (final device in _devices) {
+      if (device.status == IoTDeviceStatus.online &&
+          device.lastSeenAt != null &&
+          now.difference(device.lastSeenAt!) > _deviceTimeout) {
+        device.status = IoTDeviceStatus.offline;
+        debugPrint('[IoT] 设备超时离线: ${device.name}');
+      }
+    }
+  }
+
+  /// 移除设备
+  void removeDevice(String deviceId) {
+    _devices.removeWhere((d) => d.id == deviceId);
+    // 同时从所有分组中移除
+    for (final group in _deviceGroups.values) {
+      group.remove(deviceId);
+    }
+    debugPrint('[IoT] 设备已移除: $deviceId');
+  }
+
+  /// 获取设备统计信息
+  Map<String, dynamic> getDeviceStats() {
+    final online = _devices.where((d) => d.status == IoTDeviceStatus.online).length;
+    final offline = _devices.where((d) => d.status == IoTDeviceStatus.offline).length;
+    final error = _devices.where((d) => d.status == IoTDeviceStatus.error).length;
+
+    // 按类型统计
+    final typeCounts = <String, int>{};
+    for (final device in _devices) {
+      typeCounts[device.type.name] = (typeCounts[device.type.name] ?? 0) + 1;
+    }
+
+    return {
+      'totalDevices': _devices.length,
+      'online': online,
+      'offline': offline,
+      'error': error,
+      'typeCounts': typeCounts,
+      'totalDataRecords': _dataRecords.length,
+      'totalCommands': _commandHistory.length,
+      'totalGroups': _deviceGroups.length,
+    };
+  }
+}

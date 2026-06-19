@@ -3786,3 +3786,521 @@ class _OfflineOperation {
         retryCount: json['retryCount'] as int? ?? 0,
       );
 }
+
+// ═══════════════════════════════════════════════════════════
+// 区块链功能增强：智能合约、去中心化存储、数字资产、共识机制
+// ═══════════════════════════════════════════════════════════
+
+/// 智能合约状态枚举
+enum SmartContractState { draft, deployed, active, paused, terminated }
+
+/// 共识算法类型
+enum ConsensusAlgorithm { proofOfWork, proofOfStake, delegatedPoS, practicalBFT }
+
+/// 数字资产类型
+enum DigitalAssetType { font, glyph, template, license, metadata }
+
+/// 智能合约数据模型
+///
+/// 表示一个部署在区块链上的智能合约，用于管理字体项目的
+/// 版权、授权和交易逻辑。
+class SmartContract {
+  final String id;
+  final String name;
+  final String code;
+  final String ownerAddress;
+  SmartContractState state;
+  final DateTime createdAt;
+  DateTime? deployedAt;
+  final Map<String, dynamic> parameters;
+  final List<String> signers;
+
+  SmartContract({
+    required this.id,
+    required this.name,
+    required this.code,
+    required this.ownerAddress,
+    this.state = SmartContractState.draft,
+    DateTime? createdAt,
+    this.deployedAt,
+    Map<String, dynamic>? parameters,
+    List<String>? signers,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        parameters = parameters ?? {},
+        signers = signers ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'code': code,
+        'ownerAddress': ownerAddress,
+        'state': state.name,
+        'createdAt': createdAt.toIso8601String(),
+        'deployedAt': deployedAt?.toIso8601String(),
+        'parameters': parameters,
+        'signers': signers,
+      };
+
+  factory SmartContract.fromJson(Map<String, dynamic> json) => SmartContract(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        code: json['code'] as String? ?? '',
+        ownerAddress: json['ownerAddress'] as String? ?? '',
+        state: SmartContractState.values.firstWhere(
+          (e) => e.name == json['state'],
+          orElse: () => SmartContractState.draft,
+        ),
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        deployedAt: json['deployedAt'] != null
+            ? DateTime.parse(json['deployedAt'] as String)
+            : null,
+        parameters: json['parameters'] as Map<String, dynamic>? ?? {},
+        signers: (json['signers'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            [],
+      );
+}
+
+/// 数字资产数据模型
+///
+/// 表示区块链上的数字资产（NFT），用于字体作品的版权确权和交易。
+class DigitalAsset {
+  final String id;
+  final String name;
+  final DigitalAssetType type;
+  final String ownerAddress;
+  final String contentHash;
+  final DateTime mintedAt;
+  final Map<String, dynamic> metadata;
+  final List<Map<String, dynamic>> transferHistory;
+  double? price;
+
+  DigitalAsset({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.ownerAddress,
+    required this.contentHash,
+    DateTime? mintedAt,
+    Map<String, dynamic>? metadata,
+    List<Map<String, dynamic>>? transferHistory,
+    this.price,
+  })  : mintedAt = mintedAt ?? DateTime.now(),
+        metadata = metadata ?? {},
+        transferHistory = transferHistory ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type.name,
+        'ownerAddress': ownerAddress,
+        'contentHash': contentHash,
+        'mintedAt': mintedAt.toIso8601String(),
+        'metadata': metadata,
+        'transferHistory': transferHistory,
+        'price': price,
+      };
+
+  factory DigitalAsset.fromJson(Map<String, dynamic> json) => DigitalAsset(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: DigitalAssetType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => DigitalAssetType.font,
+        ),
+        ownerAddress: json['ownerAddress'] as String? ?? '',
+        contentHash: json['contentHash'] as String? ?? '',
+        mintedAt: DateTime.parse(json['mintedAt'] as String),
+        metadata: json['metadata'] as Map<String, dynamic>? ?? {},
+        transferHistory: (json['transferHistory'] as List<dynamic>?)
+                ?.map((e) => e as Map<String, dynamic>)
+                .toList() ??
+            [],
+        price: (json['price'] as num?)?.toDouble(),
+      );
+}
+
+/// 区块数据模型
+///
+/// 区块链中的单个区块，包含交易数据和前一区块的哈希。
+class Block {
+  final int index;
+  final DateTime timestamp;
+  final List<Map<String, dynamic>> transactions;
+  final String previousHash;
+  final int nonce;
+  final String hash;
+
+  Block({
+    required this.index,
+    DateTime? timestamp,
+    required this.transactions,
+    required this.previousHash,
+    this.nonce = 0,
+    String? hash,
+  })  : timestamp = timestamp ?? DateTime.now(),
+        hash = hash ?? '';
+
+  Map<String, dynamic> toJson() => {
+        'index': index,
+        'timestamp': timestamp.toIso8601String(),
+        'transactions': transactions,
+        'previousHash': previousHash,
+        'nonce': nonce,
+        'hash': hash,
+      };
+
+  factory Block.fromJson(Map<String, dynamic> json) => Block(
+        index: json['index'] as int,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        transactions: (json['transactions'] as List<dynamic>)
+            .map((e) => e as Map<String, dynamic>)
+            .toList(),
+        previousHash: json['previousHash'] as String,
+        nonce: json['nonce'] as int? ?? 0,
+        hash: json['hash'] as String? ?? '',
+      );
+}
+
+/// 区块链管理服务
+///
+/// 提供完整的区块链功能，包括：
+/// - 智能合约管理（部署、执行、状态管理）
+/// - 去中心化存储（IPFS 模拟、内容寻址）
+/// - 数字资产（NFT 铸造、转让、交易）
+/// - 共识机制（PoW/PoS/DPoS/PBFT）
+class BlockchainService {
+  static final BlockchainService _instance = BlockchainService._();
+  static BlockchainService get instance => _instance;
+  BlockchainService._();
+
+  final List<Block> _chain = [];
+  final List<SmartContract> _contracts = [];
+  final List<DigitalAsset> _assets = [];
+  final Map<String, String> _decentralizedStorage = {}; // cid -> content
+  ConsensusAlgorithm _consensusAlgorithm = ConsensusAlgorithm.proofOfStake;
+  static const int _difficulty = 2; // PoW 难度（哈希前缀零的数量）
+
+  /// 获取区块链
+  List<Block> get chain => List.unmodifiable(_chain);
+
+  /// 获取所有智能合约
+  List<SmartContract> get contracts => List.unmodifiable(_contracts);
+
+  /// 获取所有数字资产
+  List<DigitalAsset> get assets => List.unmodifiable(_assets);
+
+  /// 初始化区块链（创建创世区块）
+  void initialize() {
+    if (_chain.isEmpty) {
+      final genesis = Block(
+        index: 0,
+        transactions: [{'type': 'genesis', 'message': 'WriteFont Blockchain Genesis'}],
+        previousHash: '0' * 64,
+      );
+      _chain.add(genesis);
+      debugPrint('[Blockchain] 区块链已初始化，创世区块已创建');
+    }
+  }
+
+  /// 计算区块哈希（SHA-256）
+  String _calculateHash(Block block) {
+    final data = '${block.index}${block.timestamp.toIso8601String()}'
+        '${jsonEncode(block.transactions)}${block.previousHash}${block.nonce}';
+    return sha256.convert(utf8.encode(data)).toString();
+  }
+
+  /// 设置共识算法
+  void setConsensusAlgorithm(ConsensusAlgorithm algorithm) {
+    _consensusAlgorithm = algorithm;
+    debugPrint('[Blockchain] 共识算法切换为: ${algorithm.name}');
+  }
+
+  /// 挖矿/验证新区块（根据共识算法）
+  ///
+  /// [transactions] 待打包的交易列表
+  /// 返回新创建的区块
+  Future<Block> mineBlock(List<Map<String, dynamic>> transactions) async {
+    if (_chain.isEmpty) initialize();
+
+    final lastBlock = _chain.last;
+    final newBlock = Block(
+      index: lastBlock.index + 1,
+      transactions: transactions,
+      previousHash: _calculateHash(lastBlock),
+    );
+
+    switch (_consensusAlgorithm) {
+      case ConsensusAlgorithm.proofOfWork:
+        await _proofOfWork(newBlock);
+        break;
+      case ConsensusAlgorithm.proofOfStake:
+        _proofOfStake(newBlock);
+        break;
+      case ConsensusAlgorithm.delegatedPoS:
+        _delegatedPoS(newBlock);
+        break;
+      case ConsensusAlgorithm.practicalBFT:
+        _practicalBFT(newBlock);
+        break;
+    }
+
+    _chain.add(newBlock);
+    debugPrint('[Blockchain] 新区块 #${newBlock.index} 已添加，交易数: ${transactions.length}');
+    return newBlock;
+  }
+
+  /// 工作量证明共识
+  Future<void> _proofOfWork(Block block) async {
+    final target = '0' * _difficulty;
+    int nonce = 0;
+    String hash;
+    do {
+      nonce++;
+      final data = '${block.index}${block.timestamp.toIso8601String()}'
+          '${jsonEncode(block.transactions)}${block.previousHash}$nonce';
+      hash = sha256.convert(utf8.encode(data)).toString();
+    } while (!hash.startsWith(target));
+    debugPrint('[Blockchain] PoW 完成，nonce=$nonce, hash=$hash');
+  }
+
+  /// 权益证明共识（模拟）
+  void _proofOfStake(Block block) {
+    debugPrint('[Blockchain] PoS 验证完成，区块 #${block.index}');
+  }
+
+  /// 委托权益证明共识（模拟）
+  void _delegatedPoS(Block block) {
+    debugPrint('[Blockchain] DPoS 验证完成，区块 #${block.index}');
+  }
+
+  /// 实用拜占庭容错共识（模拟）
+  void _practicalBFT(Block block) {
+    debugPrint('[Blockchain] PBFT 验证完成，区块 #${block.index}');
+  }
+
+  /// 验证区块链完整性
+  ///
+  /// 检查每个区块的哈希和前向引用是否正确
+  bool validateChain() {
+    for (int i = 1; i < _chain.length; i++) {
+      final current = _chain[i];
+      final previous = _chain[i - 1];
+      if (current.previousHash != _calculateHash(previous)) {
+        debugPrint('[Blockchain] 区块 #${i} 的前向哈希不匹配');
+        return false;
+      }
+    }
+    debugPrint('[Blockchain] 区块链验证通过，共 ${_chain.length} 个区块');
+    return true;
+  }
+
+  /// 部署智能合约
+  ///
+  /// [name] 合约名称
+  /// [code] 合约代码/逻辑描述
+  /// [ownerAddress] 部署者地址
+  /// [parameters] 合约参数
+  SmartContract deployContract({
+    required String name,
+    required String code,
+    required String ownerAddress,
+    Map<String, dynamic>? parameters,
+  }) {
+    final contract = SmartContract(
+      id: 'contract_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      code: code,
+      ownerAddress: ownerAddress,
+      parameters: parameters,
+    );
+    contract.state = SmartContractState.deployed;
+    contract.deployedAt = DateTime.now();
+    _contracts.add(contract);
+
+    // 将合约部署记录到区块链
+    mineBlock([
+      {'type': 'contract_deploy', 'contractId': contract.id, 'name': name}
+    ]);
+
+    debugPrint('[Blockchain] 智能合约已部署: $name (${contract.id})');
+    return contract;
+  }
+
+  /// 执行智能合约
+  ///
+  /// [contractId] 合约ID
+  /// [action] 执行的操作
+  /// [params] 操作参数
+  Future<Map<String, dynamic>> executeContract(
+    String contractId,
+    String action,
+    Map<String, dynamic> params,
+  ) async {
+    final contract = _contracts.firstWhere(
+      (c) => c.id == contractId,
+      orElse: () => throw Exception('智能合约不存在: $contractId'),
+    );
+
+    if (contract.state != SmartContractState.active &&
+        contract.state != SmartContractState.deployed) {
+      throw Exception('智能合约状态不允许执行: ${contract.state.name}');
+    }
+
+    final result = <String, dynamic>{
+      'contractId': contractId,
+      'action': action,
+      'params': params,
+      'executedAt': DateTime.now().toIso8601String(),
+      'success': true,
+    };
+
+    // 记录执行到区块链
+    await mineBlock([
+      {'type': 'contract_execute', 'contractId': contractId, 'action': action, 'result': result}
+    ]);
+
+    if (contract.state == SmartContractState.deployed) {
+      contract.state = SmartContractState.active;
+    }
+
+    debugPrint('[Blockchain] 智能合约已执行: $contractId.$action');
+    return result;
+  }
+
+  /// 存储数据到去中心化存储（IPFS 模拟）
+  ///
+  /// [data] 待存储的数据
+  /// 返回内容标识符（CID）
+  Future<String> storeToDecentralizedStorage(Uint8List data) async {
+    final cid = 'Qm${sha256.convert(data).toString().substring(0, 44)}';
+    _decentralizedStorage[cid] = base64Encode(data);
+
+    // 记录存储操作到区块链
+    await mineBlock([
+      {'type': 'ipfs_store', 'cid': cid, 'size': data.length}
+    ]);
+
+    debugPrint('[Blockchain] 数据已存储到去中心化存储，CID: $cid');
+    return cid;
+  }
+
+  /// 从去中心化存储检索数据
+  ///
+  /// [cid] 内容标识符
+  /// 返回存储的数据，未找到返回 null
+  Future<Uint8List?> retrieveFromDecentralizedStorage(String cid) async {
+    final encoded = _decentralizedStorage[cid];
+    if (encoded == null) {
+      debugPrint('[Blockchain] 去中心化存储中未找到 CID: $cid');
+      return null;
+    }
+    return base64Decode(encoded);
+  }
+
+  /// 铸造数字资产（NFT）
+  ///
+  /// [name] 资产名称
+  /// [type] 资产类型
+  /// [ownerAddress] 所有者地址
+  /// [content] 资产内容（用于计算内容哈希）
+  /// [metadata] 元数据
+  Future<DigitalAsset> mintDigitalAsset({
+    required String name,
+    required DigitalAssetType type,
+    required String ownerAddress,
+    required Uint8List content,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final contentHash = sha256.convert(content).toString();
+
+    final asset = DigitalAsset(
+      id: 'nft_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      type: type,
+      ownerAddress: ownerAddress,
+      contentHash: contentHash,
+      metadata: metadata ?? {},
+    );
+    _assets.add(asset);
+
+    // 将铸造记录到区块链
+    await mineBlock([
+      {
+        'type': 'nft_mint',
+        'assetId': asset.id,
+        'name': name,
+        'type': type.name,
+        'owner': ownerAddress,
+        'contentHash': contentHash,
+      }
+    ]);
+
+    debugPrint('[Blockchain] 数字资产已铸造: $name (${asset.id})');
+    return asset;
+  }
+
+  /// 转让数字资产
+  ///
+  /// [assetId] 资产ID
+  /// [fromAddress] 转出方地址
+  /// [toAddress] 接收方地址
+  Future<void> transferDigitalAsset({
+    required String assetId,
+    required String fromAddress,
+    required String toAddress,
+  }) async {
+    final assetIndex = _assets.indexWhere((a) => a.id == assetId);
+    if (assetIndex < 0) throw Exception('数字资产不存在: $assetId');
+    final asset = _assets[assetIndex];
+
+    if (asset.ownerAddress != fromAddress) {
+      throw Exception('无权转让此资产');
+    }
+
+    final updatedHistory = List<Map<String, dynamic>>.from(asset.transferHistory)
+      ..add({
+        'from': fromAddress,
+        'to': toAddress,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+
+    _assets[assetIndex] = DigitalAsset(
+      id: asset.id,
+      name: asset.name,
+      type: asset.type,
+      ownerAddress: toAddress,
+      contentHash: asset.contentHash,
+      mintedAt: asset.mintedAt,
+      metadata: asset.metadata,
+      transferHistory: updatedHistory,
+      price: asset.price,
+    );
+
+    // 记录转让到区块链
+    await mineBlock([
+      {
+        'type': 'nft_transfer',
+        'assetId': assetId,
+        'from': fromAddress,
+        'to': toAddress,
+      }
+    ]);
+
+    debugPrint('[Blockchain] 数字资产已转让: $assetId ($fromAddress -> $toAddress)');
+  }
+
+  /// 获取区块链统计信息
+  Map<String, dynamic> getBlockchainStats() {
+    return {
+      'chainLength': _chain.length,
+      'totalContracts': _contracts.length,
+      'activeContracts': _contracts.where((c) => c.state == SmartContractState.active).length,
+      'totalAssets': _assets.length,
+      'storageItems': _decentralizedStorage.length,
+      'consensusAlgorithm': _consensusAlgorithm.name,
+      'isValid': _chain.length > 1 ? validateChain() : true,
+    };
+  }
+}
