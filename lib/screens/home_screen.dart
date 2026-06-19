@@ -428,6 +428,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     onChanged: (v) {
                       setSheetState(() => _fontScale = v);
                       setState(() => _fontScale = v);
+                      ThemeConfigService.instance.setFontScale(v);
                     },
                     onChangeEnd: (_) => _savePersonalizationSettings(),
                   ),
@@ -505,6 +506,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       onSelected: (_) {
         setSheetState(() => _personalizedTheme = id);
         setState(() => _personalizedTheme = id);
+        // 映射到ThemeConfigService主题色索引
+        final colorIndex = switch (id) {
+          'warm' => 10,   // 琥珀
+          'cool' => 2,    // 蓝色
+          'nature' => 3,  // 绿色
+          _ => 0,         // 深墨蓝(默认)
+        };
+        ThemeConfigService.instance.setThemeColor(colorIndex);
         _savePersonalizationSettings();
       },
     );
@@ -1745,36 +1754,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
       body: GestureDetector(
-        // 双击缩放
-        onDoubleTap: _handleDoubleTap,
         // 长按快捷菜单
         onLongPress: _handleLongPress,
-        // 捏合缩放
-        onScaleStart: (_) {
-          _previousScale = _scaleFactor;
-        },
-        onScaleUpdate: (details) {
-          final newScale = (_previousScale * details.scale).clamp(0.8, 2.0);
-          if (newScale != _scaleFactor) {
-            setState(() => _scaleFactor = newScale);
-          }
-        },
-        onScaleEnd: (_) {
-          // 缩放比例过小时自动回弹到 1.0
-          if (_scaleFactor < 0.9) {
-            HapticFeedback.lightImpact();
-            setState(() => _scaleFactor = 1.0);
-          }
-        },
-        child: AnimatedBuilder(
-          animation: _doubleTapAnimController,
-          builder: (context, child) {
-            final scale = _doubleTapAnimController.isAnimating
-                ? _doubleTapScale.value
-                : _scaleFactor;
-            return Transform.scale(scale: scale, child: child);
-          },
-          child: Stack(
+        child: Stack(
         children: [
           RefreshIndicator(
             onRefresh: _onRefresh,
@@ -1994,7 +1976,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           // 操作引导浮层
           if (_showOperationGuide) _buildOperationGuideOverlay(context),
         ],
-          ),
         ),
       ),
     );

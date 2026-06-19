@@ -565,20 +565,22 @@ class WFAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AppBar(
       title: titleWidget ?? Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
-          color: WFColors.textPrimary,
+          color: isDark ? Colors.white : WFColors.textPrimary,
         ),
       ),
       centerTitle: true,
       elevation: 0,
       scrolledUnderElevation: 0.5,
-      backgroundColor: WFColors.bgPrimary,
+      backgroundColor: isDark ? WFColors.darkSurface : WFColors.bgPrimary,
       surfaceTintColor: Colors.transparent,
+      iconTheme: IconThemeData(color: isDark ? Colors.white : WFColors.textPrimary),
       leading: leading,
       actions: actions,
     );
