@@ -5180,7 +5180,8 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
 
   /// 根据字符串获取 ThemeMode
   ThemeMode get _themeMode {
-    switch (_themeModeStr) {
+    final modeStr = ThemeConfigService.instance.themeMode;
+    switch (modeStr) {
       case 'light':
         return ThemeMode.light;
       case 'dark':

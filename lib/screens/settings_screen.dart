@@ -395,10 +395,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 切换主题模式
   Future<void> _setThemeMode(String mode) async {
     await _config.setThemeMode(mode);
+    // 同步到ThemeConfigService触发ListenableBuilder重建
+    await ThemeConfigService.instance.setThemeMode(mode);
     if (mounted) {
       setState(() => _themeMode = mode);
-      // 通知主页面刷新主题
-      widget.onThemeChanged?.call();
       WFSnackBar.show(context, '已切换为${_themeModeLabel(mode)}模式');
     }
   }

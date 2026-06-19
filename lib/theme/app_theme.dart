@@ -13,6 +13,7 @@ class ThemeConfigService extends ChangeNotifier {
   static const String _keyFontStyle = 'font_style';
   static const String _keyAnimationSpeed = 'animation_speed';
   static const String _keyLayoutDensity = 'layout_density';
+  static const String _keyThemeMode = 'theme_mode';
 
   static ThemeConfigService? _instance;
   static ThemeConfigService get instance => _instance ??= ThemeConfigService._();
@@ -21,6 +22,10 @@ class ThemeConfigService extends ChangeNotifier {
   /// 主题色索引
   int _themeColorIndex = 0;
   int get themeColorIndex => _themeColorIndex;
+
+  /// 深色模式: 'system' | 'light' | 'dark'
+  String _themeMode = 'system';
+  String get themeMode => _themeMode;
 
   /// 字体大小缩放因子 (0.8 - 1.2)
   double _fontScale = 1.0;
@@ -148,9 +153,23 @@ class ThemeConfigService extends ChangeNotifier {
       _fontStyleIndex = prefs.getInt(_keyFontStyle) ?? 0;
       _animationSpeedIndex = prefs.getInt(_keyAnimationSpeed) ?? 1;
       _layoutDensityIndex = prefs.getInt(_keyLayoutDensity) ?? 1;
+      _themeMode = prefs.getString(_keyThemeMode) ?? 'system';
       notifyListeners();
     } catch (e) {
       debugPrint('加载主题配置失败: $e');
+    }
+  }
+
+  /// 设置深色模式
+  Future<void> setThemeMode(String mode) async {
+    if (_themeMode == mode) return;
+    _themeMode = mode;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyThemeMode, mode);
+    } catch (e) {
+      debugPrint('保存深色模式失败: $e');
     }
   }
 

@@ -1,18 +1,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.writefont.app">
 
-    <!-- Camera permission -->
+    <!-- 最小权限原则：只申请必要权限 -->
+    <!-- 拍照识别手写字 -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- Android 13+ 读取用户选择的图片 -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- 网络访问（调用AI识别API） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- 相机非必需（没有相机也能用其他功能） -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:label="手迹造字"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="false">
         
         <activity
             android:name=".MainActivity"
