@@ -69,9 +69,7 @@ class _RecentProjectCard extends StatelessWidget {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => CharacterGridScreen(project: project),
-          ),
+          WFAnimations.slideRoute(CharacterGridScreen(project: project)),
         );
       },
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

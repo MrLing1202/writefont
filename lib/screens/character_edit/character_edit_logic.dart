@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../data/standard_charset.dart';
 import '../../models/project.dart';
 import '../../services/storage_service.dart';
+import '../../theme/app_theme.dart';
 import 'drawing_models.dart';
 
 import '../character_edit_screen.dart';
@@ -164,31 +165,39 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
       return;
     }
 
-    final result = await showDialog<String>(
+    final result = await WFDialog.show<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(
-          Icons.save_outlined,
-          color: Theme.of(ctx).colorScheme.primary,
-          size: 36,
-        ),
-        title: const Text('未保存的修改'),
-        content: const Text('有未保存的修改，是否保存？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'cancel'),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, 'discard'),
-            child: const Text('不保存'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, 'save'),
-            child: const Text('保存'),
+      title: '未保存的修改',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.save_outlined, color: WFColors.primary, size: 36),
+          const SizedBox(height: 16),
+          const Text(
+            '有未保存的修改，是否保存？',
+            style: TextStyle(
+              fontSize: 15,
+              color: WFColors.textSecondary,
+              height: 1.5,
+            ),
           ),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'cancel'),
+          child: const Text('取消', style: TextStyle(color: WFColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'discard'),
+          child: const Text('不保存', style: TextStyle(color: WFColors.warning)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'save'),
+          style: TextButton.styleFrom(foregroundColor: WFColors.primary),
+          child: const Text('保存'),
+        ),
+      ],
     );
 
     if (!mounted) return;
@@ -205,36 +214,21 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
   }
 
   /// 删除字符
-  void deleteCharacter() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(
-          Icons.warning_amber_rounded,
-          color: Theme.of(ctx).colorScheme.error,
-          size: 48,
-        ),
-        title: const Text('删除字符'),
-        content: Text('确定要删除字符「${widget.character}」吗？此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx); // 关闭确认对话框
-              Navigator.pop(context); // 关闭编辑对话框
-              widget.onCharacterDeleted();
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+  void deleteCharacter() async {
+    final confirmed = await WFDialog.confirm(
+      context,
+      title: '删除字符',
+      message: '确定要删除字符「${widget.character}」吗？此操作不可撤销。',
+      confirmText: '删除',
+      icon: Icons.warning_amber_rounded,
+      iconColor: WFColors.error,
+      isDestructive: true,
     );
+
+    if (confirmed == true && mounted) {
+      Navigator.pop(context); // 关闭编辑对话框
+      widget.onCharacterDeleted();
+    }
   }
 
   // === 撤销/重做 ===

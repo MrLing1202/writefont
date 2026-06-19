@@ -292,9 +292,7 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
 
   Future<void> proceedToPreview() async {
     if (processedCells.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有识别到字符，请调整参数后重试')),
-      );
+      WFSnackBar.show(context, '没有识别到字符，请调整参数后重试');
       return;
     }
 

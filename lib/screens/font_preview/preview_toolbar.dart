@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/project.dart';
+import '../../theme/app_theme.dart';
 
 /// 预览底部工具栏组件
 class PreviewToolbar extends StatelessWidget {
@@ -38,8 +39,8 @@ class PreviewToolbar extends StatelessWidget {
 
   static const _bgColors = [
     Colors.white,
-    Color(0xFF1A1A1A),
-    Color(0xFFE0E0E0),
+    WFColors.previewDark,
+    WFColors.previewGray,
   ];
   static const _bgLabels = ['白', '黑', '灰'];
 

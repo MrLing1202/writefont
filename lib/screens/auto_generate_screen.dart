@@ -95,17 +95,13 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       } else {
         setState(() => _status = '识别完成');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('未能识别该字符，请手动修改')),
-          );
+          WFSnackBar.show(context, '未能识别该字符，请手动修改');
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _status = '识别完成');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('重试失败: $e')),
-        );
+        WFSnackBar.error(context, '重试失败: $e');
       }
     }
   }

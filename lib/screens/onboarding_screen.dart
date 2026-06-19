@@ -43,11 +43,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     await prefs.setBool('onboarding_seen', true);
     if (mounted) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => HomeScreen(
-            onThemeChanged: () {},
-          ),
-        ),
+        WFAnimations.slideRoute(HomeScreen(
+          onThemeChanged: () {},
+        )),
       );
     }
   }

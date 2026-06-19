@@ -56,9 +56,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载项目失败: $e')),
-        );
+        WFSnackBar.error(context, '加载项目失败: $e');
       }
     }
   }
@@ -181,21 +179,15 @@ class _ProjectListScreenState extends State<ProjectListScreen>
         await StorageService.deleteProject(project.id);
         await _loadProjects();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('「${project.name}」已删除'),
-              action: SnackBarAction(
-                label: '知道了',
-                onPressed: () {},
-              ),
-            ),
+          WFSnackBar.show(
+            context,
+            '「${project.name}」已删除',
+            action: SnackBarAction(label: '知道了', onPressed: () {}),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('删除失败: $e')),
-          );
+          WFSnackBar.error(context, '删除失败: $e');
         }
       }
     }
@@ -250,9 +242,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
         await _loadProjects();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('重命名失败: $e')),
-          );
+          WFSnackBar.error(context, '重命名失败: $e');
         }
       }
     }
@@ -300,15 +290,11 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       await _loadProjects();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已创建「${newProject.name}」')),
-        );
+        WFSnackBar.show(context, '已创建「${newProject.name}」');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('复制失败: $e')),
-        );
+        WFSnackBar.error(context, '复制失败: $e');
       }
     }
   }
@@ -319,15 +305,11 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       final filePath = await StorageService.exportTtf(project);
       await StorageService.shareTtf(filePath);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已导出: $filePath')),
-        );
+        WFSnackBar.show(context, '已导出: $filePath');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
-        );
+        WFSnackBar.error(context, '导出失败: $e');
       }
     }
   }
@@ -337,27 +319,24 @@ class _ProjectListScreenState extends State<ProjectListScreen>
     try {
       final filePath = await StorageService.exportProject(project);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('备份已导出: ${project.name}_backup.json'),
-            action: SnackBarAction(
-              label: '分享',
-              onPressed: () {
-                Share.shareXFiles(
-                  [XFile(filePath)],
-                  subject: 'WriteFont 项目备份',
-                  text: 'WriteFont 项目备份文件',
-                );
-              },
-            ),
+        WFSnackBar.show(
+          context,
+          '备份已导出: ${project.name}_backup.json',
+          action: SnackBarAction(
+            label: '分享',
+            onPressed: () {
+              Share.shareXFiles(
+                [XFile(filePath)],
+                subject: 'WriteFont 项目备份',
+                text: 'WriteFont 项目备份文件',
+              );
+            },
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('备份导出失败: $e')),
-        );
+        WFSnackBar.error(context, '备份导出失败: $e');
       }
     }
   }
@@ -378,9 +357,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       final filePath = result.files.single.path;
       if (filePath == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法读取文件路径')),
-          );
+          WFSnackBar.show(context, '无法读取文件路径');
         }
         return;
       }
@@ -393,9 +370,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
         json = jsonDecode(jsonString) as Map<String, dynamic>;
       } catch (_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('导入失败：文件不是有效的 JSON 格式')),
-          );
+          WFSnackBar.error(context, '导入失败：文件不是有效的 JSON 格式');
         }
         return;
       }
@@ -403,9 +378,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       // 检查必要字段
       if (!json.containsKey('name') || !json.containsKey('glyphs')) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('导入失败：缺少必要字段（name / glyphs）')),
-          );
+          WFSnackBar.error(context, '导入失败：缺少必要字段（name / glyphs）');
         }
         return;
       }
@@ -414,22 +387,16 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       if (project != null) {
         await _loadProjects();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已导入项目「${project.name}」')),
-          );
+          WFSnackBar.show(context, '已导入项目「${project.name}」');
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('导入失败：数据解析异常')),
-          );
+          WFSnackBar.error(context, '导入失败：数据解析异常');
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导入失败: $e')),
-        );
+        WFSnackBar.error(context, '导入失败: $e');
       }
     }
   }
@@ -438,9 +405,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
   void _openProject(FontProject project) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => PreviewScreen(project: project),
-      ),
+      WFAnimations.slideRoute(PreviewScreen(project: project)),
     ).then((_) => _loadProjects()); // 返回时刷新列表
   }
 

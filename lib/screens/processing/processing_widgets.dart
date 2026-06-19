@@ -82,9 +82,9 @@ mixin ProcessingWidgets {
           const Spacer(),
           // 置信度统计
           if (!isRecognizing) ...[
-            buildConfidenceChip('🟢 高', highConfidenceCount, Colors.green, colorScheme),
+            buildConfidenceChip('🟢 高', highConfidenceCount, WFColors.success, colorScheme),
             const SizedBox(width: 4),
-            buildConfidenceChip('🟡 中', needConfirmCount, Colors.orange, colorScheme),
+            buildConfidenceChip('🟡 中', needConfirmCount, WFColors.warning, colorScheme),
           ],
           if (selectedCount > 0)
             Padding(
@@ -210,9 +210,9 @@ mixin ProcessingWidgets {
             children: [
               buildSummaryItem('总字符', totalCount, colorScheme.onSurface),
               const SizedBox(width: 16),
-              buildSummaryItem('识别成功', recognizedSuccessCount, Colors.green),
+              buildSummaryItem('识别成功', recognizedSuccessCount, WFColors.success),
               const SizedBox(width: 16),
-              buildSummaryItem('需确认', needConfirmCount, Colors.orange),
+              buildSummaryItem('需确认', needConfirmCount, WFColors.warning),
             ],
           ),
           const SizedBox(height: 12),
@@ -495,14 +495,14 @@ mixin ProcessingWidgets {
     } else {
       switch (confidence) {
         case ConfidenceLevel.high:
-          borderColor = Colors.green;
+          borderColor = WFColors.success;
           break;
         case ConfidenceLevel.medium:
-          borderColor = Colors.orange;
+          borderColor = WFColors.warning;
           break;
         case ConfidenceLevel.low:
           borderColor = status == CellStatus.failed
-              ? Colors.red
+              ? WFColors.error
               : colorScheme.outlineVariant;
           break;
       }
@@ -568,7 +568,7 @@ mixin ProcessingWidgets {
                   child: Container(
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.8),
+                      color: WFColors.error.withValues(alpha: 0.8),
                       shape: BoxShape.circle,
                     ),
                     child: const Text(

@@ -252,21 +252,15 @@ mixin ProjectListWidgets {
         try {
           await onDirectDelete(project);
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('「${project.name}」已删除'),
-                action: SnackBarAction(
-                  label: '知道了',
-                  onPressed: () {},
-                ),
-              ),
+            WFSnackBar.show(
+              context,
+              '「${project.name}」已删除',
+              action: SnackBarAction(label: '知道了', onPressed: () {}),
             );
           }
         } catch (e) {
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('删除失败: $e')),
-            );
+            WFSnackBar.error(context, '删除失败: $e');
           }
           // 删除失败时重新加载
           await onLoadProjects();
@@ -454,10 +448,7 @@ mixin ProjectListWidgets {
                         case 'grid':
                           Navigator.push(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  CharacterGridScreen(project: project),
-                            ),
+                            WFAnimations.slideRoute(CharacterGridScreen(project: project)),
                           ).then((_) => onLoadProjects());
                           break;
                         case 'delete':
@@ -765,10 +756,7 @@ mixin ProjectListWidgets {
                   Navigator.pop(ctx);
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          CharacterGridScreen(project: project),
-                    ),
+                    WFAnimations.slideRoute(CharacterGridScreen(project: project)),
                   ).then((_) => onLoadProjects());
                 },
               ),

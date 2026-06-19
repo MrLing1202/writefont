@@ -359,12 +359,10 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
       if (context.mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => ProcessingScreen(
-              sourceImages: imageBytes,
-              charset: StandardCharset.allCharStrings, // 传入标准字表
-            ),
-          ),
+          WFAnimations.slideRoute(ProcessingScreen(
+            sourceImages: imageBytes,
+            charset: StandardCharset.allCharStrings, // 传入标准字表
+          )),
         );
       }
     }

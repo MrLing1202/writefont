@@ -4,6 +4,16 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.1.5] - 2026-06-19
+
+### 优化
+- 增强 WFDialog 组件，新增 confirm() 和 singleChoice() 静态方法，统一确认和选择弹窗样式
+- 迁移字符编辑器中的 AlertDialog 为统一 WFDialog，保持一致的圆角和内边距风格
+- 迁移画笔粗细选择弹窗为 WFDialog，添加主题色 Slider
+- 迁移首页项目选择弹窗为 WFDialog.singleChoice，统一列表项样式
+- 新增 WFAnimations.fadeRoute() 淡入路由动画，用于对话框和页面过渡
+- 统一所有确认对话框的按钮文案颜色，使用 WFColors 设计常量
+
 ## [1.1.4] - 2026-06-19
 
 ### 优化
