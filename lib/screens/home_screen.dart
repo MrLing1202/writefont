@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,52 @@ import 'home/recent_projects_section.dart';
 import 'home/secondary_entry_card.dart';
 import 'home/home_actions.dart';
 import 'package:flutter/services.dart';
+import '../main.dart';
+
+/// 推送设置模型
+class PushSettings {
+  bool enabled;
+  TimeOfDay reminderTime;
+  String reminderContent;
+  int frequencyDays; // 推送频率（天数）
+  bool projectReminder;
+  bool syncReminder;
+  bool updateReminder;
+
+  PushSettings({
+    this.enabled = true,
+    this.reminderTime = const TimeOfDay(hour: 9, minute: 0),
+    this.reminderContent = '今天来创建新的手写字体吧！',
+    this.frequencyDays = 1,
+    this.projectReminder = true,
+    this.syncReminder = true,
+    this.updateReminder = true,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'enabled': enabled,
+        'reminderHour': reminderTime.hour,
+        'reminderMinute': reminderTime.minute,
+        'reminderContent': reminderContent,
+        'frequencyDays': frequencyDays,
+        'projectReminder': projectReminder,
+        'syncReminder': syncReminder,
+        'updateReminder': updateReminder,
+      };
+
+  factory PushSettings.fromJson(Map<String, dynamic> json) => PushSettings(
+        enabled: json['enabled'] as bool? ?? true,
+        reminderTime: TimeOfDay(
+          hour: json['reminderHour'] as int? ?? 9,
+          minute: json['reminderMinute'] as int? ?? 0,
+        ),
+        reminderContent: json['reminderContent'] as String? ?? '今天来创建新的手写字体吧！',
+        frequencyDays: json['frequencyDays'] as int? ?? 1,
+        projectReminder: json['projectReminder'] as bool? ?? true,
+        syncReminder: json['syncReminder'] as bool? ?? true,
+        updateReminder: json['updateReminder'] as bool? ?? true,
+      );
+}
 
 class HomeScreen extends StatefulWidget {
   /// 主题变更回调，用于从设置页返回时刷新主题
@@ -39,6 +86,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _scaleFactor = 1.0; // 捏合缩放比例
   double _previousScale = 1.0;
 
+  // 推送设置状态
+  PushSettings _pushSettings = PushSettings();
+  int _unreadNotificationCount = 0;
+
   // 快捷操作动画控制器
   late AnimationController _quickActionAnimController;
   late Animation<double> _quickActionScale;
@@ -52,6 +103,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadProjectData();
     _loadAppVersion();
     _checkOnboardingGuide();
+    _loadPushSettings();
+    _loadNotificationCount();
     _quickActionAnimController = AnimationController(
       duration: const Duration(milliseconds: 150),
       vsync: this,
@@ -71,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    NotificationService.instance.removeListener(_onNotificationChanged);
     _quickActionAnimController.dispose();
     _doubleTapAnimController.dispose();
     super.dispose();
@@ -100,6 +154,338 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
     } catch (_) {}
+  }
+  void _nextOnboardingStep() { @@
+  /// 加载推送设置
+  Future<void> _loadPushSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('push_settings');
+      if (json != null && mounted) {
+        setState(() {
+          _pushSettings = PushSettings.fromJson(
+            Map<String, dynamic>.from(
+              const JsonDecoder().convert(json) as Map,
+            ),
+          );
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 保存推送设置
+  Future<void> _savePushSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('push_settings',
+          const JsonEncoder().convert(_pushSettings.toJson()));
+    } catch (_) {}
+  }
+
+  /// 加载未读通知数量
+  void _loadNotificationCount() {
+    setState(() {
+      _unreadNotificationCount = NotificationService.instance.unreadCount;
+    });
+    // 监听通知变更
+    NotificationService.instance.addListener(_onNotificationChanged);
+  }
+
+  /// 通知变更回调
+  void _onNotificationChanged() {
+    if (mounted) {
+      setState(() {
+        _unreadNotificationCount = NotificationService.instance.unreadCount;
+      });
+    }
+  }
+
+  /// 显示推送设置面板
+  void _showPushSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '推送设置',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: WFColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // 推送开关
+                SwitchListTile(
+                  title: const Text('启用推送通知'),
+                  subtitle: const Text('接收创作提醒和同步通知'),
+                  value: _pushSettings.enabled,
+                  onChanged: (val) {
+                    setSheetState(() => _pushSettings.enabled = val);
+                    setState(() {});
+                    _savePushSettings();
+                  },
+                ),
+                if (_pushSettings.enabled) ...[
+                  const Divider(),
+                  // 提醒时间
+                  ListTile(
+                    leading: const Icon(Icons.access_time),
+                    title: const Text('提醒时间'),
+                    subtitle: Text(
+                      '${_pushSettings.reminderTime.hour.toString().padLeft(2, '0')}:'
+                      '${_pushSettings.reminderTime.minute.toString().padLeft(2, '0')}',
+                    ),
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: ctx,
+                        initialTime: _pushSettings.reminderTime,
+                      );
+                      if (picked != null) {
+                        setSheetState(() => _pushSettings.reminderTime = picked);
+                        setState(() {});
+                        _savePushSettings();
+                      }
+                    },
+                  ),
+                  // 推送频率
+                  ListTile(
+                    leading: const Icon(Icons.repeat),
+                    title: const Text('推送频率'),
+                    subtitle: Text('每 ${_pushSettings.frequencyDays} 天'),
+                    trailing: DropdownButton<int>(
+                      value: _pushSettings.frequencyDays,
+                      items: const [
+                        DropdownMenuItem(value: 1, child: Text('每天')),
+                        DropdownMenuItem(value: 3, child: Text('每3天')),
+                        DropdownMenuItem(value: 7, child: Text('每周')),
+                        DropdownMenuItem(value: 14, child: Text('每两周')),
+                        DropdownMenuItem(value: 30, child: Text('每月')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setSheetState(() => _pushSettings.frequencyDays = val);
+                          setState(() {});
+                          _savePushSettings();
+                        }
+                      },
+                    ),
+                  ),
+                  // 推送内容设置
+                  ListTile(
+                    leading: const Icon(Icons.edit_note),
+                    title: const Text('提醒内容'),
+                    subtitle: Text(_pushSettings.reminderContent),
+                    onTap: () {
+                      final controller = TextEditingController(
+                        text: _pushSettings.reminderContent,
+                      );
+                      showDialog(
+                        context: ctx,
+                        builder: (dctx) => AlertDialog(
+                          title: const Text('自定义提醒内容'),
+                          content: TextField(
+                            controller: controller,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              hintText: '输入提醒内容...',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dctx),
+                              child: const Text('取消'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                setSheetState(() =>
+                                    _pushSettings.reminderContent = controller.text);
+                                setState(() {});
+                                _savePushSettings();
+                                Navigator.pop(dctx);
+                              },
+                              child: const Text('保存'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(),
+                  // 分类推送开关
+                  SwitchListTile(
+                    title: const Text('项目提醒'),
+                    subtitle: const Text('提醒继续创作手写字体'),
+                    value: _pushSettings.projectReminder,
+                    onChanged: (val) {
+                      setSheetState(() => _pushSettings.projectReminder = val);
+                      setState(() {});
+                      _savePushSettings();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('同步提醒'),
+                    subtitle: const Text('云端同步状态通知'),
+                    value: _pushSettings.syncReminder,
+                    onChanged: (val) {
+                      setSheetState(() => _pushSettings.syncReminder = val);
+                      setState(() {});
+                      _savePushSettings();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('更新提醒'),
+                    subtitle: const Text('应用版本更新通知'),
+                    value: _pushSettings.updateReminder,
+                    onChanged: (val) {
+                      setSheetState(() => _pushSettings.updateReminder = val);
+                      setState(() {});
+                      _savePushSettings();
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 显示通知中心面板
+  void _showNotificationCenter() {
+    final notifications = NotificationService.instance.notifications;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (ctx, scrollController) => Column(
+          children: [
+            // 顶部操作栏
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '通知中心',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (notifications.isNotEmpty)
+                    TextButton(
+                      onPressed: () {
+                        NotificationService.instance.markAllAsRead();
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('全部已读'),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 通知列表
+            Expanded(
+              child: notifications.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.notifications_none, size: 48, color: WFColors.textLight),
+                          SizedBox(height: 12),
+                          Text('暂无通知', style: TextStyle(color: WFColors.textSecondary)),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: notifications.length,
+                      itemBuilder: (ctx, index) {
+                        final n = notifications[index];
+                        return Dismissible(
+                          key: Key(n.id),
+                          onDismissed: (_) {
+                            NotificationService.instance.dismiss(n.id);
+                          },
+                          background: Container(
+                            color: WFColors.error,
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            child: const Icon(Icons.delete, color: Colors.white),
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: n.isRead
+                                  ? WFColors.textLight.withValues(alpha: 0.3)
+                                  : WFColors.primary.withValues(alpha: 0.2),
+                              child: Icon(
+                                _getCategoryIcon(n.category),
+                                color: n.isRead ? WFColors.textSecondary : WFColors.primary,
+                                size: 20,
+                              ),
+                            ),
+                            title: Text(
+                              n.title,
+                              style: TextStyle(
+                                fontWeight: n.isRead ? FontWeight.normal : FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              n.body,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: n.isRead
+                                ? null
+                                : Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: WFColors.primary,
+                                    ),
+                                  ),
+                            onTap: () {
+                              NotificationService.instance.markAsRead(n.id);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 获取分类图标
+  IconData _getCategoryIcon(NotificationCategory category) {
+    switch (category) {
+      case NotificationCategory.system:
+        return Icons.info_outline;
+      case NotificationCategory.sync:
+        return Icons.cloud_sync;
+      case NotificationCategory.reminder:
+        return Icons.alarm;
+      case NotificationCategory.update:
+        return Icons.system_update;
+      case NotificationCategory.social:
+        return Icons.share;
+    }
   }
 
   /// 下一步引导
@@ -268,6 +654,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           },
         ),
         actions: [
+          // 通知中心按钮
+          IconButton(
+            icon: Badge(
+              isLabelVisible: _unreadNotificationCount > 0,
+              label: Text('$_unreadNotificationCount'),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+            tooltip: '通知中心',
+            onPressed: _showNotificationCenter,
+          ),
+          // 推送设置按钮
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: '推送设置',
+            onPressed: _showPushSettingsSheet,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: l10n.settings,

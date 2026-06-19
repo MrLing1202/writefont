@@ -11,6 +11,104 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/project.dart';
 import 'ttf_builder.dart';
 
+// ═══════════════════════════════════════════════════════════
+// 提醒服务：定时提醒、条件提醒、位置提醒、自定义提醒
+// ═══════════════════════════════════════════════════════════
+
+/// 提醒类型枚举
+enum ReminderType {
+  timed,       // 定时提醒（指定时间触发）
+  conditional, // 条件提醒（满足条件时触发，如项目超过N天未编辑）
+  location,    // 位置提醒（进入/离开某区域时触发）
+  custom,      // 自定义提醒（用户自定义的复杂规则）
+}
+
+/// 提醒数据模型
+class AppReminder {
+  final String id;
+  final String title;
+  final String message;
+  final ReminderType type;
+  bool isEnabled;
+  final DateTime createdAt;
+
+  // 定时提醒字段
+  final DateTime? scheduledTime;
+  final bool repeatDaily;
+  final int? repeatIntervalDays;
+
+  // 条件提醒字段
+  final String? conditionType; // 'project_idle_days' | 'char_count_reached' | 'sync_pending'
+  final int? conditionValue;
+
+  // 位置提醒字段
+  final double? latitude;
+  final double? longitude;
+  final double? radiusMeters;
+
+  // 自定义提醒字段
+  final String? customRule; // JSON 格式的自定义规则
+
+  AppReminder({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.type,
+    this.isEnabled = true,
+    DateTime? createdAt,
+    this.scheduledTime,
+    this.repeatDaily = false,
+    this.repeatIntervalDays,
+    this.conditionType,
+    this.conditionValue,
+    this.latitude,
+    this.longitude,
+    this.radiusMeters,
+    this.customRule,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'message': message,
+        'type': type.name,
+        'isEnabled': isEnabled,
+        'createdAt': createdAt.toIso8601String(),
+        'scheduledTime': scheduledTime?.toIso8601String(),
+        'repeatDaily': repeatDaily,
+        'repeatIntervalDays': repeatIntervalDays,
+        'conditionType': conditionType,
+        'conditionValue': conditionValue,
+        'latitude': latitude,
+        'longitude': longitude,
+        'radiusMeters': radiusMeters,
+        'customRule': customRule,
+      };
+
+  factory AppReminder.fromJson(Map<String, dynamic> json) => AppReminder(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        message: json['message'] as String,
+        type: ReminderType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => ReminderType.timed,
+        ),
+        isEnabled: json['isEnabled'] as bool? ?? true,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        scheduledTime: json['scheduledTime'] != null
+            ? DateTime.parse(json['scheduledTime'] as String)
+            : null,
+        repeatDaily: json['repeatDaily'] as bool? ?? false,
+        repeatIntervalDays: json['repeatIntervalDays'] as int?,
+        conditionType: json['conditionType'] as String?,
+        conditionValue: json['conditionValue'] as int?,
+        latitude: (json['latitude'] as num?)?.toDouble(),
+        longitude: (json['longitude'] as num?)?.toDouble(),
+        radiusMeters: (json['radiusMeters'] as num?)?.toDouble(),
+        customRule: json['customRule'] as String?,
+      );
+}
+
 /// Service for file operations: saving, loading, and exporting.
 ///
 /// 增强功能：
@@ -1213,5 +1311,236 @@ class StorageService {
     final file = File(filePath);
     await file.writeAsString(jsonString);
     return filePath;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 提醒管理：定时提醒、条件提醒、位置提醒、自定义提醒
+  // ═══════════════════════════════════════════════════════════
+
+  /// 提醒列表缓存
+  static List<AppReminder>? _cachedReminders;
+  static const String _keyReminders = 'app_reminders';
+
+  /// 加载所有提醒
+  static Future<List<AppReminder>> loadReminders() async {
+    if (_cachedReminders != null) return List.unmodifiable(_cachedReminders!);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_keyReminders);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _cachedReminders = list
+            .map((e) => AppReminder.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } else {
+        _cachedReminders = [];
+      }
+    } catch (e) {
+      debugPrint('加载提醒失败: $e');
+      _cachedReminders = [];
+    }
+    return List.unmodifiable(_cachedReminders!);
+  }
+
+  /// 保存提醒列表
+  static Future<void> _saveReminders() async {
+    if (_cachedReminders == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_cachedReminders!.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyReminders, json);
+    } catch (e) {
+      debugPrint('保存提醒失败: $e');
+    }
+  }
+
+  /// 添加定时提醒
+  ///
+  /// [title] 提醒标题
+  /// [message] 提醒内容
+  /// [scheduledTime] 提醒时间
+  /// [repeatDaily] 是否每天重复
+  /// [repeatIntervalDays] 重复间隔天数（如每3天）
+  static Future<AppReminder> addTimedReminder({
+    required String title,
+    required String message,
+    required DateTime scheduledTime,
+    bool repeatDaily = false,
+    int? repeatIntervalDays,
+  }) async {
+    final reminder = AppReminder(
+      id: generateId(),
+      title: title,
+      message: message,
+      type: ReminderType.timed,
+      scheduledTime: scheduledTime,
+      repeatDaily: repeatDaily,
+      repeatIntervalDays: repeatIntervalDays,
+    );
+    await loadReminders();
+    _cachedReminders!.add(reminder);
+    await _saveReminders();
+    debugPrint('已添加定时提醒: $title (${scheduledTime.toIso8601String()})');
+    return reminder;
+  }
+
+  /// 添加条件提醒
+  ///
+  /// [conditionType] 条件类型：
+  ///   - 'project_idle_days': 项目闲置超过N天
+  ///   - 'char_count_reached': 字符数达到N个
+  ///   - 'sync_pending': 有待同步项目
+  /// [conditionValue] 条件阈值
+  static Future<AppReminder> addConditionalReminder({
+    required String title,
+    required String message,
+    required String conditionType,
+    required int conditionValue,
+  }) async {
+    final reminder = AppReminder(
+      id: generateId(),
+      title: title,
+      message: message,
+      type: ReminderType.conditional,
+      conditionType: conditionType,
+      conditionValue: conditionValue,
+    );
+    await loadReminders();
+    _cachedReminders!.add(reminder);
+    await _saveReminders();
+    debugPrint('已添加条件提醒: $title ($conditionType >= $conditionValue)');
+    return reminder;
+  }
+
+  /// 添加位置提醒
+  ///
+  /// [latitude] 纬度
+  /// [longitude] 经度
+  /// [radiusMeters] 触发半径（米）
+  static Future<AppReminder> addLocationReminder({
+    required String title,
+    required String message,
+    required double latitude,
+    required double longitude,
+    double radiusMeters = 100,
+  }) async {
+    final reminder = AppReminder(
+      id: generateId(),
+      title: title,
+      message: message,
+      type: ReminderType.location,
+      latitude: latitude,
+      longitude: longitude,
+      radiusMeters: radiusMeters,
+    );
+    await loadReminders();
+    _cachedReminders!.add(reminder);
+    await _saveReminders();
+    debugPrint('已添加位置提醒: $title ($latitude, $longitude, ${radiusMeters}m)');
+    return reminder;
+  }
+
+  /// 添加自定义提醒
+  ///
+  /// [customRule] JSON 格式的自定义规则
+  static Future<AppReminder> addCustomReminder({
+    required String title,
+    required String message,
+    required String customRule,
+  }) async {
+    final reminder = AppReminder(
+      id: generateId(),
+      title: title,
+      message: message,
+      type: ReminderType.custom,
+      customRule: customRule,
+    );
+    await loadReminders();
+    _cachedReminders!.add(reminder);
+    await _saveReminders();
+    debugPrint('已添加自定义提醒: $title');
+    return reminder;
+  }
+
+  /// 切换提醒启用/禁用状态
+  static Future<void> toggleReminder(String reminderId, bool enabled) async {
+    await loadReminders();
+    final idx = _cachedReminders!.indexWhere((r) => r.id == reminderId);
+    if (idx >= 0) {
+      _cachedReminders![idx].isEnabled = enabled;
+      await _saveReminders();
+    }
+  }
+
+  /// 删除提醒
+  static Future<void> deleteReminder(String reminderId) async {
+    await loadReminders();
+    _cachedReminders!.removeWhere((r) => r.id == reminderId);
+    await _saveReminders();
+  }
+
+  /// 检查条件提醒是否应触发
+  ///
+  /// 遍历所有启用的条件提醒，检查是否满足条件。
+  /// 返回应该触发的提醒列表。
+  static Future<List<AppReminder>> checkConditionalReminders() async {
+    final reminders = await loadReminders();
+    final triggered = <AppReminder>[];
+
+    for (final r in reminders.where((r) =>
+        r.isEnabled && r.type == ReminderType.conditional)) {
+      try {
+        switch (r.conditionType) {
+          case 'project_idle_days':
+            // 检查是否有项目闲置超过指定天数
+            final projects = await loadProjects();
+            final idleDays = r.conditionValue ?? 7;
+            for (final p in projects) {
+              final daysSinceUpdate = DateTime.now().difference(p.updatedAt).inDays;
+              if (daysSinceUpdate >= idleDays) {
+                triggered.add(r);
+                break;
+              }
+            }
+            break;
+          case 'char_count_reached':
+            // 检查总字符数是否达到阈值
+            final projects = await loadProjects();
+            int totalChars = 0;
+            for (final p in projects) {
+              totalChars += p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+            }
+            if (totalChars >= (r.conditionValue ?? 100)) {
+              triggered.add(r);
+            }
+            break;
+          case 'sync_pending':
+            // 检查是否有待同步的项目（简单检查最近修改的项目）
+            final projects = await loadProjects();
+            final recentThreshold = DateTime.now().subtract(const Duration(hours: 1));
+            final hasPending = projects.any((p) => p.updatedAt.isAfter(recentThreshold));
+            if (hasPending) {
+              triggered.add(r);
+            }
+            break;
+        }
+      } catch (e) {
+        debugPrint('检查条件提醒失败: ${r.id} - $e');
+      }
+    }
+    return triggered;
+  }
+
+  /// 获取即将到期的定时提醒（未来24小时内）
+  static Future<List<AppReminder>> getUpcomingTimedReminders() async {
+    final reminders = await loadReminders();
+    final now = DateTime.now();
+    final tomorrow = now.add(const Duration(hours: 24));
+
+    return reminders.where((r) {
+      if (!r.isEnabled || r.type != ReminderType.timed) return false;
+      if (r.scheduledTime == null) return false;
+      return r.scheduledTime!.isAfter(now) && r.scheduledTime!.isBefore(tomorrow);
+    }).toList();
   }
 }

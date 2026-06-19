@@ -29,6 +29,71 @@ enum ConflictResolution {
   keepBoth,    // 两个都保留（远程版本重命名）
 }
 
+// ═══════════════════════════════════════════════════════════
+// 消息中心：消息管理、已读状态、删除、搜索
+// ═══════════════════════════════════════════════════════════
+
+/// 消息类型枚举
+enum MessageType {
+  notification, // 通知消息
+  system,       // 系统消息
+  update,       // 更新消息
+  promotion,    // 推广消息
+  feedback,     // 反馈消息
+}
+
+/// 消息数据模型
+class AppMessage {
+  final String id;
+  final String title;
+  final String content;
+  final MessageType type;
+  final DateTime timestamp;
+  bool isRead;
+  bool isDeleted;
+  final String? actionUrl;
+  final Map<String, dynamic>? metadata;
+
+  AppMessage({
+    required this.id,
+    required this.title,
+    required this.content,
+    this.type = MessageType.notification,
+    DateTime? timestamp,
+    this.isRead = false,
+    this.isDeleted = false,
+    this.actionUrl,
+    this.metadata,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'content': content,
+        'type': type.name,
+        'timestamp': timestamp.toIso8601String(),
+        'isRead': isRead,
+        'isDeleted': isDeleted,
+        'actionUrl': actionUrl,
+        'metadata': metadata,
+      };
+
+  factory AppMessage.fromJson(Map<String, dynamic> json) => AppMessage(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        content: json['content'] as String,
+        type: MessageType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => MessageType.notification,
+        ),
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        isRead: json['isRead'] as bool? ?? false,
+        isDeleted: json['isDeleted'] as bool? ?? false,
+        actionUrl: json['actionUrl'] as String?,
+        metadata: json['metadata'] as Map<String, dynamic>?,
+      );
+}
+
 /// 同步历史记录
 class SyncHistoryEntry {
   final String projectId;
@@ -136,6 +201,11 @@ class CloudSyncService {
   static const int _maxLogEntries = 200;
   static const String _keySyncLogs = 'cloud_sync_logs';
 
+  // ── 消息中心 ──
+  final List<AppMessage> _messages = [];
+  static const int _maxMessages = 500;
+  static const String _keyMessages = 'cloud_messages';
+
   // ── SharedPreferences keys ──
   static const _keyAccessToken = 'cloud_access_token';
   static const _keyRefreshToken = 'cloud_refresh_token';
@@ -155,6 +225,20 @@ class CloudSyncService {
   Map<String, ProjectSyncStatus> get projectStatus =>
       Map.unmodifiable(_projectStatus);
   List<SyncLogEntry> get syncLogs => List.unmodifiable(_syncLogs);
+
+  // ── 消息中心 Getters ──
+
+  /// 获取所有未删除的消息
+  List<AppMessage> get messages =>
+      List.unmodifiable(_messages.where((m) => !m.isDeleted));
+
+  /// 获取未读消息数量
+  int get unreadMessageCount =>
+      _messages.where((m) => !m.isRead && !m.isDeleted).length;
+
+  /// 按类型获取消息
+  List<AppMessage> getMessagesByType(MessageType type) =>
+      _messages.where((m) => m.type == type && !m.isDeleted).toList();
 
   /// 初始化服务，从本地恢复登录状态
   Future<void> init() async {
@@ -195,6 +279,16 @@ class CloudSyncService {
         _syncLogs.clear();
         _syncLogs.addAll(
           list.map((e) => SyncLogEntry.fromJson(e as Map<String, dynamic>)),
+        );
+      }
+
+      // 恢复消息列表
+      final messagesJson = prefs.getString(_keyMessages);
+      if (messagesJson != null) {
+        final list = jsonDecode(messagesJson) as List;
+        _messages.clear();
+        _messages.addAll(
+          list.map((e) => AppMessage.fromJson(e as Map<String, dynamic>)),
         );
       }
 
@@ -1028,6 +1122,121 @@ class CloudSyncService {
       await prefs.setString(_keyProjectStatus, jsonEncode(map));
     } catch (e) {
       debugPrint('保存项目同步状态失败: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 消息中心
+  // ═══════════════════════════════════════════════════════════
+
+  /// 添加新消息
+  ///
+  /// [title] 消息标题
+  /// [content] 消息内容
+  /// [type] 消息类型
+  /// [actionUrl] 关联操作URL（可选）
+  /// [metadata] 附加数据（可选）
+  Future<void> addMessage({
+    required String title,
+    required String content,
+    MessageType type = MessageType.notification,
+    String? actionUrl,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final message = AppMessage(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      title: title,
+      content: content,
+      type: type,
+      actionUrl: actionUrl,
+      metadata: metadata,
+    );
+    _messages.insert(0, message);
+    // 限制消息数量
+    while (_messages.length > _maxMessages) {
+      _messages.removeLast();
+    }
+    await _saveMessages();
+    _addLog('info', '新消息: $title');
+  }
+
+  /// 标记消息为已读
+  Future<void> markMessageAsRead(String messageId) async {
+    try {
+      final message = _messages.firstWhere((m) => m.id == messageId);
+      message.isRead = true;
+      await _saveMessages();
+    } catch (_) {}
+  }
+
+  /// 标记所有消息为已读
+  Future<void> markAllMessagesAsRead() async {
+    for (final m in _messages) {
+      if (!m.isDeleted) m.isRead = true;
+    }
+    await _saveMessages();
+  }
+
+  /// 软删除消息（标记为已删除，不实际移除）
+  Future<void> deleteMessage(String messageId) async {
+    try {
+      final message = _messages.firstWhere((m) => m.id == messageId);
+      message.isDeleted = true;
+      await _saveMessages();
+      _addLog('info', '消息已删除: ${message.title}');
+    } catch (_) {}
+  }
+
+  /// 永久删除消息（物理移除）
+  Future<void> permanentlyDeleteMessage(String messageId) async {
+    _messages.removeWhere((m) => m.id == messageId);
+    await _saveMessages();
+  }
+
+  /// 清空已删除的消息（回收站清理）
+  Future<void> emptyTrash() async {
+    _messages.removeWhere((m) => m.isDeleted);
+    await _saveMessages();
+  }
+
+  /// 搜索消息
+  ///
+  /// [query] 搜索关键词（匹配标题和内容）
+  /// [type] 按类型筛选（可选）
+  /// [onlyUnread] 只搜索未读消息（默认 false）
+  List<AppMessage> searchMessages({
+    required String query,
+    MessageType? type,
+    bool onlyUnread = false,
+  }) {
+    final lowerQuery = query.toLowerCase();
+    return _messages.where((m) {
+      if (m.isDeleted) return false;
+      if (onlyUnread && m.isRead) return false;
+      if (type != null && m.type != type) return false;
+      // 匹配标题或内容
+      return m.title.toLowerCase().contains(lowerQuery) ||
+          m.content.toLowerCase().contains(lowerQuery);
+    }).toList();
+  }
+
+  /// 获取消息详情
+  AppMessage? getMessage(String messageId) {
+    try {
+      return _messages.firstWhere((m) => m.id == messageId && !m.isDeleted);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 持久化消息列表
+  Future<void> _saveMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_messages.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyMessages, json);
+    } catch (e) {
+      debugPrint('保存消息列表失败: $e');
     }
   }
 }

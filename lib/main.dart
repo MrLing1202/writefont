@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,235 @@ import 'services/recognition_service.dart';
 import 'services/image_processor.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
+
+// ═══════════════════════════════════════════════════════════
+// 通知服务：本地通知、通知分类、优先级、历史记录
+// ═══════════════════════════════════════════════════════════
+
+/// 通知优先级枚举
+enum NotificationPriority { low, normal, high, urgent }
+
+/// 通知分类枚举
+enum NotificationCategory {
+  system,      // 系统通知
+  sync,        // 同步通知
+  reminder,    // 提醒通知
+  update,      // 更新通知
+  social,      // 社交通知（如分享）
+}
+
+/// 通知消息数据模型
+class AppNotification {
+  final String id;
+  final String title;
+  final String body;
+  final NotificationCategory category;
+  final NotificationPriority priority;
+  final DateTime timestamp;
+  bool isRead;
+  final Map<String, dynamic>? payload;
+
+  AppNotification({
+    required this.id,
+    required this.title,
+    required this.body,
+    this.category = NotificationCategory.system,
+    this.priority = NotificationPriority.normal,
+    DateTime? timestamp,
+    this.isRead = false,
+    this.payload,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'body': body,
+        'category': category.name,
+        'priority': priority.name,
+        'timestamp': timestamp.toIso8601String(),
+        'isRead': isRead,
+        'payload': payload,
+      };
+
+  factory AppNotification.fromJson(Map<String, dynamic> json) =>
+      AppNotification(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        body: json['body'] as String,
+        category: NotificationCategory.values.firstWhere(
+          (e) => e.name == json['category'],
+          orElse: () => NotificationCategory.system,
+        ),
+        priority: NotificationPriority.values.firstWhere(
+          (e) => e.name == json['priority'],
+          orElse: () => NotificationPriority.normal,
+        ),
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        isRead: json['isRead'] as bool? ?? false,
+        payload: json['payload'] as Map<String, dynamic>?,
+      );
+}
+
+/// 本地通知服务
+///
+/// 功能：
+/// - 本地通知管理（无需网络依赖）
+/// - 通知分类（系统、同步、提醒、更新、社交）
+/// - 通知优先级（低、普通、高、紧急）
+/// - 通知历史记录（持久化存储）
+class NotificationService {
+  static final NotificationService _instance = NotificationService._();
+  static NotificationService get instance => _instance;
+  NotificationService._();
+
+  final List<AppNotification> _notifications = [];
+  static const int _maxNotifications = 200;
+  static const String _keyNotifications = 'app_notifications';
+  static const String _keyUnreadCount = 'app_unread_count';
+
+  /// 通知变更回调列表
+  final List<VoidCallback> _listeners = [];
+
+  /// 添加监听器
+  void addListener(VoidCallback listener) => _listeners.add(listener);
+
+  /// 移除监听器
+  void removeListener(VoidCallback listener) => _listeners.remove(listener);
+
+  /// 通知所有监听器
+  void _notifyListeners() {
+    for (final listener in _listeners) {
+      try {
+        listener();
+      } catch (_) {}
+    }
+  }
+
+  /// 获取所有通知
+  List<AppNotification> get notifications => List.unmodifiable(_notifications);
+
+  /// 获取未读通知数量
+  int get unreadCount => _notifications.where((n) => !n.isRead).length;
+
+  /// 按分类获取通知
+  List<AppNotification> getByCategory(NotificationCategory category) =>
+      _notifications.where((n) => n.category == category).toList();
+
+  /// 按优先级获取通知
+  List<AppNotification> getByPriority(NotificationPriority priority) =>
+      _notifications.where((n) => n.priority == priority).toList();
+
+  /// 初始化通知服务，从本地恢复通知历史
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_keyNotifications);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _notifications.clear();
+        _notifications.addAll(
+          list.map((e) => AppNotification.fromJson(e as Map<String, dynamic>)),
+        );
+      }
+      debugPrint('[NotificationService] 初始化完成，${_notifications.length} 条通知');
+    } catch (e) {
+      debugPrint('[NotificationService] 初始化失败: $e');
+    }
+  }
+
+  /// 发送本地通知
+  ///
+  /// [title] 通知标题
+  /// [body] 通知内容
+  /// [category] 通知分类
+  /// [priority] 通知优先级
+  /// [payload] 附带数据
+  Future<void> show({
+    required String title,
+    required String body,
+    NotificationCategory category = NotificationCategory.system,
+    NotificationPriority priority = NotificationPriority.normal,
+    Map<String, dynamic>? payload,
+  }) async {
+    try {
+      final notification = AppNotification(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: title,
+        body: body,
+        category: category,
+        priority: priority,
+        payload: payload,
+      );
+
+      _notifications.insert(0, notification);
+      // 限制通知数量
+      while (_notifications.length > _maxNotifications) {
+        _notifications.removeLast();
+      }
+
+      await _saveNotifications();
+      _notifyListeners();
+
+      debugPrint('[NotificationService] 通知已发送: $title (${category.name})');
+    } catch (e) {
+      debugPrint('[NotificationService] 发送通知失败: $e');
+    }
+  }
+
+  /// 标记单条通知为已读
+  Future<void> markAsRead(String notificationId) async {
+    try {
+      final notification = _notifications.firstWhere(
+        (n) => n.id == notificationId,
+      );
+      notification.isRead = true;
+      await _saveNotifications();
+      _notifyListeners();
+    } catch (_) {}
+  }
+
+  /// 标记所有通知为已读
+  Future<void> markAllAsRead() async {
+    for (final n in _notifications) {
+      n.isRead = true;
+    }
+    await _saveNotifications();
+    _notifyListeners();
+  }
+
+  /// 删除单条通知
+  Future<void> dismiss(String notificationId) async {
+    _notifications.removeWhere((n) => n.id == notificationId);
+    await _saveNotifications();
+    _notifyListeners();
+  }
+
+  /// 清除所有通知
+  Future<void> clearAll() async {
+    _notifications.clear();
+    await _saveNotifications();
+    _notifyListeners();
+  }
+
+  /// 清除指定分类的通知
+  Future<void> clearCategory(NotificationCategory category) async {
+    _notifications.removeWhere((n) => n.category == category);
+    await _saveNotifications();
+    _notifyListeners();
+  }
+
+  /// 持久化通知列表
+  Future<void> _saveNotifications() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_notifications.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyNotifications, json);
+      await prefs.setInt(_keyUnreadCount, unreadCount);
+    } catch (e) {
+      debugPrint('[NotificationService] 保存通知失败: $e');
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 // 分析功能：使用分析、性能分析、错误分析、用户行为分析
@@ -328,6 +558,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   AppAnalytics.init(); // 初始化分析服务
+  await NotificationService.instance.init(); // 初始化通知服务
   FlutterError.onError = (details) {
     AppAnalytics.trackError(
       details.exceptionAsString(),
