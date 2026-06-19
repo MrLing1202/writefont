@@ -49,7 +49,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   bool _isStartProcessingRunning = false;
 
   // 动画
-  late AnimationController _animController;
+  AnimationController? _animController;
 
   // 默认字符池
   static List<String> _getDefaultChars() {
@@ -77,7 +77,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
 
   @override
   void dispose() {
-    _animController.dispose();
+    _animController?.dispose();
     super.dispose();
   }
 

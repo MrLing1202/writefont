@@ -18,7 +18,7 @@ class FontQualityScreen extends StatefulWidget {
 }
 
 class _FontQualityScreenState extends State<FontQualityScreen> {
-  late Map<String, _CharQuality> _qualities;
+  Map<String, _CharQuality> _qualities = {};
   bool _isLoading = true;
   _SortMode _sortMode = _SortMode.scoreAsc;
 

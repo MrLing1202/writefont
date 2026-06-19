@@ -16,7 +16,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     with TickerProviderStateMixin {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  late AnimationController _floatController;
+  AnimationController? _floatController;
 
   static const _totalPages = 4;
 
@@ -33,7 +33,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   @override
   void dispose() {
     _pageController.dispose();
-    _floatController.dispose();
+    _floatController?.dispose();
     super.dispose();
   }
 
@@ -199,9 +199,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           children: [
             // 浮动动画图标
             AnimatedBuilder(
-              animation: _floatController,
+              animation: _floatController!,
               builder: (context, child) {
-                final offset = 8.0 * (_floatController.value - 0.5);
+                final offset = 8.0 * (_floatController!.value - 0.5);
                 return Transform.translate(
                   offset: Offset(0, offset),
                   child: child,
@@ -508,22 +508,20 @@ class _FadeInWrapper extends StatefulWidget {
 
 class _FadeInWrapperState extends State<_FadeInWrapper>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _opacity;
-  late Animation<Offset> _slide;
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 600),
+  );
+  late final Animation<double> _opacity =
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, 0.05),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.05),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
   }
 
