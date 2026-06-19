@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../models/project.dart';
+import '../../theme/app_theme.dart';
 import '../../services/image_processor.dart';
 import '../../services/storage_service.dart';
 import '../../services/recognition_service.dart';
