@@ -2179,6 +2179,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return WFColors.textSecondaryColor(context);
     }
   }
+}
+
 class _ErrorLogEntry {
   final DateTime timestamp;
   final String operation;
