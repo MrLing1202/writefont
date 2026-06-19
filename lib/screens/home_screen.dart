@@ -1854,18 +1854,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 14),
 
                   WFAnimations.fadeInSlide(
-                    const WFActionCard(
+                    WFActionCard(
                       icon: Icons.camera_alt,
                       title: '自由拍照造字',
                       subtitle: '任意手写内容，自由拍照识别',
                       color: WFColors.success,
-                      onTap: HomeActions.openCapture,
-                    ),
-                    delay: const Duration(milliseconds: 400),
-                  ),
-                      subtitle: '任何手写内容，自由拍照识别',
-                      color: WFColors.accent,
-                      onTap: () => HomeActions.pickImages(context),
+                      onTap: () => HomeActions.quickCapture(context),
                     ),
                     delay: const Duration(milliseconds: 400),
                   ),

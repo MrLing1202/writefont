@@ -602,8 +602,8 @@ class CategoryService {
         final editedCount = project.glyphs.values
             .where((g) => g.contours.isNotEmpty)
             .length;
-        totalGlyphs += glyphCount;
-        totalEdited += editedCount;
+        totalGlyphs += (glyphCount as num).toInt();
+        totalEdited += (editedCount as num).toInt();
 
         if (glyphCount == 0 || editedCount == 0) {
           emptyCount++;
@@ -3112,7 +3112,7 @@ class AuthorizationService {
     _currentRole = role;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_currentRoleKey, role.name);
-    await _auditLog.add(PermissionAuditEntry(
+    _auditLog.add(PermissionAuditEntry(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       userId: 'current_user',
       action: 'role_change',
@@ -3221,7 +3221,7 @@ class AuthorizationService {
   Future<void> addACLEntry(AccessControlEntry entry) async {
     _acl.add(entry);
     await _saveACL();
-    await _auditLog.add(PermissionAuditEntry(
+    _auditLog.add(PermissionAuditEntry(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       userId: 'current_user',
       action: 'acl_add',
@@ -3237,7 +3237,7 @@ class AuthorizationService {
   Future<void> removeACLEntry(String entryId) async {
     _acl.removeWhere((e) => e.id == entryId);
     await _saveACL();
-    await _auditLog.add(PermissionAuditEntry(
+    _auditLog.add(PermissionAuditEntry(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       userId: 'current_user',
       action: 'acl_remove',
@@ -3286,14 +3286,14 @@ class AuthorizationService {
   /// 按操作类型过滤审计日志
   List<PermissionAuditEntry> getAuditLogByAction(String action, {int limit = 50}) {
     return List.unmodifiable(
-      _auditLog.where((e) => e.action == action).reversed.take(limit),
+      _auditLog.where((e) => e.action == action).toList().reversed.take(limit),
     );
   }
 
   /// 获取被拒绝的访问记录
   List<PermissionAuditEntry> getDeniedAccess({int limit = 50}) {
     return List.unmodifiable(
-      _auditLog.where((e) => !e.granted).reversed.take(limit),
+      _auditLog.where((e) => !e.granted).toList().reversed.take(limit),
     );
   }
 
@@ -5435,11 +5435,11 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       // ── 无障碍：键盘快捷键支持 ──
       shortcuts: {
         ...WidgetsApp.defaultShortcuts,
-        const SingleActivator(LogicalKeyboardKey.keyH, control: true):
+        SingleActivator(LogicalKeyboardKey.keyH, control: true):
             const _ToggleHighContrastIntent(),
-        const SingleActivator(LogicalKeyboardKey.equal, control: true):
+        SingleActivator(LogicalKeyboardKey.equal, control: true):
             const _IncreaseFontIntent(),
-        const SingleActivator(LogicalKeyboardKey.minus, control: true):
+        SingleActivator(LogicalKeyboardKey.minus, control: true):
             const _DecreaseFontIntent(),
       },
       actions: {
@@ -5843,7 +5843,7 @@ class FederatedLearningService {
     switch (_privacyMechanism) {
       case DifferentialPrivacyMechanism.gaussian:
         // 高斯噪声: 标准差 = sqrt(2 * ln(1.25/δ)) / ε
-        final sigma = (2.0 * (1.25 / _privacyDelta).log()).abs().clamp(0.1, 10.0) / _privacyEpsilon;
+        final sigma = (2.0 * log(1.25 / _privacyDelta)).abs().clamp(0.1, 10.0) / _privacyEpsilon;
         noise = (random - 0.5) * 2 * sigma;
         break;
       case DifferentialPrivacyMechanism.laplace:
@@ -6674,7 +6674,7 @@ contract FontMarketplace {
 
     // 安全指标
     metrics['codeLength'] = code.length;
-    metrics['functionCount'] RegExp(r'function\s+\w+').allMatches(code).length;
+    metrics['functionCount'] = RegExp(r'function\\s+\\w+').allMatches(code).length;
     metrics['complexityScore'] = findings.length * 10;
     metrics['securityScore'] = (100 - findings.fold<int>(0, (sum, f) {
       switch (f['severity']) {

@@ -29,7 +29,7 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
   static const int _maxHistorySize = 20;
 
   // 参数预设
-  static const Map<String, ProcessingParams> _presets = {
+  static final Map<String, ProcessingParams> _presets = {
     '默认': ProcessingParams(),
     '粗笔': ProcessingParams(
       threshold: 0.45, strokeWidth: 1.5, smoothness: 0.2,

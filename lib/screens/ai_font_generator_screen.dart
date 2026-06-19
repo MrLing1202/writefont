@@ -147,7 +147,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             : '${(duration / 1000).toStringAsFixed(1)}s';
 
         setState(() {
-          _generatedFontName = result['fontName'] ?? desc;
+          _generatedFontName = result!['fontName'] ?? desc;
           _generatedFontParams = result;
           _isGenerating = false;
         });
