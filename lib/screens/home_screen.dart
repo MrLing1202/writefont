@@ -26,7 +26,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _savedProjectCount = 0;
   int _totalCharCount = 0;
   DateTime? _lastActivityTime;
@@ -35,10 +35,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _showOnboarding = false;
   int _onboardingStep = 0;
   bool _isRefreshing = false;
+  // 手势状态
+  double _scaleFactor = 1.0; // 捏合缩放比例
+  double _previousScale = 1.0;
 
   // 快捷操作动画控制器
   late AnimationController _quickActionAnimController;
   late Animation<double> _quickActionScale;
+  // 双击缩放动画控制器
+  late AnimationController _doubleTapAnimController;
+  late Animation<double> _doubleTapScale;
 
   @override
   void initState() {
@@ -53,11 +59,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _quickActionScale = Tween<double>(begin: 1.0, end: 0.92).animate(
       CurvedAnimation(parent: _quickActionAnimController, curve: Curves.easeInOut),
     );
+    // 双击缩放动画控制器
+    _doubleTapAnimController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _doubleTapScale = Tween<double>(begin: 1.0, end: 1.0).animate(
+      CurvedAnimation(parent: _doubleTapAnimController, curve: Curves.easeOutBack),
+    );
   }
 
   @override
   void dispose() {
     _quickActionAnimController.dispose();
+    _doubleTapAnimController.dispose();
     super.dispose();
   }
 
@@ -142,6 +157,57 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (mounted) setState(() => _isRefreshing = false);
   }
 
+  /// 双击缩放 — 切换 1.0x ↔ 1.5x
+  void _handleDoubleTap() {
+    HapticFeedback.mediumImpact();
+    final target = _scaleFactor > 1.2 ? 1.0 : 1.5;
+    _doubleTapScale = Tween<double>(begin: _scaleFactor, end: target).animate(
+      CurvedAnimation(parent: _doubleTapAnimController, curve: Curves.easeOutBack),
+    );
+    _doubleTapAnimController.forward(from: 0).then((_) {
+      if (mounted) setState(() => _scaleFactor = target);
+    });
+  }
+
+  /// 长按操作 — 显示快捷菜单
+  void _handleLongPress() {
+    HapticFeedback.heavyImpact();
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('快速拍照'),
+              onTap: () {
+                Navigator.pop(ctx);
+                HomeActions.quickCapture(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('我的字体'),
+              onTap: () {
+                Navigator.pop(ctx);
+                HomeActions.openProjectList(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('刷新数据'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _onRefresh();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 根据时间差生成本地化的描述文本
   String _formatLastActivity(BuildContext context) {
     if (_lastActivityTime == null) return '-';
@@ -217,7 +283,37 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
-      body: Stack(
+      body: GestureDetector(
+        // 双击缩放
+        onDoubleTap: _handleDoubleTap,
+        // 长按快捷菜单
+        onLongPress: _handleLongPress,
+        // 捏合缩放
+        onScaleStart: (_) {
+          _previousScale = _scaleFactor;
+        },
+        onScaleUpdate: (details) {
+          final newScale = (_previousScale * details.scale).clamp(0.8, 2.0);
+          if (newScale != _scaleFactor) {
+            setState(() => _scaleFactor = newScale);
+          }
+        },
+        onScaleEnd: (_) {
+          // 缩放比例过小时自动回弹到 1.0
+          if (_scaleFactor < 0.9) {
+            HapticFeedback.lightImpact();
+            setState(() => _scaleFactor = 1.0);
+          }
+        },
+        child: AnimatedBuilder(
+          animation: _doubleTapAnimController,
+          builder: (context, child) {
+            final scale = _doubleTapAnimController.isAnimating
+                ? _doubleTapScale.value
+                : _scaleFactor;
+            return Transform.scale(scale: scale, child: child);
+          },
+          child: Stack(
         children: [
           RefreshIndicator(
             onRefresh: _onRefresh,
@@ -378,6 +474,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           // 新手引导遮罩
           if (_showOnboarding) _buildOnboardingOverlay(context),
         ],
+          ),
+        ),
       ),
     );
   }

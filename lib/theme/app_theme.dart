@@ -860,6 +860,55 @@ class WFAnimations {
       transitionDuration: const Duration(milliseconds: 250),
     );
   }
+
+  /// 缩放 + 淡入路由动画 — 用于模态页面
+  static Route<T> scaleFadeRoute<T>(Widget page) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (_, __, ___) => page,
+      transitionsBuilder: (_, animation, secondaryAnimation, child) {
+        final fadeAnim = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        final scaleAnim = Tween<double>(begin: 0.92, end: 1.0)
+            .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+        return FadeTransition(
+          opacity: fadeAnim,
+          child: ScaleTransition(scale: scaleAnim, child: child),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 300),
+    );
+  }
+
+  /// 从底部滑入路由动画 — 用于底部弹出页面
+  static Route<T> slideUpRoute<T>(Widget page) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (_, __, ___) => page,
+      transitionsBuilder: (_, animation, __, child) {
+        final tween = Tween<Offset>(
+          begin: const Offset(0.0, 0.3),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeOutCubic));
+        final fadeAnim = CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return SlideTransition(
+          position: animation.drive(tween),
+          child: FadeTransition(opacity: fadeAnim, child: child),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 350),
+    );
+  }
+
+  /// 加载脉冲动画 — 用于处理中的等待状态
+  static Widget pulse({required Widget child, Duration duration = const Duration(milliseconds: 1200)}) {
+    return _PulseWrapper(duration: duration, child: child);
+  }
+
+  /// 滑入列表项动画 — 逐个从左滑入
+  static Widget slideInItem(Widget child, {required int index, Duration baseDelay = const Duration(milliseconds: 60)}) {
+    return _SlideInItemWrapper(
+      delay: baseDelay * index,
+      child: child,
+    );
+  }
 }
 
 // ── 淡入 + 上移动画内部实现 ──
@@ -964,6 +1013,92 @@ class _TapScaleWrapperState extends State<_TapScaleWrapper>
       },
       onTapCancel: () => _controller.forward(),
       child: ScaleTransition(scale: _scale, child: widget.child),
+    );
+  }
+}
+
+// ── 脉冲动画内部实现 ──
+
+class _PulseWrapper extends StatefulWidget {
+  final Widget child;
+  final Duration duration;
+
+  const _PulseWrapper({required this.child, this.duration = const Duration(milliseconds: 1200)});
+
+  @override
+  State<_PulseWrapper> createState() => _PulseWrapperState();
+}
+
+class _PulseWrapperState extends State<_PulseWrapper> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration)..repeat(reverse: true);
+    _scale = Tween<double>(begin: 0.95, end: 1.05)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(scale: _scale, child: widget.child);
+  }
+}
+
+// ── 逐项滑入动画内部实现 ──
+
+class _SlideInItemWrapper extends StatefulWidget {
+  final Widget child;
+  final Duration delay;
+
+  const _SlideInItemWrapper({required this.child, this.delay = Duration.zero});
+
+  @override
+  State<_SlideInItemWrapper> createState() => _SlideInItemWrapperState();
+}
+
+class _SlideInItemWrapperState extends State<_SlideInItemWrapper>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _offset = Tween<Offset>(begin: const Offset(-0.2, 0), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+
+    if (widget.delay == Duration.zero) {
+      _controller.forward();
+    } else {
+      Future.delayed(widget.delay, () {
+        if (mounted) _controller.forward();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _offset, child: widget.child),
     );
   }
 }

@@ -856,40 +856,40 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         AppAnalytics.trackPageView(settings.name ?? 'unknown');
         switch (settings.name) {
           case '/writing-tips':
-            return MaterialPageRoute(builder: (_) => const WritingTipsScreen());
+            return WFAnimations.slideRoute(const WritingTipsScreen());
           case '/charset-guide':
-            return MaterialPageRoute(builder: (_) => const CharsetGuideScreen());
+            return WFAnimations.slideRoute(const CharsetGuideScreen());
           case '/ocr-settings':
-            return MaterialPageRoute(builder: (_) => const OcrSettingsScreen());
+            return WFAnimations.scaleFadeRoute(const OcrSettingsScreen());
           case '/my-fonts':
-            return MaterialPageRoute(builder: (_) => const ProjectListScreen());
+            return WFAnimations.slideRoute(const ProjectListScreen());
           case '/settings':
-            return MaterialPageRoute(builder: (_) => SettingsScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.slideRoute(SettingsScreen(onThemeChanged: () => _loadThemeMode()));
           case '/ai-font-generator':
-            return MaterialPageRoute(builder: (_) => const AiFontGeneratorScreen());
+            return WFAnimations.slideUpRoute(const AiFontGeneratorScreen());
           case '/auto-generate':
             final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;
             if (imageBytes != null) {
-              return MaterialPageRoute(builder: (_) => AutoGenerateScreen(imageBytes: imageBytes));
+              return WFAnimations.slideUpRoute(AutoGenerateScreen(imageBytes: imageBytes));
             }
-            return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
-            return MaterialPageRoute(builder: (_) => CaptureScreen(charset: charset));
+            return WFAnimations.slideUpRoute(CaptureScreen(charset: charset));
           case '/processing':
             final args = settings.arguments as Map<String, dynamic>?;
-            if (args == null) return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            if (args == null) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
             final images = args['images'] as List<Uint8List>?;
-            if (images == null || images.isEmpty) return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            if (images == null || images.isEmpty) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
             final charset = args['charset'] as List<String>?;
-            return MaterialPageRoute(builder: (_) => ProcessingScreen(sourceImages: images, charset: charset));
+            return WFAnimations.slideUpRoute(ProcessingScreen(sourceImages: images, charset: charset));
           case '/preview':
             final args = settings.arguments as Map<String, dynamic>?;
             final project = args?['project'] as FontProject?;
-            if (project == null) return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
-            return MaterialPageRoute(builder: (_) => PreviewScreen(project: project));
+            if (project == null) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.scaleFadeRoute(PreviewScreen(project: project));
           default:
-            return MaterialPageRoute(builder: (_) => HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
         }
       },
     );

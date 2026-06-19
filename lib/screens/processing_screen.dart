@@ -40,6 +40,12 @@ class _ProcessingScreenState extends State<ProcessingScreen>
       parent: celebrationController!,
       curve: Curves.easeInOut,
     );
+    // 添加识别完成监听：触发成功触觉反馈
+    celebrationController!.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _playSuccessHaptic();
+      }
+    });
     loadParams().then((_) => processImages());
   }
 
@@ -140,6 +146,7 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                         const Spacer(),
                         TextButton.icon(
                           onPressed: () {
+                            _playSelectionHaptic(); // 全选触觉反馈
                             setState(() {
                               if (selectedCells.length == processedCells.length) {
                                 selectedCells.clear();
@@ -192,6 +199,7 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                               confidence: cellResults[index]?.confidence ?? ConfidenceLevel.low,
                               bounceController: bounceControllers[index],
                               onTap: () {
+                                _playSelectionHaptic(); // 选择触觉反馈
                                 setState(() {
                                   if (selectedCells.contains(index)) {
                                     selectedCells.remove(index);
@@ -200,7 +208,10 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                                   }
                                 });
                               },
-                              onLongPress: () => showEditDialog(index),
+                              onLongPress: () {
+                                _playHeavyHaptic(); // 长按重触反馈
+                                showEditDialog(index);
+                              },
                             );
                           },
                         ),
@@ -230,14 +241,16 @@ class _ProcessingScreenState extends State<ProcessingScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // 主加载动画
-          SizedBox(
-            width: 64,
-            height: 64,
-            child: CircularProgressIndicator(
-              strokeWidth: 5,
-              color: colorScheme.primary,
-              backgroundColor: colorScheme.primary.withValues(alpha: 0.15),
+          // 主加载动画（带脉冲效果）
+          WFAnimations.pulse(
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: CircularProgressIndicator(
+                strokeWidth: 5,
+                color: colorScheme.primary,
+                backgroundColor: colorScheme.primary.withValues(alpha: 0.15),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -403,15 +416,48 @@ class _ProcessingScreenState extends State<ProcessingScreen>
     );
   }
 
+  // ── 触觉反馈方法 ──
+
+  /// 轻触反馈 — 用于普通点击、选择操作
+  void _playLightHaptic() {
+    HapticFeedback.lightImpact();
+  }
+
+  /// 重按反馈 — 用于长按、重要操作
+  void _playHeavyHaptic() {
+    HapticFeedback.heavyImpact();
+  }
+
+  /// 成功反馈 — 用于识别完成、操作成功
+  void _playSuccessHaptic() {
+    HapticFeedback.lightImpact();
+    Future.delayed(const Duration(milliseconds: 100), () {
+      HapticFeedback.mediumImpact();
+    });
+  }
+
+  /// 错误反馈 — 用于识别失败、操作错误
+  void _playErrorHaptic() {
+    HapticFeedback.heavyImpact();
+    Future.delayed(const Duration(milliseconds: 80), () {
+      HapticFeedback.heavyImpact();
+    });
+  }
+
+  /// 选择反馈 — 用于切换选中状态
+  void _playSelectionHaptic() {
+    HapticFeedback.selectionClick();
+  }
+
   /// 显示成功提示（触觉反馈 + 视觉提示）
   void _showSuccessFeedback(String message) {
-    HapticFeedback.lightImpact();
+    _playSuccessHaptic();
     WFSnackBar.show(context, message);
   }
 
   /// 显示失败提示（触觉反馈 + 错误提示）
   void _showFailureFeedback(String message) {
-    HapticFeedback.heavyImpact();
+    _playErrorHaptic();
     WFSnackBar.error(context, message);
   }
 }

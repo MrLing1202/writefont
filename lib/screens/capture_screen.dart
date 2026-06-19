@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
 import 'capture/image_quality.dart';
@@ -36,6 +37,31 @@ class _CaptureScreenState extends State<CaptureScreen> {
   bool _showHelpOverlay = false;
   int _helpStep = 0;
 
+  // ── 声音反馈方法 ──
+
+  /// 拍照声音反馈（系统快门音 + 触觉）
+  void _playCaptureSound() {
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.mediumImpact();
+  }
+
+  /// 成功提示音（轻触 + 震动）
+  void _playSuccessSound() {
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.lightImpact();
+  }
+
+  /// 错误提示音（重触 + 震动）
+  void _playErrorSound() {
+    HapticFeedback.heavyImpact();
+  }
+
+  /// 操作反馈音（轻触）
+  void _playActionSound() {
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.selectionClick();
+  }
+
   Future<void> _takePhoto() async {
     try {
       final photo = await _picker.pickImage(
@@ -47,6 +73,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
       if (photo != null) {
         await _handleCapturedImage(photo);
+        _playCaptureSound(); // 拍照声音反馈
         // 批量模式：拍照成功后自动提示继续
         if (_batchMode && mounted) {
           _captureCount++;
@@ -73,10 +100,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
       if (photo != null) {
         await _handleCapturedImage(photo);
+        _playSuccessSound(); // 选图成功声音
       }
     } catch (e) {
       if (mounted) {
         WFSnackBar.error(context, '选择图片失败: $e');
+        _playErrorSound(); // 错误声音
       }
     }
   }
@@ -107,6 +136,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         setState(() {
           _selectedImages.add(photo);
         });
+        _playSuccessSound(); // 添加图片成功声音
       }
     } catch (e) {
       if (mounted) {
@@ -118,6 +148,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   }
 
   void _removeImage(int index) {
+    _playActionSound(); // 删除操作声音
     setState(() {
       _selectedImages.removeAt(index);
     });
@@ -126,6 +157,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Future<void> _proceed() async {
     if (_selectedImages.isEmpty) {
       WFSnackBar.show(context, '请至少选择一张图片');
+      _playErrorSound(); // 空列表错误声音
       return;
     }
 
@@ -175,6 +207,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   /// 切换批量拍摄模式
   void _toggleBatchMode() {
+    _playActionSound(); // 模式切换声音
     setState(() {
       _batchMode = !_batchMode;
       if (_batchMode) {
@@ -395,7 +428,11 @@ class _CaptureScreenState extends State<CaptureScreen> {
       body: Stack(
         children: [
           _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(
+                  child: WFAnimations.pulse(
+                    child: const CircularProgressIndicator(),
+                  ),
+                )
               : Column(
                   children: [
                     // 进度指示条
