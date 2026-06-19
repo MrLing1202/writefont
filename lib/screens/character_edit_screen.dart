@@ -272,14 +272,14 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                           ? SystemMouseCursors.precise
                           : SystemMouseCursors.precise,
                       child: SizedBox(
-                        width: canvasSize,
-                        height: canvasSize,
+                        width: CharacterEditLogic.canvasSize,
+                        height: CharacterEditLogic.canvasSize,
                         child: Stack(
                           children: [
                             // 白色背景
                             Container(
-                              width: canvasSize,
-                              height: canvasSize,
+                              width: CharacterEditLogic.canvasSize,
+                              height: CharacterEditLogic.canvasSize,
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 border: Border.all(
@@ -291,7 +291,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                             // 米字格辅助线
                             if (showGrid)
                               CustomPaint(
-                                size: const Size(canvasSize, canvasSize),
+                                size: const Size(CharacterEditLogic.canvasSize, CharacterEditLogic.canvasSize),
                                 painter: GridPainter(
                                   gridColor: colorScheme.outlineVariant
                                       .withValues(alpha: 0.4),
@@ -312,7 +312,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                               ),
                             // 笔画绘制
                             CustomPaint(
-                              size: const Size(canvasSize, canvasSize),
+                              size: const Size(CharacterEditLogic.canvasSize, CharacterEditLogic.canvasSize),
                               painter: CanvasPainter(
                                 strokes: strokes,
                                 activeStroke: activeStroke,
