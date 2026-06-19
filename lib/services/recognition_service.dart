@@ -62,8 +62,13 @@ class RecognitionService {
   /// 简单的字节哈希用于缓存 key
   static int _hashBytes(Uint8List bytes) {
     int hash = 0x811c9dc5;
-    // 采样计算：取首尾各 256 字节 + 中间 256 字节
     final len = bytes.length;
+    // 将长度混入哈希，减少不同大小但内容相似的图片碰撞
+    hash ^= len & 0xFF;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    hash ^= (len >> 8) & 0xFF;
+    hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    // 采样计算：取首尾各 256 字节 + 中间 256 字节
     final sampleSize = len < 768 ? len : 768;
     for (int i = 0; i < sampleSize ~/ 3; i++) {
       hash ^= bytes[i];
@@ -161,13 +166,9 @@ class RecognitionService {
   Future<String?> recognizeCharacter(Uint8List imageBytes, {bool? forceUseCloud}) async {
     final useCloud = forceUseCloud ?? await getUseCloud();
 
-    // 云端识别不缓存（prompt 可能变化）
-    if (useCloud) {
-      return _recognizeCloud(imageBytes);
-    }
-
-    // 本地识别使用缓存
     final cacheKey = _hashBytes(imageBytes);
+
+    // 云端和本地识别均使用缓存（缓存命中率提升）
     if (_recognitionCache.containsKey(cacheKey)) {
       debugPrint('ML Kit 识别: 命中缓存 (hash=$cacheKey)');
       // 更新 LRU 顺序
@@ -176,7 +177,9 @@ class RecognitionService {
       return _recognitionCache[cacheKey];
     }
 
-    final result = await _recognizeLocal(imageBytes);
+    final result = useCloud
+        ? await _recognizeCloud(imageBytes)
+        : await _recognizeLocal(imageBytes);
 
     // 写入缓存，超出上限时使用 LRU 策略淘汰最久未访问的条目
     if (_recognitionCache.length >= _maxCacheSize) {
@@ -431,7 +434,16 @@ class RecognitionService {
             for (final element in line.elements) {
               final text = element.text.trim();
               if (text.isNotEmpty && text.runes.isNotEmpty) {
-                return String.fromCharCodes(text.runes.take(1));
+                final result = String.fromCharCodes(text.runes.take(1));
+                // 计算并缓存识别置信度
+                // ML Kit element 没有直接置信度字段，使用文本长度和元素数量估算
+                // 单字符识别时，文本越短且匹配越精确，置信度越高
+                final confidence = _estimateConfidence(element, recognizedText);
+                // 复用已有的 pngBytes，避免重复编码
+                final imageHash = _hashBytes(pngBytes);
+                _confidenceCache[imageHash] = confidence;
+                debugPrint('ML Kit 识别: 置信度 ${(confidence * 100).toStringAsFixed(0)}%');
+                return result;
               }
             }
           }
@@ -442,6 +454,31 @@ class RecognitionService {
       // 清理临时文件
       try { await tempFile?.delete(); } catch (_) {}
     }
+  }
+
+  /// 估算 ML Kit 识别结果的置信度（0.0 ~ 1.0）
+  /// 基于以下因素综合评估：
+  /// - 文本长度（越短越可能是单字识别，置信度越高）
+  /// - 是否为有效字符
+  /// - 文本块数量（块越少，聚焦度越高）
+  static double _estimateConfidence(
+    TextElement element,
+    RecognizedText recognizedText,
+  ) {
+    double confidence = 0.7; // 基线置信度
+    final text = element.text.trim();
+
+    // 单字符输出 → 较高置信度
+    if (text.runes.length == 1) confidence += 0.15;
+    // 有效汉字 → 较高置信度
+    if (text.runes.isNotEmpty) {
+      final ch = String.fromCharCode(text.runes.first);
+      if (_isValidChar(ch)) confidence += 0.1;
+    }
+    // 文本块数量少 → 聚焦度高
+    if (recognizedText.blocks.length <= 1) confidence += 0.05;
+
+    return confidence.clamp(0.0, 1.0);
   }
 
   /// 为云端 API 压缩图片
@@ -657,6 +694,19 @@ class RecognitionService {
 
     debugPrint('云端识别: 所有尝试均未返回有效字符');
     return null;
+  }
+
+  /// 校正识别结果（用户手动修正误识别的字符）
+  /// 将校正结果写入缓存，后续相同图片将返回校正后的结果
+  static void correctRecognition(Uint8List imageBytes, String correctedChar) {
+    if (correctedChar.isEmpty) return;
+    final cacheKey = _hashBytes(imageBytes);
+    _recognitionCache[cacheKey] = correctedChar;
+    _confidenceCache[cacheKey] = 1.0; // 用户校正结果置信度为 100%
+    // 更新 LRU 顺序
+    _cacheAccessOrder.remove(cacheKey);
+    _cacheAccessOrder.add(cacheKey);
+    debugPrint('识别校正: hash=$cacheKey → "$correctedChar"');
   }
 
   /// 读取已选择的模型

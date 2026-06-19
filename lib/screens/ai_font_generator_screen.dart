@@ -41,6 +41,8 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
   bool _isGenerating = false;
   bool _isApplying = false;
   double _applyStrength = 80.0;
+  double _temperature = 0.7;   // AI 生成温度（0.1~1.0）
+  String _lastGenDuration = ''; // 上次生成耗时
 
   // ── 历史记录 ──
   List<_GenerationRecord> _history = [];
@@ -52,6 +54,10 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
     '清新秀丽的行楷，流畅自然',
     '古朴典雅的隶书风格，蚕头燕尾',
     '现代简约的印刷体，干净利落',
+    '灵动飘逸的行草，笔断意连',
+    '端庄大气的颜体，筋骨丰满',
+    '瘦劲挺拔的瘦金体，锋芒毕露',
+    '圆润可爱的胖胖体，憨态可掬',
   ];
 
   @override
@@ -79,7 +85,8 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
       if (json != null) {
         final list = jsonDecode(json) as List;
         setState(() {
-          _history = list.map((e) => _GenerationRecord.fromJson(e)).toList();
+          // 最多加载 20 条历史
+          _history = list.take(20).map((e) => _GenerationRecord.fromJson(e)).toList();
         });
       }
     } catch (_) {}
@@ -103,6 +110,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
     }
 
     setState(() => _isGenerating = true);
+    final stopwatch = Stopwatch()..start();
 
     try {
       // 读取 API Key
@@ -119,9 +127,25 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
 
       // 构造 prompt
       final prompt = _buildPrompt(desc);
-      final result = await _callGlmApi(apiKey, prompt);
+
+      // 带重试的 API 调用（最多重试 2 次）
+      Map<String, dynamic>? result;
+      for (int attempt = 0; attempt < 3; attempt++) {
+        result = await _callGlmApi(apiKey, prompt);
+        if (result != null) break;
+        if (attempt < 2) {
+          debugPrint('AI生成: 第${attempt + 1}次失败，${attempt * 2 + 1}秒后重试');
+          await Future.delayed(Duration(seconds: attempt * 2 + 1));
+        }
+      }
 
       if (result != null && mounted) {
+        stopwatch.stop();
+        final duration = stopwatch.elapsedMilliseconds;
+        _lastGenDuration = duration < 1000
+            ? '${duration}ms'
+            : '${(duration / 1000).toStringAsFixed(1)}s';
+
         setState(() {
           _generatedFontName = result['fontName'] ?? desc;
           _generatedFontParams = result;
@@ -140,13 +164,14 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
           createdAt: DateTime.now(),
         );
         _history.insert(0, record);
-        if (_history.length > 10) _history = _history.sublist(0, 10);
+        if (_history.length > 20) _history = _history.sublist(0, 20);
         await _saveHistory();
 
         if (mounted) {
-          WFSnackBar.success(context, '字体风格生成成功！');
+          WFSnackBar.success(context, '字体风格生成成功！($_lastGenDuration)');
         }
       } else if (mounted) {
+        stopwatch.stop();
         setState(() => _isGenerating = false);
         WFSnackBar.error(context, '生成失败，请重试');
       }
@@ -160,15 +185,32 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
   }
 
   String _buildPrompt(String description) {
+    final widthDesc = _charWidth < 33 ? '窄体' : _charWidth > 67 ? '宽体' : '标准';
+    final slantDesc = _slantAngle.abs() < 3
+        ? '正直'
+        : _slantAngle < 0
+            ? '左倾${_slantAngle.abs().toStringAsFixed(0)}°'
+            : '右倾${_slantAngle.toStringAsFixed(0)}°';
+    final connDesc = _connection < 33
+        ? '楷书（无连笔）'
+        : _connection > 67
+            ? '草书（高度连笔）'
+            : '行书（适度连笔）';
+    final thickDesc = _strokeWidth <= 3
+        ? '纤细'
+        : _strokeWidth >= 8
+            ? '粗壮'
+            : '适中';
+
     return '''你是一个专业的字体设计师。根据以下描述和参数，生成一个详细的字体风格方案。
 
 描述：$description
 
 参数：
-- 笔画粗细：${_strokeWidth.toStringAsFixed(0)}（1最细，10最粗）
-- 字形宽度：${_charWidth < 33 ? '窄' : _charWidth > 67 ? '宽' : '标准'}
-- 倾斜角度：${_slantAngle.toStringAsFixed(0)}°
-- 连笔程度：${_connection < 33 ? '楷书（无连笔）' : _connection > 67 ? '草书（高度连笔）' : '行书（适度连笔）'}
+- 笔画粗细：${_strokeWidth.toStringAsFixed(0)}（$thickDesc）
+- 字形宽度：$widthDesc
+- 倾斜角度：$slantDesc
+- 连笔程度：$connDesc
 
 请以JSON格式返回：
 {
@@ -177,10 +219,11 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
   "thickness": "笔画特征描述",
   "structure": "结构特征描述",
   "rhythm": "节奏特征描述",
+  "mood": "整体气质描述",
   "sampleChars": ["示例字1", "示例字2", "示例字3"]
 }
 
-只返回JSON，不要其他文字。''';
+只返回JSON，不要其他文字。字体名称要简洁有特色，不超过6个字。''';
   }
 
   Future<Map<String, dynamic>?> _callGlmApi(String apiKey, String prompt) async {
@@ -197,9 +240,9 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
           'messages': [
             {'role': 'user', 'content': prompt},
           ],
-          'temperature': 0.7,
+          'temperature': _temperature,
         }),
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 45));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -569,6 +612,19 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             divisions: 100,
             valueLabel: _connection < 33 ? '楷书' : _connection > 67 ? '草书' : '行书',
             onChanged: (v) => setState(() => _connection = v),
+          ),
+          const SizedBox(height: 12),
+
+          // 创意温度
+          _buildSliderRow(
+            icon: Icons.local_fire_department,
+            label: '创意度',
+            value: _temperature,
+            min: 0.1,
+            max: 1.0,
+            divisions: 9,
+            valueLabel: _temperature <= 0.3 ? '保守' : _temperature >= 0.8 ? '大胆' : '平衡',
+            onChanged: (v) => setState(() => _temperature = v),
           ),
         ],
       ),
@@ -995,9 +1051,19 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
               ),
               const Spacer(),
               Text(
-                '${_history.length}/10',
+                '${_history.length}/20',
                 style: const TextStyle(fontSize: 12, color: WFColors.textLight),
               ),
+              if (_history.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _clearAllHistory,
+                  child: Text(
+                    '清空',
+                    style: TextStyle(fontSize: 12, color: WFColors.warning),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -1094,6 +1160,28 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
     setState(() => _history.removeAt(index));
     await _saveHistory();
     WFSnackBar.show(context, '已删除');
+  }
+
+  Future<void> _clearAllHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空历史'),
+        content: const Text('确定清空所有生成历史记录？此操作不可撤销。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('清空', style: TextStyle(color: WFColors.warning)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() => _history.clear());
+      await _saveHistory();
+      WFSnackBar.show(context, '历史记录已清空');
+    }
   }
 
   // ── 底部操作栏 ──

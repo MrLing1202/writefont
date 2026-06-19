@@ -67,7 +67,9 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
   }
 
   final gray = img.grayscale(workImage);
-  final blurred = ImageProcessor._gaussianBlur(gray);
+  // 估算噪声水平，自动选择模糊强度
+  final noiseLevel = ImageProcessor._estimateNoiseLevel(gray);
+  final blurred = ImageProcessor._gaussianBlur(gray, strong: noiseLevel > 0.15);
   img.Image binary;
   final adaptiveResult =
       ImageProcessor._adaptiveThreshold(blurred, blockSize: 31, c: 12, invert: invertColors);
@@ -329,8 +331,11 @@ class ImageProcessor {
     // Apply contrast
     final contrasted = img.adjustColor(gray, contrast: params.contrast);
 
-    // Gaussian blur preprocessing to reduce noise
-    final blurred = _gaussianBlur(contrasted);
+    // 估算噪声水平，自动选择模糊强度
+    final noiseLevel = _estimateNoiseLevel(contrasted);
+    debugPrint('segmentCharacters: 噪声水平 ${noiseLevel.toStringAsFixed(2)}');
+    // 噪声水平 > 0.15 时使用强模糊，否则使用标准模糊
+    final blurred = _gaussianBlur(contrasted, strong: noiseLevel > 0.15);
 
     // Try adaptive thresholding first; fall back to global if result is too extreme
     img.Image binary;
@@ -855,9 +860,33 @@ class ImageProcessor {
   }
 
   static img.Image _smooth(img.Image binary, double amount) {
-    final result = img.Image(width: binary.width, height: binary.height);
+    // 改进：使用形态学闭运算（先膨胀再腐蚀）填充笔画内部空洞，
+    // 再用开运算（先腐蚀再膨胀）去除噪点，效果优于简单的多数投票
     final kernelSize = (amount * 2 + 1).toInt();
     final half = kernelSize ~/ 2;
+
+    if (amount > 0.3) {
+      // 使用形态学闭运算 + 开运算
+      img.Image result = binary;
+      // 闭运算：填充小空洞
+      for (int i = 0; i < half.clamp(1, 3); i++) {
+        result = _dilate(result);
+      }
+      for (int i = 0; i < half.clamp(1, 3); i++) {
+        result = _erode(result);
+      }
+      // 开运算：去除噪点
+      for (int i = 0; i < half.clamp(1, 2); i++) {
+        result = _erode(result);
+      }
+      for (int i = 0; i < half.clamp(1, 2); i++) {
+        result = _dilate(result);
+      }
+      return result;
+    }
+
+    // 小量平滑使用原始多数投票方法
+    final result = img.Image(width: binary.width, height: binary.height);
 
     for (int y = 0; y < binary.height; y++) {
       for (int x = 0; x < binary.width; x++) {
@@ -877,6 +906,40 @@ class ImageProcessor {
       }
     }
     return result;
+  }
+
+  /// 估算灰度图的噪声水平（0.0 ~ 1.0）
+  /// 使用 Laplacian 方差法：计算图像 Laplacian 的方差，
+  /// 方差越大说明噪声越多（边缘和噪声都会产生高频分量）。
+  static double _estimateNoiseLevel(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    if (w < 3 || h < 3) return 0.0;
+
+    // 采样计算（每 4 个像素取一个，减少计算量）
+    double sum = 0;
+    double sumSq = 0;
+    int count = 0;
+
+    for (int y = 1; y < h - 1; y += 2) {
+      for (int x = 1; x < w - 1; x += 2) {
+        // Laplacian 核: [0,1,0, 1,-4,1, 0,1,0]
+        final center = gray.getPixel(x, y).r.toInt() * 4;
+        final top = gray.getPixel(x, y - 1).r.toInt();
+        final bottom = gray.getPixel(x, y + 1).r.toInt();
+        final left = gray.getPixel(x - 1, y).r.toInt();
+        final right = gray.getPixel(x + 1, y).r.toInt();
+        final laplacian = (top + bottom + left + right - center).abs().toDouble();
+        sum += laplacian;
+        sumSq += laplacian * laplacian;
+        count++;
+      }
+    }
+
+    if (count == 0) return 0.0;
+    final mean = sum / count;
+    final variance = (sumSq / count) - mean * mean;
+    // 归一化到 0~1 范围（经验值：方差 1000 对应高噪声）
+    return (variance / 1000.0).clamp(0.0, 1.0);
   }
 
   static bool _hasContent(img.Image cell) {
