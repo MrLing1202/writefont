@@ -4,6 +4,14 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.1.2] - 2026-06-19
+
+### 优化
+- 拆分 preview_screen.dart 为 7 个独立组件（主文件 ≤300 行）
+- 拆分 auto_generate_screen.dart 为 8 个独立组件（主文件 ≤300 行）
+- 拆分 capture_screen.dart 为 8 个独立组件（主文件 ≤300 行）
+- 提取业务逻辑为独立 helper 文件，提升可测试性
+
 ## [1.1.1] - 2026-06-19
 
 ### 优化
