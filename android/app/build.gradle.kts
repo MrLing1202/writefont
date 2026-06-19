@@ -33,9 +33,18 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("/tmp/release-key.jks")
+            storePassword = "writefont123"
+            keyAlias = "writefont"
+            keyPassword = "writefont123"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
