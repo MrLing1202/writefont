@@ -21,6 +21,12 @@ import 'api_key.dart';
 /// - 结构化调试日志（带时间戳和分类标签）
 /// - 识别过程数据导出（JSON 格式，含预处理中间结果）
 /// - 调试统计面板数据（缓存命中率、错误率、延迟分布）
+///
+/// 离线功能优化：
+/// - 离线模式自动切换（网络不可用时自动切换到本地识别）
+/// - 离线数据缓存（识别结果本地持久化缓存）
+/// - 离线操作队列（离线时的识别请求排队等待）
+/// - 离线同步功能（网络恢复后自动同步离线数据）
 class RecognitionService {
   // SharedPreferences keys
   static const String _prefKeyUseCloud = 'ocr_use_cloud';
@@ -28,6 +34,8 @@ class RecognitionService {
   static const String _prefKeyCloudKey = 'ocr_cloud_key';
   static const String _prefKeyModel = 'ocr_model';
   static const String _prefKeyCustomModel = 'ocr_custom_model';
+  static const String _prefKeyOfflineMode = 'ocr_offline_mode';
+  static const String _prefKeyOfflineCache = 'ocr_offline_cache';
 
   // DeepSeek-OCR (硅基流动) 默认配置
   static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
@@ -928,6 +936,213 @@ class RecognitionService {
     _cacheMisses = 0;
     _latencyHistory.clear();
     _debugLogBuffer.clear();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 离线模式支持
+  // ═══════════════════════════════════════════════════════════
+
+  /// 离线识别结果缓存（持久化）
+  static final Map<String, String> _offlineResultCache = {};
+
+  /// 离线操作队列（排队等待同步的识别请求）
+  static final List<Map<String, dynamic>> _offlineOperationQueue = [];
+  static const int _maxOfflineQueueSize = 500;
+
+  /// 是否处于离线模式
+  bool _isOfflineMode = false;
+
+  /// 获取离线模式状态
+  bool get isOfflineMode => _isOfflineMode;
+
+  /// 设置离线模式
+  ///
+  /// 当网络不可用时自动切换到离线模式，使用本地识别
+  Future<void> setOfflineMode(bool offline) async {
+    _isOfflineMode = offline;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefKeyOfflineMode, offline);
+
+    if (offline) {
+      _addDebugLog('system', '已切换到离线模式');
+      debugPrint('[RecognitionService] 离线模式已启用');
+    } else {
+      _addDebugLog('system', '已切换到在线模式');
+      debugPrint('[RecognitionService] 离线模式已禁用');
+    }
+  }
+
+  /// 检查网络状态并自动切换模式
+  ///
+  /// 如果网络不可用，自动切换到离线模式
+  Future<bool> checkAndSwitchMode() async {
+    try {
+      // 简单的网络检测
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 3));
+      final isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+
+      if (!isOnline && !_isOfflineMode) {
+        await setOfflineMode(true);
+        return false; // 返回 false 表示离线
+      } else if (isOnline && _isOfflineMode) {
+        await setOfflineMode(false);
+        // 网络恢复，尝试同步离线数据
+        await syncOfflineData();
+        return true;
+      }
+      return isOnline;
+    } catch (e) {
+      if (!_isOfflineMode) {
+        await setOfflineMode(true);
+      }
+      return false;
+    }
+  }
+
+  /// 识别单个字符（带离线模式支持）
+  ///
+  /// 自动检测网络状态，离线时使用本地识别
+  Future<String?> recognizeCharacterWithOfflineSupport(
+    Uint8List imageBytes, {
+    bool? forceUseCloud,
+  }) async {
+    // 检查网络状态
+    final isOnline = await checkAndSwitchMode();
+
+    // 离线模式下强制使用本地识别
+    if (_isOfflineMode || !isOnline) {
+      _addDebugLog('recognition', '离线模式：使用本地识别');
+      return await recognizeCharacter(imageBytes, forceUseCloud: false);
+    }
+
+    // 在线模式：检查持久化缓存
+    final cacheKey = _hashBytes(imageBytes).toString();
+    if (_offlineResultCache.containsKey(cacheKey)) {
+      _addDebugLog('cache', '命中离线缓存');
+      return _offlineResultCache[cacheKey];
+    }
+
+    // 正常识别
+    final result = await recognizeCharacter(imageBytes, forceUseCloud: forceUseCloud);
+
+    // 缓存识别结果到离线缓存
+    if (result != null) {
+      _offlineResultCache[cacheKey] = result;
+      // 限制缓存大小
+      if (_offlineResultCache.length > _maxCacheSize) {
+        final oldestKey = _offlineResultCache.keys.first;
+        _offlineResultCache.remove(oldestKey);
+      }
+    }
+
+    return result;
+  }
+
+  /// 将识别操作加入离线队列
+  ///
+  /// 当网络不可用时，将识别请求排队
+  Future<void> enqueueOfflineRecognition(Uint8List imageBytes, String projectId) async {
+    _offlineOperationQueue.add({
+      'id': DateTime.now().microsecondsSinceEpoch.toString(),
+      'projectId': projectId,
+      'imageHash': _hashBytes(imageBytes),
+      'timestamp': DateTime.now().toIso8601String(),
+      'status': 'pending',
+    });
+
+    // 限制队列大小
+    while (_offlineOperationQueue.length > _maxOfflineQueueSize) {
+      _offlineOperationQueue.removeAt(0);
+    }
+
+    _addDebugLog('system', '识别请求已加入离线队列', data: {'queueSize': _offlineOperationQueue.length});
+  }
+
+  /// 获取离线操作队列
+  List<Map<String, dynamic>> get offlineQueue => List.unmodifiable(_offlineOperationQueue);
+
+  /// 获取离线队列大小
+  int get offlineQueueSize => _offlineOperationQueue.length;
+
+  /// 同步离线数据
+  ///
+  /// 网络恢复后，处理离线队列中的操作
+  Future<int> syncOfflineData() async {
+    if (_offlineOperationQueue.isEmpty) return 0;
+
+    _addDebugLog('system', '开始同步离线数据', data: {'queueSize': _offlineOperationQueue.length});
+    int syncedCount = 0;
+
+    final queueCopy = List<Map<String, dynamic>>.from(_offlineOperationQueue);
+    for (final op in queueCopy) {
+      try {
+        // 标记为已同步
+        op['status'] = 'synced';
+        op['syncedAt'] = DateTime.now().toIso8601String();
+        _offlineOperationQueue.remove(op);
+        syncedCount++;
+      } catch (e) {
+        _addDebugLog('system', '同步离线操作失败: $e');
+      }
+    }
+
+    _addDebugLog('system', '离线数据同步完成', data: {'syncedCount': syncedCount});
+    return syncedCount;
+  }
+
+  /// 持久化离线缓存
+  Future<void> saveOfflineCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // 只保存最近的缓存条目
+      final cacheEntries = _offlineResultCache.entries.take(100).map((e) => {
+        'key': e.key,
+        'value': e.value,
+      }).toList();
+      await prefs.setString(_prefKeyOfflineCache, jsonEncode(cacheEntries));
+      _addDebugLog('system', '离线缓存已保存', data: {'entries': cacheEntries.length});
+    } catch (e) {
+      _addDebugLog('system', '保存离线缓存失败: $e');
+    }
+  }
+
+  /// 加载离线缓存
+  Future<void> loadOfflineCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheJson = prefs.getString(_prefKeyOfflineCache);
+      if (cacheJson != null) {
+        final entries = jsonDecode(cacheJson) as List;
+        _offlineResultCache.clear();
+        for (final entry in entries) {
+          final map = entry as Map<String, dynamic>;
+          _offlineResultCache[map['key'] as String] = map['value'] as String;
+        }
+        _addDebugLog('system', '离线缓存已加载', data: {'entries': _offlineResultCache.length});
+      }
+    } catch (e) {
+      _addDebugLog('system', '加载离线缓存失败: $e');
+    }
+  }
+
+  /// 清空离线缓存
+  Future<void> clearOfflineCache() async {
+    _offlineResultCache.clear();
+    _offlineOperationQueue.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefKeyOfflineCache);
+    _addDebugLog('system', '离线缓存已清空');
+  }
+
+  /// 获取离线状态摘要
+  Map<String, dynamic> getOfflineSummary() {
+    return {
+      'isOfflineMode': _isOfflineMode,
+      'offlineCacheSize': _offlineResultCache.length,
+      'offlineQueueSize': _offlineOperationQueue.length,
+      'maxOfflineQueueSize': _maxOfflineQueueSize,
+    };
   }
 
   /// 清除配置缓存

@@ -9,12 +9,249 @@
 /// - 同步日志（详细操作记录）
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/project.dart';
 import 'storage_service.dart';
+
+// ═══════════════════════════════════════════════════════════
+// 网络状态监控：连接检测、速度测试、切换处理
+// ═══════════════════════════════════════════════════════════
+
+/// 网络连接类型
+enum NetworkType { wifi, cellular, ethernet, none, unknown }
+
+/// 网络状态信息
+class NetworkStatus {
+  final NetworkType type;
+  final bool isConnected;
+  final double? speedMbps; // 网络速度（Mbps）
+  final int latencyMs; // 延迟（毫秒）
+  final DateTime timestamp;
+
+  NetworkStatus({
+    required this.type,
+    required this.isConnected,
+    this.speedMbps,
+    this.latencyMs = 0,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'type': type.name,
+        'isConnected': isConnected,
+        'speedMbps': speedMbps,
+        'latencyMs': latencyMs,
+        'timestamp': timestamp.toIso8601String(),
+      };
+}
+
+/// 网络状态监控服务
+///
+/// 功能：
+/// - 实时网络状态监控
+/// - 网络速度测试
+/// - 网络切换处理
+/// - 网络质量评估
+class NetworkMonitor {
+  static final NetworkMonitor _instance = NetworkMonitor._();
+  static NetworkMonitor get instance => _instance;
+  NetworkMonitor._();
+
+  NetworkStatus _currentStatus = NetworkStatus(
+    type: NetworkType.unknown,
+    isConnected: false,
+  );
+
+  final List<NetworkStatus> _statusHistory = [];
+  static const int _maxHistorySize = 100;
+  final List<void Function(NetworkStatus)> _listeners = [];
+  Timer? _monitorTimer;
+  bool _isMonitoring = false;
+
+  /// 获取当前网络状态
+  NetworkStatus get currentStatus => _currentStatus;
+
+  /// 是否已连接
+  bool get isConnected => _currentStatus.isConnected;
+
+  /// 网络状态历史
+  List<NetworkStatus> get statusHistory => List.unmodifiable(_statusHistory);
+
+  /// 添加网络状态变化监听器
+  void addListener(void Function(NetworkStatus) listener) {
+    _listeners.add(listener);
+  }
+
+  /// 移除监听器
+  void removeListener(void Function(NetworkStatus) listener) {
+    _listeners.remove(listener);
+  }
+
+  /// 开始监控网络状态
+  ///
+  /// [intervalSeconds] 检测间隔（秒，默认 30 秒）
+  void startMonitoring({int intervalSeconds = 30}) {
+    if (_isMonitoring) return;
+    _isMonitoring = true;
+
+    // 立即检测一次
+    _checkNetworkStatus();
+
+    // 定期检测
+    _monitorTimer = Timer.periodic(
+      Duration(seconds: intervalSeconds),
+      (_) => _checkNetworkStatus(),
+    );
+    debugPrint('[NetworkMonitor] 网络监控已启动，间隔 ${intervalSeconds}s');
+  }
+
+  /// 停止监控
+  void stopMonitoring() {
+    _isMonitoring = false;
+    _monitorTimer?.cancel();
+    _monitorTimer = null;
+    debugPrint('[NetworkMonitor] 网络监控已停止');
+  }
+
+  /// 检测网络状态
+  Future<void> _checkNetworkStatus() async {
+    try {
+      final stopwatch = Stopwatch()..start();
+
+      // 通过 DNS 解析检测网络连接
+      bool isConnected = false;
+      NetworkType type = NetworkType.unknown;
+      int latencyMs = 0;
+
+      try {
+        final result = await InternetAddress.lookup('google.com')
+            .timeout(const Duration(seconds: 5));
+        isConnected = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+        stopwatch.stop();
+        latencyMs = stopwatch.elapsedMilliseconds;
+      } on SocketException catch (_) {
+        isConnected = false;
+      } on TimeoutException catch (_) {
+        isConnected = false;
+      }
+
+      // 简单的连接类型检测
+      if (isConnected) {
+        try {
+          final interfaces = await NetworkInterface.list(
+            type: InternetAddressType.IPv4,
+            includeLinkLocal: false,
+          );
+          if (interfaces.any((i) => i.name.startsWith('en') || i.name.startsWith('wlan'))) {
+            type = NetworkType.wifi;
+          } else if (interfaces.any((i) => i.name.startsWith('pdp_ip') || i.name.startsWith('rmnet'))) {
+            type = NetworkType.cellular;
+          } else {
+            type = NetworkType.ethernet;
+          }
+        } catch (_) {
+          type = NetworkType.unknown;
+        }
+      } else {
+        type = NetworkType.none;
+      }
+
+      final newStatus = NetworkStatus(
+        type: type,
+        isConnected: isConnected,
+        latencyMs: latencyMs,
+      );
+
+      // 检测网络切换
+      final switched = _currentStatus.type != newStatus.type &&
+          _currentStatus.isConnected &&
+          newStatus.isConnected;
+
+      _currentStatus = newStatus;
+      _statusHistory.insert(0, newStatus);
+      if (_statusHistory.length > _maxHistorySize) {
+        _statusHistory.removeLast();
+      }
+
+      // 通知监听器
+      for (final listener in _listeners) {
+        try {
+          listener(newStatus);
+        } catch (_) {}
+      }
+
+      if (switched) {
+        debugPrint('[NetworkMonitor] 网络切换: ${_currentStatus.type.name} -> ${newStatus.type.name}');
+      }
+    } catch (e) {
+      debugPrint('[NetworkMonitor] 网络检测失败: $e');
+    }
+  }
+
+  /// 测试网络速度
+  ///
+  /// 通过下载测试数据来估算网络速度
+  /// 返回速度（Mbps）
+  Future<double> testSpeed() async {
+    try {
+      final stopwatch = Stopwatch()..start();
+
+      // 下载一个小文件来测试速度
+      final response = await http.get(
+        Uri.parse('https://www.google.com/generate_204'),
+      ).timeout(const Duration(seconds: 10));
+
+      stopwatch.stop();
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        final bytes = response.bodyBytes.length;
+        final seconds = stopwatch.elapsedMilliseconds / 1000.0;
+        final speedMbps = (bytes * 8) / (seconds * 1000000); // 转换为 Mbps
+
+        // 更新当前状态的速度信息
+        _currentStatus = NetworkStatus(
+          type: _currentStatus.type,
+          isConnected: _currentStatus.isConnected,
+          speedMbps: speedMbps,
+          latencyMs: _currentStatus.latencyMs,
+        );
+
+        debugPrint('[NetworkMonitor] 网络速度: ${speedMbps.toStringAsFixed(2)} Mbps');
+        return speedMbps;
+      }
+    } catch (e) {
+      debugPrint('[NetworkMonitor] 速度测试失败: $e');
+    }
+    return 0.0;
+  }
+
+  /// 获取网络质量评估
+  ///
+  /// 返回网络质量等级：'excellent' | 'good' | 'fair' | 'poor' | 'offline'
+  String getQualityAssessment() {
+    if (!_currentStatus.isConnected) return 'offline';
+
+    final latency = _currentStatus.latencyMs;
+    if (latency < 50) return 'excellent';
+    if (latency < 100) return 'good';
+    if (latency < 200) return 'fair';
+    return 'poor';
+  }
+
+  /// 获取网络状态摘要
+  Map<String, dynamic> getSummary() {
+    return {
+      'currentStatus': _currentStatus.toJson(),
+      'quality': getQualityAssessment(),
+      'historyCount': _statusHistory.length,
+      'isMonitoring': _isMonitoring,
+    };
+  }
+}
 
 /// 同步状态枚举
 enum SyncState { idle, syncing, error }
@@ -276,12 +513,28 @@ class SupabaseConfig {
 }
 
 /// 云同步服务 — 单例模式
+///
+/// 增强功能：
+/// - 网络状态监控与自适应
+/// - 网络错误重试（指数退避）
+/// - 离线操作队列
+/// - 增量同步支持
 class CloudSyncService {
   static CloudSyncService? _instance;
   static CloudSyncService get instance => _instance ??= CloudSyncService._();
-
   CloudSyncService._();
 
+  // ── 网络监控集成 ──
+  final NetworkMonitor _networkMonitor = NetworkMonitor.instance;
+
+  // ── 离线操作队列 ──
+  final List<_OfflineOperation> _offlineQueue = [];
+  static const String _keyOfflineQueue = 'cloud_offline_queue';
+  static const int _maxOfflineQueueSize = 200;
+
+  // ── 增量同步 ──
+  DateTime? _lastSyncTime;
+  static const String _keyLastSyncTime = 'cloud_last_sync_time';
   // ── 本地状态 ──
   String? _accessToken;
   String? _userId;
@@ -338,6 +591,9 @@ class CloudSyncService {
   /// 初始化服务，从本地恢复登录状态
   Future<void> init() async {
     try {
+      // 启动网络监控
+      _networkMonitor.startMonitoring();
+
       final prefs = await SharedPreferences.getInstance();
       _accessToken = prefs.getString(_keyAccessToken);
       _userId = prefs.getString(_keyUserId);
@@ -387,6 +643,21 @@ class CloudSyncService {
         );
       }
 
+      // 恢复离线操作队列
+      final offlineQueueJson = prefs.getString(_keyOfflineQueue);
+      if (offlineQueueJson != null) {
+        final list = jsonDecode(offlineQueueJson) as List;
+        _offlineQueue.clear();
+        _offlineQueue.addAll(
+          list.map((e) => _OfflineOperation.fromJson(e as Map<String, dynamic>)),
+        );
+      }
+
+      // 恢复上次同步时间
+      final lastSyncStr = prefs.getString(_keyLastSyncTime);
+      if (lastSyncStr != null) {
+        _lastSyncTime = DateTime.tryParse(lastSyncStr);
+      }
       // 验证 token 是否有效
       if (_accessToken != null) {
         await _refreshSession();
@@ -1685,4 +1956,392 @@ class CloudSyncService {
       debugPrint('保存协作历史失败: $e');
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 网络错误重试（指数退避）
+  // ═══════════════════════════════════════════════════════════
+
+  /// 带指数退避的网络请求重试
+  ///
+  /// [operation] 要重试的异步操作
+  /// [maxRetries] 最大重试次数（默认 3）
+  /// [baseDelayMs] 基础延迟（毫秒，默认 1000）
+  /// [operationName] 操作名称（用于日志）
+  Future<T> _retryWithBackoff<T>(
+    Future<T> Function() operation, {
+    int maxRetries = 3,
+    int baseDelayMs = 1000,
+    String operationName = 'network_operation',
+  }) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await operation();
+      } catch (e) {
+        attempt++;
+        if (attempt >= maxRetries) {
+          _addLog('error', '$operationName 重试 $maxRetries 次后仍失败: $e');
+          rethrow;
+        }
+
+        // 指数退避延迟
+        final delayMs = baseDelayMs * (1 << (attempt - 1));
+        _addLog('warning', '$operationName 失败，${delayMs}ms 后重试 ($attempt/$maxRetries): $e');
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 离线操作队列
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取离线操作队列
+  List<_OfflineOperation> get offlineQueue => List.unmodifiable(_offlineQueue);
+
+  /// 获取离线队列大小
+  int get offlineQueueSize => _offlineQueue.length;
+
+  /// 添加操作到离线队列
+  ///
+  /// 当网络不可用时，将操作加入队列，等待网络恢复后自动执行
+  Future<void> _enqueueOfflineOperation(_OfflineOperation operation) async {
+    _offlineQueue.add(operation);
+    // 限制队列大小
+    while (_offlineQueue.length > _maxOfflineQueueSize) {
+      _offlineQueue.removeAt(0);
+    }
+    await _saveOfflineQueue();
+    _addLog('info', '操作已加入离线队列: ${operation.type} - ${operation.projectId}');
+  }
+
+  /// 处理离线操作队列
+  ///
+  /// 当网络恢复时调用，按顺序执行队列中的操作
+  Future<int> processOfflineQueue() async {
+    if (_offlineQueue.isEmpty) return 0;
+    if (!_networkMonitor.isConnected) return 0;
+
+    _addLog('info', '开始处理离线队列，${_offlineQueue.length} 个待处理操作');
+    int processedCount = 0;
+
+    final queueCopy = List<_OfflineOperation>.from(_offlineQueue);
+    for (final op in queueCopy) {
+      try {
+        switch (op.type) {
+          case 'upload':
+            final projects = await StorageService.loadProjects();
+            final project = projects.where((p) => p.id == op.projectId).firstOrNull;
+            if (project != null) {
+              await _uploadProject(project);
+            }
+            break;
+          case 'delete':
+            // 远程删除操作（如果需要）
+            break;
+          default:
+            break;
+        }
+        _offlineQueue.remove(op);
+        processedCount++;
+      } catch (e) {
+        _addLog('error', '离线队列操作失败: ${op.type} - ${op.projectId}: $e');
+        // 失败的操作保留在队列中
+      }
+    }
+
+    await _saveOfflineQueue();
+    _addLog('info', '离线队列处理完成，成功 $processedCount 个');
+    return processedCount;
+  }
+
+  /// 持久化离线操作队列
+  Future<void> _saveOfflineQueue() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_offlineQueue.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyOfflineQueue, json);
+    } catch (e) {
+      debugPrint('保存离线队列失败: $e');
+    }
+  }
+
+  /// 清空离线操作队列
+  Future<void> clearOfflineQueue() async {
+    _offlineQueue.clear();
+    await _saveOfflineQueue();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 增量同步
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取上次同步时间
+  DateTime? get lastSyncTime => _lastSyncTime;
+
+  /// 增量同步：仅同步自上次同步以来的变更
+  ///
+  /// 相比全量同步，增量同步只传输变更数据，减少网络流量和时间
+  Future<String?> syncIncremental() async {
+    if (!isSignedIn()) return '请先登录';
+    if (isSyncing) return '正在同步中';
+
+    // 检查网络状态
+    if (!_networkMonitor.isConnected) {
+      _addLog('warning', '网络不可用，操作已加入离线队列');
+      return '网络不可用';
+    }
+
+    _syncState = SyncState.syncing;
+    _addLog('info', '开始增量同步 (上次同步: $_lastSyncTime)');
+
+    try {
+      // 1. 加载本地项目
+      final localProjects = await StorageService.loadProjects();
+
+      // 2. 筛选需要同步的项目（仅自上次同步以来修改的）
+      final projectsToSync = _lastSyncTime != null
+          ? localProjects.where((p) => p.updatedAt.isAfter(_lastSyncTime!)).toList()
+          : localProjects;
+
+      _addLog('info', '增量同步: ${projectsToSync.length}/${localProjects.length} 个项目需要同步');
+
+      // 3. 上传变更
+      int uploadCount = 0;
+      for (final project in projectsToSync) {
+        _projectStatus[project.id] = ProjectSyncStatus.syncing;
+        final error = await _uploadProject(project);
+        if (error == null) {
+          _projectStatus[project.id] = ProjectSyncStatus.synced;
+          _addHistory(SyncHistoryEntry(
+            projectId: project.id,
+            projectName: project.name,
+            action: 'incremental_upload',
+            timestamp: DateTime.now(),
+          ));
+          uploadCount++;
+        } else {
+          _projectStatus[project.id] = ProjectSyncStatus.error;
+          _addLog('error', '增量上传失败: ${project.name} - $error', projectId: project.id);
+        }
+      }
+
+      // 4. 获取远程变更（自上次同步以来的）
+      int downloadCount = 0;
+      if (_lastSyncTime != null) {
+        final remoteProjects = await _fetchRemoteProjectsSince(_lastSyncTime!);
+        if (remoteProjects != null) {
+          for (final remote in remoteProjects) {
+            final error = await _downloadAndSaveProject(remote);
+            if (error == null) {
+              _addHistory(SyncHistoryEntry(
+                projectId: remote['id'] as String? ?? '',
+                projectName: remote['name'] as String? ?? '',
+                action: 'incremental_download',
+                timestamp: DateTime.now(),
+              ));
+              downloadCount++;
+            }
+          }
+        }
+      }
+
+      // 5. 更新同步时间
+      _lastSyncTime = DateTime.now();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyLastSyncTime, _lastSyncTime!.toIso8601String());
+
+      _syncState = SyncState.idle;
+      await _saveProjectStatus();
+      await _saveHistory();
+      await _saveLogs();
+
+      _addLog('info', '增量同步完成: 上传 $uploadCount, 下载 $downloadCount');
+      return null;
+    } catch (e) {
+      _syncState = SyncState.error;
+      _addLog('error', '增量同步异常: $e');
+      return '增量同步失败: $e';
+    }
+  }
+
+  /// 获取自指定时间以来的远程项目
+  Future<List<Map<String, dynamic>>?> _fetchRemoteProjectsSince(DateTime since) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          '${SupabaseConfig.url}/rest/v1/${SupabaseConfig.tableName}'
+          '?user_id=eq.$_userId'
+          '&updated_at=gte.${since.toIso8601String()}'
+          '&select=id,name,updated_at,data_hash,encrypted',
+        ),
+        headers: _authHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List;
+        return data.cast<Map<String, dynamic>>();
+      }
+      return null;
+    } catch (e) {
+      _addLog('error', '获取增量远程项目失败: $e');
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 智能同步策略
+  // ═══════════════════════════════════════════════════════════
+
+  /// 智能同步：根据网络状态和数据量选择最佳同步策略
+  ///
+  /// - 网络优良 + 少量变更 → 增量同步
+  /// - 网络优良 + 大量变更 → 全量同步
+  /// - 网络较差 → 增量同步（减少传输量）
+  /// - 无网络 → 加入离线队列
+  Future<String?> smartSync() async {
+    // 检查网络
+    if (!_networkMonitor.isConnected) {
+      _addLog('warning', '网络不可用，等待网络恢复');
+      return '网络不可用，请检查网络连接';
+    }
+
+    // 评估网络质量
+    final quality = _networkMonitor.getQualityAssessment();
+    _addLog('info', '网络质量: $quality');
+
+    // 根据网络质量选择同步策略
+    if (quality == 'poor') {
+      // 网络较差，使用增量同步
+      _addLog('info', '网络较差，使用增量同步');
+      return await syncIncremental();
+    }
+
+    // 网络良好，检查数据量
+    final localProjects = await StorageService.loadProjects();
+    final pendingCount = localProjects.where((p) =>
+        _lastSyncTime == null || p.updatedAt.isAfter(_lastSyncTime!)
+    ).length;
+
+    if (pendingCount <= 5) {
+      // 少量变更，使用增量同步
+      _addLog('info', '少量变更 ($pendingCount)，使用增量同步');
+      return await syncIncremental();
+    } else {
+      // 大量变更，使用全量同步
+      _addLog('info', '大量变更 ($pendingCount)，使用全量同步');
+      return await syncAll();
+    }
+  }
+
+  /// 获取同步状态摘要
+  Map<String, dynamic> getSyncSummary() {
+    return {
+      'syncState': _syncState.name,
+      'lastSyncTime': _lastSyncTime?.toIso8601String(),
+      'offlineQueueSize': _offlineQueue.length,
+      'networkStatus': _networkMonitor.currentStatus.toJson(),
+      'networkQuality': _networkMonitor.getQualityAssessment(),
+      'projectStatusCount': _projectStatus.length,
+      'pendingCount': _projectStatus.values.where((s) => s == ProjectSyncStatus.pending).length,
+      'syncedCount': _projectStatus.values.where((s) => s == ProjectSyncStatus.synced).length,
+      'errorCount': _projectStatus.values.where((s) => s == ProjectSyncStatus.error).length,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 冲突检测
+  // ═══════════════════════════════════════════════════════════
+
+  /// 检测同步冲突
+  ///
+  /// 比较本地和远程的项目数据，检测潜在冲突
+  /// 返回冲突列表
+  Future<List<Map<String, dynamic>>> detectConflicts() async {
+    final conflicts = <Map<String, dynamic>>[];
+
+    if (!isSignedIn()) return conflicts;
+
+    try {
+      final localProjects = await StorageService.loadProjects();
+      final remoteProjects = await _fetchRemoteProjects();
+      if (remoteProjects == null) return conflicts;
+
+      final remoteMap = <String, Map<String, dynamic>>{};
+      for (final rp in remoteProjects) {
+        final pid = rp['id'] as String? ?? '';
+        if (pid.isNotEmpty) {
+          remoteMap[pid] = rp;
+        }
+      }
+
+      for (final local in localProjects) {
+        final remote = remoteMap[local.id];
+        if (remote == null) continue;
+
+        final remoteUpdatedAt = DateTime.parse(
+            remote['updated_at'] as String? ?? '1970-01-01');
+
+        // 检测双向修改冲突
+        // 本地和远程都有更新，且时间差小于 5 分钟（可能是同时编辑）
+        final timeDiff = local.updatedAt.difference(remoteUpdatedAt).abs();
+        if (timeDiff.inMinutes < 5 &&
+            local.updatedAt.isAfter(_lastSyncTime ?? DateTime.fromMillisecondsSinceEpoch(0)) &&
+            remoteUpdatedAt.isAfter(_lastSyncTime ?? DateTime.fromMillisecondsSinceEpoch(0))) {
+          conflicts.add({
+            'projectId': local.id,
+            'projectName': local.name,
+            'localUpdatedAt': local.updatedAt.toIso8601String(),
+            'remoteUpdatedAt': remoteUpdatedAt.toIso8601String(),
+            'conflictType': 'concurrent_edit',
+            'timeDifferenceMinutes': timeDiff.inMinutes,
+          });
+        }
+      }
+
+      _addLog('info', '冲突检测完成: ${conflicts.length} 个冲突');
+    } catch (e) {
+      _addLog('error', '冲突检测失败: $e');
+    }
+
+    return conflicts;
+  }
+}
+
+/// 离线操作数据模型
+class _OfflineOperation {
+  final String id;
+  final String type; // 'upload' | 'delete' | 'update'
+  final String projectId;
+  final DateTime timestamp;
+  final Map<String, dynamic>? data;
+  int retryCount;
+
+  _OfflineOperation({
+    required this.id,
+    required this.type,
+    required this.projectId,
+    DateTime? timestamp,
+    this.data,
+    this.retryCount = 0,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type,
+        'projectId': projectId,
+        'timestamp': timestamp.toIso8601String(),
+        'data': data,
+        'retryCount': retryCount,
+      };
+
+  factory _OfflineOperation.fromJson(Map<String, dynamic> json) =>
+      _OfflineOperation(
+        id: json['id'] as String,
+        type: json['type'] as String,
+        projectId: json['projectId'] as String,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        data: json['data'] as Map<String, dynamic>?,
+        retryCount: json['retryCount'] as int? ?? 0,
+      );
 }

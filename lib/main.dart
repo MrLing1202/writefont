@@ -1948,6 +1948,12 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   bool _useBottomNav = true; // 是否使用底部导航栏
   bool _isAppInForeground = true; // 电池优化：追踪应用前后台状态
 
+  // ── 同步状态显示 ──
+  String _syncStatusText = '未同步';
+  bool _isSyncing = false;
+  int _conflictCount = 0;
+  int _pendingSyncCount = 0;
+  Timer? _syncStatusTimer;
   // ── 无障碍设置 ──
   bool _highContrastMode = false;       // 高对比度模式
   double _accessibilityFontScale = 1.0; // 无障碍字体缩放（独立于主题字体缩放）
@@ -1975,6 +1981,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     _checkOnboarding();
     _loadNavigationPreference();
     _loadAccessibilitySettings();
+    _initSyncStatusMonitor();
     // 3秒兜底：如果 _checkOnboarding 还没完成，强制标记为已检查，避免永久 loading
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && !_onboardingChecked) {
@@ -2036,6 +2043,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     RecognitionService.instance.dispose(); // 释放识别服务资源
+    _syncStatusTimer?.cancel();
     super.dispose();
   }
 
@@ -2114,6 +2122,133 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       }
     } catch (_) {}
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 同步状态监控
+  // ═══════════════════════════════════════════════════════════
+
+  /// 初始化同步状态监控
+  ///
+  /// 定期检查同步状态，更新 UI 显示
+  void _initSyncStatusMonitor() {
+    // 每 30 秒检查一次同步状态
+    _syncStatusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _updateSyncStatus();
+      }
+    });
+
+    // 立即检查一次
+    _updateSyncStatus();
+  }
+
+  /// 更新同步状态
+  Future<void> _updateSyncStatus() async {
+    try {
+      final cloudSync = CloudSyncService.instance;
+      final summary = cloudSync.getSyncSummary();
+
+      if (mounted) {
+        setState(() {
+          _isSyncing = summary['syncState'] == 'syncing';
+          _conflictCount = (summary['conflictCount'] as int?) ?? 0;
+          _pendingSyncCount = (summary['pendingCount'] as int?) ?? 0;
+
+          if (_isSyncing) {
+            _syncStatusText = '同步中...';
+          } else if (_conflictCount > 0) {
+            _syncStatusText = '$_conflictCount 个冲突待解决';
+          } else if (_pendingSyncCount > 0) {
+            _syncStatusText = '$_pendingSyncCount 个项目待同步';
+          } else {
+            final lastSync = summary['lastSyncTime'] as String?;
+            if (lastSync != null) {
+              final lastSyncTime = DateTime.tryParse(lastSync);
+              if (lastSyncTime != null) {
+                final diff = DateTime.now().difference(lastSyncTime);
+                if (diff.inMinutes < 1) {
+                  _syncStatusText = '刚刚同步';
+                } else if (diff.inHours < 1) {
+                  _syncStatusText = '${diff.inMinutes} 分钟前同步';
+                } else if (diff.inDays < 1) {
+                  _syncStatusText = '${diff.inHours} 小时前同步';
+                } else {
+                  _syncStatusText = '${diff.inDays} 天前同步';
+                }
+              } else {
+                _syncStatusText = '已同步';
+              }
+            } else {
+              _syncStatusText = '未同步';
+            }
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[SyncStatus] 更新同步状态失败: $e');
+    }
+  }
+
+  /// 执行智能同步
+  Future<void> _performSmartSync() async {
+    if (_isSyncing) return;
+
+    setState(() {
+      _isSyncing = true;
+      _syncStatusText = '同步中...';
+    });
+
+    try {
+      final cloudSync = CloudSyncService.instance;
+      final error = await cloudSync.smartSync();
+
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          if (error != null) {
+            _syncStatusText = '同步失败: $error';
+          } else {
+            _syncStatusText = '同步完成';
+          }
+        });
+
+        // 2 秒后刷新状态
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) _updateSyncStatus();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _syncStatusText = '同步异常';
+        });
+      }
+    }
+  }
+
+  /// 检测并处理冲突
+  Future<void> _checkConflicts() async {
+    try {
+      final cloudSync = CloudSyncService.instance;
+      final conflicts = await cloudSync.detectConflicts();
+
+      if (conflicts.isNotEmpty && mounted) {
+        // 显示冲突通知
+        NotificationService.instance.show(
+ title: '检测到同步冲突',
+ body: '${conflicts.length} 个项目存在同步冲突，请手动解决',
+ category: NotificationCategory.sync,
+ priority: NotificationPriority.high,
+        );
+      }
+    } catch (e) {
+      debugPrint('[SyncStatus] 冲突检测失败: $e');
+    }
+  }
+
+  /// 获取同步状态文本
+  String get syncStatusText => _syncStatusText;
 
   /// 根据字符串获取 ThemeMode
   ThemeMode get _themeMode {

@@ -54,6 +54,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // 云同步状态
   String _syncStatus = 'none'; // none | synced | pending
 
+  // ── 更新功能 ──
+  String _latestVersion = '';
+  String _currentVersion = '';
+  bool _isCheckingUpdate = false;
+  bool _hasUpdate = false;
+  String _updateChangelog = '';
+  List<Map<String, dynamic>> _versionHistory = [];
+  bool _isRollingBack = false;
+
   // 错误日志记录
   final List<_ErrorLogEntry> _errorLogs = [];
   static const int _maxErrorLogs = 50;
@@ -129,6 +138,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _syncStatus = syncStatus;
         _isLoading = false;
       });
+
+      // 加载版本信息
+      _loadVersionInfo();
     }
   }
 
@@ -384,6 +396,262 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 版本更新功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载版本信息
+  Future<void> _loadVersionInfo() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      _currentVersion = packageInfo.version;
+
+      // 检查版本更新
+      final versionInfo = await RecognitionService.checkVersion();
+      final versionHistory = await RecognitionService.getVersionHistory();
+
+      if (mounted) {
+        setState(() {
+          _latestVersion = versionInfo['latestVersion'] as String? ?? _currentVersion;
+          _hasUpdate = versionInfo['needsUpdate'] as bool? ?? false;
+          _updateChangelog = versionInfo['changelog'] as String? ?? '';
+          _versionHistory = versionHistory;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Settings] 加载版本信息失败: $e');
+    }
+  }
+
+  /// 检查版本更新
+  Future<void> _checkForUpdate() async {
+    setState(() => _isCheckingUpdate = true);
+
+    try {
+      final versionInfo = await RecognitionService.checkVersion();
+
+      if (mounted) {
+        setState(() {
+          _isCheckingUpdate = false;
+          _hasUpdate = versionInfo['needsUpdate'] as bool? ?? false;
+          _latestVersion = versionInfo['latestVersion'] as String? ?? _currentVersion;
+          _updateChangelog = versionInfo['changelog'] as String? ?? '';
+        });
+
+        if (_hasUpdate) {
+          _showUpdateDialog();
+        } else {
+          WFSnackBar.show(context, '已是最新版本');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCheckingUpdate = false);
+        WFSnackBar.error(context, '检查更新失败: $e');
+      }
+    }
+  }
+
+  /// 显示更新对话框
+  void _showUpdateDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.system_update, color: WFColors.primary, size: 36),
+        title: const Text('发现新版本'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('当前版本: v$_currentVersion'),
+              Text('最新版本: v$_latestVersion'),
+              if (_updateChangelog.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('更新日志:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Text(_updateChangelog, style: const TextStyle(fontSize: 13)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('稍后再说'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _performIncrementalUpdate();
+            },
+            child: const Text('立即更新'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 执行增量更新
+  Future<void> _performIncrementalUpdate() async {
+    try {
+      WFSnackBar.show(context, '正在更新到 v$_latestVersion...');
+
+      // 执行增量更新
+      await RecognitionService.updateVersion(_latestVersion, changelog: _updateChangelog);
+
+      // 重新加载版本信息
+      await _loadVersionInfo();
+
+      if (mounted) {
+        WFSnackBar.show(context, '更新完成！');
+      }
+    } catch (e) {
+      if (mounted) {
+        _logError('版本更新', e);
+        _showErrorWithRecovery('更新失败', e.toString(), _performIncrementalUpdate);
+      }
+    }
+  }
+
+  /// 显示更新日志对话框
+  void _showChangelogDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('更新日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: _versionHistory.isEmpty
+              ? const Center(child: Text('暂无更新记录'))
+              : ListView.builder(
+                  itemCount: _versionHistory.length,
+                  itemBuilder: (ctx, i) {
+                    final entry = _versionHistory[i];
+                    final version = entry['version'] as String? ?? '';
+                    final changelog = entry['changelog'] as String? ?? '';
+                    final timestamp = entry['timestamp'] as String? ?? '';
+                    final isRollback = entry['isRollback'] as bool? ?? false;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(
+                          isRollback ? Icons.undo : Icons.update,
+                          color: isRollback ? WFColors.warning : WFColors.primary,
+                        ),
+                        title: Text('v$version${isRollback ? ' (回滚)' : ''}'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (changelog.isNotEmpty) Text(changelog, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            Text(timestamp, style: const TextStyle(fontSize: 11, color: WFColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 回滚到指定版本
+  Future<void> _rollbackToVersion(String targetVersion) async {
+    final confirmed = await WFDialog.confirm(
+      context,
+      title: '版本回滚',
+      message: '确定要回滚到 v$targetVersion 吗？\n\n回滚后将使用该版本的识别引擎。',
+      confirmText: '回滚',
+      isDestructive: true,
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isRollingBack = true);
+
+    try {
+      final success = await RecognitionService.rollbackVersion(
+        targetVersion,
+        reason: '用户手动回滚',
+      );
+
+      if (mounted) {
+        setState(() => _isRollingBack = false);
+
+        if (success) {
+          WFSnackBar.show(context, '已回滚到 v$targetVersion');
+          await _loadVersionInfo();
+        } else {
+          WFSnackBar.error(context, '回滚失败');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRollingBack = false);
+        _logError('版本回滚', e);
+        _showErrorWithRecovery('回滚失败', e.toString(), () => _rollbackToVersion(targetVersion));
+      }
+    }
+  }
+
+  /// 显示版本历史对话框
+  void _showVersionHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('版本历史'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: _versionHistory.isEmpty
+              ? const Center(child: Text('暂无版本历史'))
+              : ListView.builder(
+                  itemCount: _versionHistory.length,
+                  itemBuilder: (ctx, i) {
+                    final entry = _versionHistory[i];
+                    final version = entry['version'] as String? ?? '';
+                    final timestamp = entry['timestamp'] as String? ?? '';
+                    final isRollback = entry['isRollback'] as bool? ?? false;
+
+                    return ListTile(
+                      leading: Icon(
+                        isRollback ? Icons.undo : Icons.update,
+                        color: isRollback ? WFColors.warning : WFColors.primary,
+                      ),
+                      title: Text('v$version'),
+                      subtitle: Text(timestamp),
+                      trailing: !isRollback && version != _currentVersion
+                          ? TextButton(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _rollbackToVersion(version);
+                              },
+                              child: const Text('回滚'),
+                            )
+                          : null,
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 设置搜索框
   Widget _buildSearchBar() {
     return TextField(
@@ -474,6 +742,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildAboutCard(),
                 const SizedBox(height: 16),
 
+                // ═══ 版本更新 ═══
+                _buildSectionHeader('版本更新', Icons.system_update),
+                _buildUpdateCard(),
+                const SizedBox(height: 16),
                 // ═══ 用户反馈 ═══
                 _buildSectionHeader('用户反馈', Icons.feedback_outlined),
                 _buildFeedbackCard(),
@@ -960,6 +1232,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               }
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 版本更新卡片
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildUpdateCard() {
+    return WFCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              _hasUpdate ? Icons.system_update : Icons.check_circle,
+              color: _hasUpdate ? WFColors.warning : WFColors.success,
+            ),
+            title: Text(_hasUpdate ? '有新版本可用' : '已是最新版本'),
+            subtitle: Text(_hasUpdate
+                ? 'v$_currentVersion → v$_latestVersion'
+                : '当前版本 v$_currentVersion'),
+            trailing: _isCheckingUpdate
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _checkForUpdate,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.history, color: WFColors.info),
+            title: const Text('更新日志'),
+            subtitle: const Text('查看历史版本和更新内容'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showChangelogDialog,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: Icon(
+              Icons.undo,
+              color: _isRollingBack ? WFColors.textLight : WFColors.warning,
+            ),
+            title: const Text('版本回滚'),
+            subtitle: const Text('回滚到之前的版本'),
+            trailing: _isRollingBack
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isRollingBack ? null : _showVersionHistoryDialog,
           ),
         ],
       ),
