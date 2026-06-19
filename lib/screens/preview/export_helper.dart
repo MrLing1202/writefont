@@ -5,6 +5,26 @@ import '../../theme/app_theme.dart';
 import 'export_dialogs.dart';
 import '../font_metadata_screen.dart';
 
+/// 显示构建进度对话框
+void _showBuildProgress(BuildContext context) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const PopScope(
+      canPop: false,
+      child: AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('正在生成字体文件...'),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 /// 导出 TTF 字体（带元数据）
 Future<void> exportFontWithMetadata(
   BuildContext context,
@@ -12,15 +32,33 @@ Future<void> exportFontWithMetadata(
   FontMetadata metadata,
 ) async {
   project.name = metadata.familyName;
-  final filePath = await StorageService.exportTtf(
-    project,
-    familyName: metadata.familyName,
-    subfamilyName: metadata.subfamilyName,
-    version: metadata.version,
-    copyright: metadata.copyright,
-    description: metadata.description,
-  );
-  if (context.mounted) showExportSuccessDialog(context, filePath, project);
+
+  // 显示构建进度
+  if (context.mounted) _showBuildProgress(context);
+
+  try {
+    final filePath = await StorageService.exportTtf(
+      project,
+      familyName: metadata.familyName,
+      subfamilyName: metadata.subfamilyName,
+      version: metadata.version,
+      copyright: metadata.copyright,
+      description: metadata.description,
+    );
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (context.mounted) showExportSuccessDialog(context, filePath, project);
+  } catch (e) {
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (context.mounted) {
+      WFSnackBar.error(context, '导出失败: $e');
+    }
+  }
 }
 
 /// 导出 TTF 字体（旧流程：先确认再命名）
@@ -32,8 +70,26 @@ Future<void> exportFontLegacy(BuildContext context, FontProject project) async {
   if (fontName == null || fontName.isEmpty) return;
 
   project.name = fontName;
-  final filePath = await StorageService.exportTtf(project);
-  if (context.mounted) showExportSuccessDialog(context, filePath, project);
+
+  // 显示构建进度
+  if (context.mounted) _showBuildProgress(context);
+
+  try {
+    final filePath = await StorageService.exportTtf(project);
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (context.mounted) showExportSuccessDialog(context, filePath, project);
+  } catch (e) {
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (context.mounted) {
+      WFSnackBar.error(context, '导出失败: $e');
+    }
+  }
 }
 
 /// 导出错误消息映射

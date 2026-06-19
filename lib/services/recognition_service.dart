@@ -51,6 +51,35 @@ class RecognitionService {
   // 原子计数器，用于临时文件名防碰撞
   static int _fileCounter = 0;
 
+  // 识别结果缓存（图片字节哈希 → 识别结果）
+  static final Map<int, String?> _recognitionCache = {};
+  static const int _maxCacheSize = 200;
+
+  /// 简单的字节哈希用于缓存 key
+  static int _hashBytes(Uint8List bytes) {
+    int hash = 0x811c9dc5;
+    // 采样计算：取首尾各 256 字节 + 中间 256 字节
+    final len = bytes.length;
+    final sampleSize = len < 768 ? len : 768;
+    for (int i = 0; i < sampleSize ~/ 3; i++) {
+      hash ^= bytes[i];
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    if (len > 256) {
+      for (int i = len ~/ 2 - 128; i < len ~/ 2 + 128 && i < len; i++) {
+        hash ^= bytes[i];
+        hash = (hash * 0x01000193) & 0xFFFFFFFF;
+      }
+    }
+    if (len > 256) {
+      for (int i = len - 256; i < len; i++) {
+        hash ^= bytes[i];
+        hash = (hash * 0x01000193) & 0xFFFFFFFF;
+      }
+    }
+    return hash & 0x7FFFFFFF;
+  }
+
   /// 获取 ML Kit 识别器（中文）
   TextRecognizer _getMlKitRecognizer() {
     _mlKitRecognizer ??= TextRecognizer(script: TextRecognitionScript.chinese);
@@ -123,15 +152,31 @@ class RecognitionService {
     return _isValidChar(ch) ? ch : null;
   }
 
-  /// 识别单个字符图片
+  /// 识别单个字符图片（带缓存）
   Future<String?> recognizeCharacter(Uint8List imageBytes, {bool? forceUseCloud}) async {
     final useCloud = forceUseCloud ?? await getUseCloud();
 
+    // 云端识别不缓存（prompt 可能变化）
     if (useCloud) {
       return _recognizeCloud(imageBytes);
-    } else {
-      return _recognizeLocal(imageBytes);
     }
+
+    // 本地识别使用缓存
+    final cacheKey = _hashBytes(imageBytes);
+    if (_recognitionCache.containsKey(cacheKey)) {
+      debugPrint('ML Kit 识别: 命中缓存 (hash=$cacheKey)');
+      return _recognitionCache[cacheKey];
+    }
+
+    final result = await _recognizeLocal(imageBytes);
+
+    // 写入缓存，超出上限时清理
+    if (_recognitionCache.length >= _maxCacheSize) {
+      _recognitionCache.clear();
+    }
+    _recognitionCache[cacheKey] = result;
+
+    return result;
   }
 
   /// 批量识别字符图片（带并发控制和进度回调）
@@ -223,6 +268,7 @@ class RecognitionService {
   }
 
   /// 本地 ML Kit 识别（多级预处理 + 重试策略）
+  /// 优化：第一轮尝试灰度原图，成功即返回；避免不必要的放大
   Future<String?> _recognizeLocal(Uint8List imageBytes) async {
     try {
       final decoded = img.decodeImage(imageBytes);
@@ -232,6 +278,18 @@ class RecognitionService {
       final h = decoded.height;
       final maxDim = w > h ? w : h;
       debugPrint('ML Kit 识别: 原始图片 ${w}x$h，最大边 $maxDim');
+
+      // 第一轮快速尝试：原图灰度（跳过不必要的放大和复杂预处理）
+      if (maxDim >= 50) {
+        debugPrint('ML Kit 识别: 快速尝试 | 原图灰度');
+        final gray = img.grayscale(decoded);
+        final rawResult = await _recognizeFromImage(gray);
+        final result = _validateResult(rawResult);
+        if (result != null) {
+          debugPrint('ML Kit 识别: ✓ 快速尝试成功, 字符="$result"');
+          return result;
+        }
+      }
 
       // 根据图片大小分级，定义放大目标尺寸序列
       List<int> upscaleTargets;
@@ -252,7 +310,6 @@ class RecognitionService {
       debugPrint('ML Kit 识别: 分级策略 targets=$upscaleTargets');
 
       // 预处理组合列表：先确保灰度，再尝试不同增强策略
-      // 灰度 → 原始 / 灰度 → 对比度 / 灰度 → 锐化 / 灰度 → 对比度+二值化
       final preprocessors = <String, img.Image Function(img.Image)>{
         '灰度': (src) => img.grayscale(src),
         '灰度+对比度': (src) {
@@ -594,6 +651,7 @@ class RecognitionService {
   void dispose() {
     _mlKitRecognizer?.close();
     _mlKitRecognizer = null;
+    _recognitionCache.clear();
   }
 
   /// 清除配置缓存
@@ -601,6 +659,11 @@ class RecognitionService {
     _useCloud = null;
     _cloudUrl = null;
     _cloudKey = null;
+  }
+
+  /// 清除识别结果缓存
+  static void clearRecognitionCache() {
+    _recognitionCache.clear();
   }
 }
 

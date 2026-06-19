@@ -51,6 +51,9 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   // 防止 _startProcessing 重入
   bool _isStartProcessingRunning = false;
 
+  // 取消标志
+  bool _cancelled = false;
+
   // 动画
   AnimationController? _animController;
 
@@ -63,6 +66,14 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
 
   @override
   void dispose() { _animController?.dispose(); super.dispose(); }
+
+  /// 取消处理
+  void _cancelProcessing() {
+    _cancelled = true;
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
 
   /// 获取当前字符分配（合并 AI 识别和用户修正）
   String? _getCharAt(int index) {
@@ -128,7 +139,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         widget.imageBytes,
         _params,
         onProgress: (progress, status) {
-          if (mounted) {
+          if (mounted && !_cancelled) {
             setState(() {
               _progress = progress;
               _status = status;
@@ -136,6 +147,9 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
           }
         },
       );
+
+      // 如果已取消，不处理结果
+      if (_cancelled) return;
 
       if (result.hasError) {
         setState(() {
@@ -286,6 +300,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                   progress: _progress,
                   status: _status,
                   colorScheme: colorScheme,
+                  onCancel: _isConfirming ? null : _cancelProcessing,
                 ),
     );
   }
