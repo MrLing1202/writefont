@@ -10,7 +10,7 @@ import 'character_edit/character_edit_logic.dart';
 // Re-export split modules so external imports remain valid
 export 'character_edit/drawing_models.dart';
 
-/// 字符编辑对话框：支持画笔绘制、橡皮擦、撤销重做、缩放平移
+/// 字符编辑对话框：支持画笔绘制、橡皮擦、撤销重做、缩放平移、旋转、缩放字符
 class CharacterEditDialog extends StatefulWidget {
   final String character;
   final GlyphData glyph;
@@ -55,6 +55,12 @@ class CharacterEditDialog extends StatefulWidget {
 
 class _CharacterEditDialogState extends State<CharacterEditDialog>
     with CharacterEditLogic {
+  /// 笔画粗细倍率（1.0 = 原始粗细）
+  double _strokeScale = 1.0;
+
+  /// 字符旋转角度（度）
+  double _rotationAngle = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -324,16 +330,33 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                                   ),
                                 ),
                               ),
-                            // 笔画绘制
-                            CustomPaint(
-                              size: const Size(CharacterEditLogic.canvasSize, CharacterEditLogic.canvasSize),
-                              painter: CanvasPainter(
-                                strokes: strokes,
-                                activeStroke: activeStroke,
-                                eraserPosition: eraserPosition,
-                                eraserRadius: eraserRadius,
+                            // 笔画绘制（带旋转和缩放变换）
+                            if (_rotationAngle != 0 || _strokeScale != 1.0)
+                              Transform(
+                                alignment: Alignment.center,
+                                transform: Matrix4.identity()
+                                  ..rotateZ(_rotationAngle * 3.14159265 / 180)
+                                  ..scale(_strokeScale),
+                                child: CustomPaint(
+                                  size: const Size(CharacterEditLogic.canvasSize, CharacterEditLogic.canvasSize),
+                                  painter: CanvasPainter(
+                                    strokes: strokes,
+                                    activeStroke: activeStroke,
+                                    eraserPosition: eraserPosition,
+                                    eraserRadius: eraserRadius,
+                                  ),
+                                ),
+                              )
+                            else
+                              CustomPaint(
+                                size: const Size(CharacterEditLogic.canvasSize, CharacterEditLogic.canvasSize),
+                                painter: CanvasPainter(
+                                  strokes: strokes,
+                                  activeStroke: activeStroke,
+                                  eraserPosition: eraserPosition,
+                                  eraserRadius: eraserRadius,
+                                ),
                               ),
-                            ),
                             // 字符参考（半透明显示）
                             Center(
                               child: Text(
@@ -370,104 +393,171 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
               ),
               child: SafeArea(
                 top: false,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 铅笔工具
-                    ToolButton(
-                      icon: Icons.edit,
-                      label: '铅笔',
-                      isActive: currentTool == DrawTool.pencil,
-                      onTap: () =>
-                          setState(() => currentTool = DrawTool.pencil),
-                      colorScheme: colorScheme,
-                    ),
-                    // 橡皮擦工具
-                    ToolButton(
-                      icon: Icons.cleaning_services,
-                      label: '橡皮擦',
-                      isActive: currentTool == DrawTool.eraser,
-                      onTap: () =>
-                          setState(() => currentTool = DrawTool.eraser),
-                      colorScheme: colorScheme,
-                    ),
-                    // 画笔粗细
-                    ToolButton(
-                      icon: Icons.line_weight,
-                      label: '${strokeWidth.round()}px',
-                      isActive: false,
-                      onTap: _showBrushWidthDialog,
-                      colorScheme: colorScheme,
-                    ),
-                    // 分隔线
-                    Container(
-                      width: 1,
-                      height: 32,
-                      color: colorScheme.outlineVariant,
-                    ),
-                    // 米字格开关
-                    ToolButton(
-                      icon: showGrid ? Icons.grid_on : Icons.grid_off,
-                      label: '米字格',
-                      isActive: showGrid,
-                      onTap: () =>
-                          setState(() => showGrid = !showGrid),
-                      colorScheme: colorScheme,
-                    ),
-                    // 原始手写参考图开关
-                    if (sourceImage != null)
-                      ToolButton(
-                        icon: showSourceImage ? Icons.visibility : Icons.visibility_off,
-                        label: '参考图',
-                        isActive: showSourceImage,
-                        onTap: () =>
-                            setState(() => showSourceImage = !showSourceImage),
-                        colorScheme: colorScheme,
+                    // 旋转和缩放控制行
+                    if (_rotationAngle != 0 || _strokeScale != 1.0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            // 旋转控制
+                            Icon(Icons.rotate_right, size: 18, color: colorScheme.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Slider(
+                                value: _rotationAngle,
+                                min: -180,
+                                max: 180,
+                                divisions: 36,
+                                label: '${_rotationAngle.round()}°',
+                                onChanged: (v) => setState(() => _rotationAngle = v),
+                              ),
+                            ),
+                            Text(
+                              '${_rotationAngle.round()}°',
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(width: 16),
+                            // 缩放控制
+                            Icon(Icons.zoom_out_map, size: 18, color: colorScheme.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Slider(
+                                value: _strokeScale,
+                                min: 0.5,
+                                max: 2.0,
+                                divisions: 15,
+                                label: '${(_strokeScale * 100).round()}%',
+                                onChanged: (v) => setState(() => _strokeScale = v),
+                              ),
+                            ),
+                            Text(
+                              '${(_strokeScale * 100).round()}%',
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            ),
+                            // 重置按钮
+                            IconButton(
+                              icon: const Icon(Icons.refresh, size: 18),
+                              tooltip: '重置变换',
+                              onPressed: () => setState(() {
+                                _rotationAngle = 0;
+                                _strokeScale = 1.0;
+                              }),
+                            ),
+                          ],
+                        ),
                       ),
-                    // 分隔线
-                    Container(
-                      width: 1,
-                      height: 32,
-                      color: colorScheme.outlineVariant,
-                    ),
-                    // 撤销
-                    ToolButton(
-                      icon: Icons.undo,
-                      label: '撤销',
-                      isActive: false,
-                      onTap: undoStack.isNotEmpty ? undo : null,
-                      colorScheme: colorScheme,
-                    ),
-                    // 重做
-                    ToolButton(
-                      icon: Icons.redo,
-                      label: '重做',
-                      isActive: false,
-                      onTap: redoStack.isNotEmpty ? redo : null,
-                      colorScheme: colorScheme,
-                    ),
-                    // 清除
-                    ToolButton(
-                      icon: Icons.delete_sweep,
-                      label: '清除',
-                      isActive: false,
-                      onTap: strokes.isNotEmpty ? clearAll : null,
-                      colorScheme: colorScheme,
-                    ),
-                    // 分隔线
-                    Container(
-                      width: 1,
-                      height: 32,
-                      color: colorScheme.outlineVariant,
-                    ),
-                    // 字符选择
-                    ToolButton(
-                      icon: Icons.text_fields,
-                      label: '字符',
-                      isActive: false,
-                      onTap: () =>
-                          _showCharacterPicker(context, colorScheme),
-                      colorScheme: colorScheme,
+                    // 工具按钮行
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // 铅笔工具
+                        ToolButton(
+                          icon: Icons.edit,
+                          label: '铅笔',
+                          isActive: currentTool == DrawTool.pencil,
+                          onTap: () =>
+                              setState(() => currentTool = DrawTool.pencil),
+                          colorScheme: colorScheme,
+                        ),
+                        // 橡皮擦工具
+                        ToolButton(
+                          icon: Icons.cleaning_services,
+                          label: '橡皮擦',
+                          isActive: currentTool == DrawTool.eraser,
+                          onTap: () =>
+                              setState(() => currentTool = DrawTool.eraser),
+                          colorScheme: colorScheme,
+                        ),
+                        // 画笔粗细
+                        ToolButton(
+                          icon: Icons.line_weight,
+                          label: '${strokeWidth.round()}px',
+                          isActive: false,
+                          onTap: _showBrushWidthDialog,
+                          colorScheme: colorScheme,
+                        ),
+                        // 分隔线
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: colorScheme.outlineVariant,
+                        ),
+                        // 米字格开关
+                        ToolButton(
+                          icon: showGrid ? Icons.grid_on : Icons.grid_off,
+                          label: '米字格',
+                          isActive: showGrid,
+                          onTap: () =>
+                              setState(() => showGrid = !showGrid),
+                          colorScheme: colorScheme,
+                        ),
+                        // 原始手写参考图开关
+                        if (sourceImage != null)
+                          ToolButton(
+                            icon: showSourceImage ? Icons.visibility : Icons.visibility_off,
+                            label: '参考图',
+                            isActive: showSourceImage,
+                            onTap: () =>
+                                setState(() => showSourceImage = !showSourceImage),
+                            colorScheme: colorScheme,
+                          ),
+                        // 旋转/缩放切换
+                        ToolButton(
+                          icon: Icons.transform,
+                          label: '变换',
+                          isActive: _rotationAngle != 0 || _strokeScale != 1.0,
+                          onTap: _showTransformDialog,
+                          colorScheme: colorScheme,
+                        ),
+                        // 分隔线
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: colorScheme.outlineVariant,
+                        ),
+                        // 撤销
+                        ToolButton(
+                          icon: Icons.undo,
+                          label: '撤销',
+                          isActive: false,
+                          onTap: undoStack.isNotEmpty ? undo : null,
+                          colorScheme: colorScheme,
+                        ),
+                        // 重做
+                        ToolButton(
+                          icon: Icons.redo,
+                          label: '重做',
+                          isActive: false,
+                          onTap: redoStack.isNotEmpty ? redo : null,
+                          colorScheme: colorScheme,
+                        ),
+                        // 清除
+                        ToolButton(
+                          icon: Icons.delete_sweep,
+                          label: '清除',
+                          isActive: false,
+                          onTap: strokes.isNotEmpty ? clearAll : null,
+                          colorScheme: colorScheme,
+                        ),
+                        // 分隔线
+                        Container(
+                          width: 1,
+                          height: 32,
+                          color: colorScheme.outlineVariant,
+                        ),
+                        // 字符选择
+                        ToolButton(
+                          icon: Icons.text_fields,
+                          label: '字符',
+                          isActive: false,
+                          onTap: () =>
+                              _showCharacterPicker(context, colorScheme),
+                          colorScheme: colorScheme,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -509,6 +599,135 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                     fontWeight: FontWeight.w600,
                     color: WFColors.textPrimary,
                   ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(foregroundColor: WFColors.primary),
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 显示旋转/缩放变换弹窗
+  void _showTransformDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return WFDialog(
+            title: '字符变换',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 旋转控制
+                Row(
+                  children: [
+                    const Icon(Icons.rotate_right, size: 18),
+                    const SizedBox(width: 8),
+                    const Text('旋转', style: TextStyle(fontSize: 14)),
+                    Expanded(
+                      child: Slider(
+                        value: _rotationAngle,
+                        min: -180,
+                        max: 180,
+                        divisions: 36,
+                        label: '${_rotationAngle.round()}°',
+                        activeColor: WFColors.primary,
+                        onChanged: (v) {
+                          setDialogState(() {});
+                          setState(() => _rotationAngle = v);
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 48,
+                      child: Text(
+                        '${_rotationAngle.round()}°',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // 缩放控制
+                Row(
+                  children: [
+                    const Icon(Icons.zoom_out_map, size: 18),
+                    const SizedBox(width: 8),
+                    const Text('缩放', style: TextStyle(fontSize: 14)),
+                    Expanded(
+                      child: Slider(
+                        value: _strokeScale,
+                        min: 0.5,
+                        max: 2.0,
+                        divisions: 15,
+                        label: '${(_strokeScale * 100).round()}%',
+                        activeColor: WFColors.primary,
+                        onChanged: (v) {
+                          setDialogState(() {});
+                          setState(() => _strokeScale = v);
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 48,
+                      child: Text(
+                        '${(_strokeScale * 100).round()}%',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // 快捷操作按钮
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ActionChip(
+                      label: const Text('顺时针90°'),
+                      avatar: const Icon(Icons.rotate_right, size: 16),
+                      onPressed: () {
+                        setDialogState(() {});
+                        setState(() => _rotationAngle = 90);
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('逆时针90°'),
+                      avatar: const Icon(Icons.rotate_left, size: 16),
+                      onPressed: () {
+                        setDialogState(() {});
+                        setState(() => _rotationAngle = -90);
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('水平翻转'),
+                      avatar: const Icon(Icons.flip, size: 16),
+                      onPressed: () {
+                        setDialogState(() {});
+                        setState(() => _strokeScale = -_strokeScale.abs());
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('重置'),
+                      avatar: const Icon(Icons.refresh, size: 16),
+                      onPressed: () {
+                        setDialogState(() {});
+                        setState(() {
+                          _rotationAngle = 0;
+                          _strokeScale = 1.0;
+                        });
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),

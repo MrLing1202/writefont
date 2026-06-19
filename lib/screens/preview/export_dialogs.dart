@@ -233,11 +233,17 @@ Future<String?> showFontNameDialog(
 }
 
 /// 导出成功对话框 — 含分享按钮
+/// [extraInfo] 可选的额外信息（如格式、质量等）
 void showExportSuccessDialog(
   BuildContext context,
   String filePath,
-  FontProject project,
-) {
+  FontProject project, {
+  String? extraInfo,
+}) {
+  final editedCount = project.glyphs.values
+      .where((g) => g.contours.isNotEmpty)
+      .length;
+
   WFDialog.show(
     context,
     title: '导出成功',
@@ -245,23 +251,61 @@ void showExportSuccessDialog(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 成功图标
+        const Center(
+          child: Icon(Icons.check_circle, size: 48, color: WFColors.success),
+        ),
+        const SizedBox(height: 16),
+        // 文件路径
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: WFColors.bgPrimary,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Text(
-            filePath,
-            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+          child: Row(
+            children: [
+              const Icon(Icons.folder_open, size: 16, color: WFColors.textSecondary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  filePath,
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          '共导出 ${project.glyphs.length} 个字符',
-          style: const TextStyle(color: WFColors.textSecondary),
+        // 统计信息
+        Row(
+          children: [
+            const Icon(Icons.text_fields, size: 14, color: WFColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              '共导出 $editedCount 个字符',
+              style: const TextStyle(color: WFColors.textSecondary, fontSize: 13),
+            ),
+          ],
         ),
+        // 额外信息（格式、质量等）
+        if (extraInfo != null) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.tune, size: 14, color: WFColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                extraInfo,
+                style: const TextStyle(color: WFColors.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 12),
+        // 使用提示
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
