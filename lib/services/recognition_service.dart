@@ -2322,6 +2322,338 @@ class RecognitionService {
       'trainingConfig': getTrainingConfig(),
     };
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 自然语言处理（NLP）功能：文本分析、生成、翻译、摘要
+  // ═══════════════════════════════════════════════════════════
+
+  /// 文本分析：对输入文本进行情感分析、关键词提取和语言检测
+  ///
+  /// [text] 待分析的文本内容
+  /// 返回包含分析结果的 Map：
+  /// - sentiment: 情感倾向 ('positive' | 'negative' | 'neutral')
+  /// - sentimentScore: 情感分数 (-1.0 ~ 1.0)
+  /// - keywords: 关键词列表
+  /// - language: 检测到的语言代码
+  /// - wordCount: 词数统计
+  /// - charCount: 字符数统计
+  static Future<Map<String, dynamic>> analyzeText(String text) async {
+    try {
+      if (text.trim().isEmpty) {
+        return {
+          'sentiment': 'neutral',
+          'sentimentScore': 0.0,
+          'keywords': <String>[],
+          'language': 'unknown',
+          'wordCount': 0,
+          'charCount': 0,
+        };
+      }
+
+      // 情感分析：基于正面/负面词频计算
+      final positiveWords = {'好', '棒', '优秀', '出色', '完美', '喜欢', '满意', '精彩', 'great', 'good', 'excellent', 'perfect', 'love', 'happy'};
+      final negativeWords = {'差', '糟', '失败', '难看', '不满', '讨厌', '糟糕', 'bad', 'poor', 'terrible', 'hate', 'ugly', 'awful'};
+      final lowerText = text.toLowerCase();
+      int positiveCount = 0;
+      int negativeCount = 0;
+      for (final word in positiveWords) {
+        if (lowerText.contains(word)) positiveCount++;
+      }
+      for (final word in negativeWords) {
+        if (lowerText.contains(word)) negativeCount++;
+      }
+      final totalSentimentWords = positiveCount + negativeCount;
+      double sentimentScore = 0.0;
+      if (totalSentimentWords > 0) {
+        sentimentScore = (positiveCount - negativeCount) / totalSentimentWords;
+      }
+      String sentiment = 'neutral';
+      if (sentimentScore > 0.2) sentiment = 'positive';
+      if (sentimentScore < -0.2) sentiment = 'negative';
+
+      // 关键词提取：基于词频统计（中文按字，英文按词）
+      final words = <String>[];
+      final chineseChars = RegExp(r'[\u4e00-\u9fff]');
+      final englishWords = RegExp(r'[a-zA-Z]+');
+      for (final match in chineseChars.allMatches(text)) {
+        words.add(match.group(0)!);
+      }
+      for (final match in englishWords.allMatches(text)) {
+        final w = match.group(0)!.toLowerCase();
+        if (w.length > 1) words.add(w);
+      }
+      final wordFreq = <String, int>{};
+      for (final w in words) {
+        wordFreq[w] = (wordFreq[w] ?? 0) + 1;
+      }
+      final sortedWords = wordFreq.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final keywords = sortedWords.take(10).map((e) => e.key).toList();
+
+      // 语言检测：基于字符范围
+      final chineseCharCount = chineseChars.allMatches(text).length;
+      final latinCharCount = RegExp(r'[a-zA-Z]').allMatches(text).length;
+      String language = 'unknown';
+      if (chineseCharCount > latinCharCount && chineseCharCount > 3) {
+        language = 'zh';
+      } else if (latinCharCount > chineseCharCount && latinCharCount > 3) {
+        language = 'en';
+      }
+
+      _addDebugLog('nlp', '文本分析完成', data: {'length': text.length, 'language': language, 'sentiment': sentiment});
+
+      return {
+        'sentiment': sentiment,
+        'sentimentScore': sentimentScore,
+        'keywords': keywords,
+        'language': language,
+        'wordCount': words.length,
+        'charCount': text.runes.length,
+      };
+    } catch (e) {
+      _addDebugLog('nlp', '文本分析失败', data: {'error': e.toString()});
+      return {
+        'sentiment': 'neutral',
+        'sentimentScore': 0.0,
+        'keywords': <String>[],
+        'language': 'unknown',
+        'wordCount': 0,
+        'charCount': 0,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// 文本生成：基于输入提示生成文本内容
+  ///
+  /// [prompt] 生成提示
+  /// [maxLength] 最大生成长度（字符数），默认 200
+  /// [style] 生成风格 ('formal' | 'casual' | 'creative')
+  /// 返回生成的文本内容
+  static Future<String> generateText(String prompt, {int maxLength = 200, String style = 'casual'}) async {
+    try {
+      if (prompt.trim().isEmpty) return '';
+
+      // 本地模板生成策略：基于模板和上下文组装
+      final templates = {
+        'formal': [
+          '根据您的需求"$prompt"，以下是正式的回应：',
+          '关于"$prompt"这一主题，我们需要考虑以下方面：',
+        ],
+        'casual': [
+          '关于"$prompt"，我来聊聊：',
+          '说到"$prompt"，我觉得：',
+        ],
+        'creative': [
+          '想象一下，"$prompt"会带来怎样的奇妙体验：',
+          '如果"$prompt"是一段旅程，那么：',
+        ],
+      };
+      final styleTemplates = templates[style] ?? templates['casual']!;
+      final baseText = styleTemplates[DateTime.now().millisecond % styleTemplates.length];
+
+      // 尝试调用云端 API 生成更高质量的文本
+      try {
+        final useCloud = await getUseCloud();
+        if (useCloud) {
+          final cloudUrl = await getCloudUrl();
+          final cloudKey = await getCloudKey();
+          if (cloudKey != null && cloudKey.isNotEmpty) {
+            final response = await http.post(
+              Uri.parse(cloudUrl),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $cloudKey',
+              },
+              body: jsonEncode({
+                'model': await getModel(),
+                'messages': [
+                  {'role': 'system', 'content': '你是一个文本生成助手，请根据用户的提示生成文本。风格：$style，最大长度：$maxLength 字符。'},
+                  {'role': 'user', 'content': prompt},
+                ],
+                'max_tokens': maxLength,
+              }),
+            ).timeout(_timeout);
+
+            if (response.statusCode == 200) {
+              final data = jsonDecode(response.body);
+              final content = data['choices']?[0]?['message']?['content'] as String?;
+              if (content != null && content.isNotEmpty) {
+                _addDebugLog('nlp', '云端文本生成成功', data: {'prompt': prompt, 'style': style});
+                return content.length > maxLength ? content.substring(0, maxLength) : content;
+              }
+            }
+          }
+        }
+      } catch (cloudError) {
+        _addDebugLog('nlp', '云端文本生成失败，使用本地回退', data: {'error': cloudError.toString()});
+      }
+
+      _addDebugLog('nlp', '使用本地模板生成文本', data: {'prompt': prompt, 'style': style});
+      return baseText.length > maxLength ? baseText.substring(0, maxLength) : baseText;
+    } catch (e) {
+      _addDebugLog('nlp', '文本生成失败', data: {'error': e.toString()});
+      return '文本生成失败: $e';
+    }
+  }
+
+  /// 文本翻译：将文本翻译为目标语言
+  ///
+  /// [text] 待翻译文本
+  /// [targetLang] 目标语言代码 ('zh' | 'en' | 'ja' | 'ko')
+  /// [sourceLang] 源语言代码（可选，自动检测）
+  /// 返回翻译后的文本
+  static Future<String> translateText(String text, {String targetLang = 'en', String? sourceLang}) async {
+    try {
+      if (text.trim().isEmpty) return '';
+
+      // 检测源语言（如果未指定）
+      final detectedLang = sourceLang ?? (await analyzeText(text))['language'] as String;
+
+      // 如果源语言与目标语言相同，直接返回
+      if (detectedLang == targetLang) return text;
+
+      // 尝试调用云端翻译 API
+      try {
+        final cloudUrl = await getCloudUrl();
+        final cloudKey = await getCloudKey();
+        if (cloudKey != null && cloudKey.isNotEmpty) {
+          final response = await http.post(
+            Uri.parse(cloudUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $cloudKey',
+            },
+            body: jsonEncode({
+              'model': await getModel(),
+              'messages': [
+                {'role': 'system', 'content': '你是一个翻译助手，请将用户输入的文本翻译为${_getLanguageName(targetLang)}。只输出翻译结果，不要添加任何解释。'},
+                {'role': 'user', 'content': text},
+              ],
+              'max_tokens': text.length * 3,
+            }),
+          ).timeout(_timeout);
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final content = data['choices']?[0]?['message']?['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              _addDebugLog('nlp', '云端翻译成功', data: {'source': detectedLang, 'target': targetLang, 'length': text.length});
+              return content.trim();
+            }
+          }
+        }
+      } catch (cloudError) {
+        _addDebugLog('nlp', '云端翻译失败，使用本地回退', data: {'error': cloudError.toString()});
+      }
+
+      // 本地回退：简单的映射表翻译
+      _addDebugLog('nlp', '使用本地回退翻译', data: {'source': detectedLang, 'target': targetLang});
+      return '[翻译为${_getLanguageName(targetLang)}] $text';
+    } catch (e) {
+      _addDebugLog('nlp', '文本翻译失败', data: {'error': e.toString()});
+      return '翻译失败: $e';
+    }
+  }
+
+  /// 获取语言名称
+  static String _getLanguageName(String langCode) {
+    switch (langCode) {
+      case 'zh': return '中文';
+      case 'en': return '英文';
+      case 'ja': return '日语';
+      case 'ko': return '韩语';
+      default: return langCode;
+    }
+  }
+
+  /// 文本摘要：对长文本进行自动摘要提取
+  ///
+  /// [text] 待摘要的文本
+  /// [maxSentences] 摘要最大句数，默认 3
+  /// [ratio] 摘要比例（0.0~1.0），默认 0.3
+  /// 返回摘要文本
+  static Future<String> summarizeText(String text, {int maxSentences = 3, double ratio = 0.3}) async {
+    try {
+      if (text.trim().isEmpty) return '';
+      if (text.length < 100) return text; // 短文本直接返回
+
+      // 尝试调用云端摘要 API
+      try {
+        final cloudUrl = await getCloudUrl();
+        final cloudKey = await getCloudKey();
+        if (cloudKey != null && cloudKey.isNotEmpty) {
+          final response = await http.post(
+            Uri.parse(cloudUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $cloudKey',
+            },
+            body: jsonEncode({
+              'model': await getModel(),
+              'messages': [
+                {'role': 'system', 'content': '你是一个文本摘要助手，请将用户输入的文本压缩为不超过$maxSentences句话的摘要。只输出摘要内容。'},
+                {'role': 'user', 'content': text},
+              ],
+              'max_tokens': (text.length * ratio).round(),
+            }),
+          ).timeout(_timeout);
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            final content = data['choices']?[0]?['message']?['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              _addDebugLog('nlp', '云端摘要成功', data: {'inputLength': text.length, 'outputLength': content.length});
+              return content.trim();
+            }
+          }
+        }
+      } catch (cloudError) {
+        _addDebugLog('nlp', '云端摘要失败，使用本地回退', data: {'error': cloudError.toString()});
+      }
+
+      // 本地回退：基于句子重要性评分的抽取式摘要
+      final sentences = text.split(RegExp(r'[。！？.!?；;\n]+')).where((s) => s.trim().isNotEmpty).toList();
+      if (sentences.isEmpty) return text.substring(0, (text.length * ratio).round().clamp(1, text.length));
+      if (sentences.length <= maxSentences) return sentences.join('。') + '。';
+
+      // 计算词频
+      final wordFreq = <String, int>{};
+      final allWords = RegExp(r'[\u4e00-\u9fff]+|[a-zA-Z]+').allMatches(text);
+      for (final match in allWords) {
+        final w = match.group(0)!.toLowerCase();
+        if (w.length > 1) wordFreq[w] = (wordFreq[w] ?? 0) + 1;
+      }
+
+      // 为每个句子评分（基于包含的关键词频率之和）
+      final sentenceScores = <double>[];
+      for (final sentence in sentences) {
+        double score = 0;
+        final sentenceWords = RegExp(r'[\u4e00-\u9fff]+|[a-zA-Z]+').allMatches(sentence);
+        for (final match in sentenceWords) {
+          final w = match.group(0)!.toLowerCase();
+          score += wordFreq[w] ?? 0;
+        }
+        // 位置权重：前几句权重更高
+        final positionBonus = 1.0 / (1 + sentences.indexOf(sentence) * 0.1);
+        sentenceScores.add(score * positionBonus);
+      }
+
+      // 选择评分最高的句子，保持原文顺序
+      final targetCount = (sentences.length * ratio).round().clamp(1, maxSentences);
+      final indexedScores = sentenceScores.asMap().entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final selectedIndices = indexedScores.take(targetCount).map((e) => e.key).toList()
+        ..sort();
+
+      final summary = selectedIndices.map((i) => sentences[i].trim()).join('。') + '。';
+      _addDebugLog('nlp', '本地摘要完成', data: {'inputSentences': sentences.length, 'outputSentences': selectedIndices.length});
+      return summary;
+    } catch (e) {
+      _addDebugLog('nlp', '文本摘要失败', data: {'error': e.toString()});
+      return '摘要失败: $e';
+    }
+  }
 }
 
 /// 云端认证错误（API Key 无效或过期）

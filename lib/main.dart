@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -4437,6 +4438,441 @@ class InferenceService {
     _successfulInferences = 0;
     _failedInferences = 0;
     debugPrint('[InferenceService] 推理服务已重置');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// 语音处理服务：语音识别、语音合成、语音转换、语音增强
+// ═══════════════════════════════════════════════════════════
+
+/// 语音处理服务
+///
+/// 功能：
+/// - 语音识别：将语音转换为文本
+/// - 语音合成：将文本转换为语音
+/// - 语音转换：改变语音的音调、速度等参数
+/// - 语音增强：降噪、音量标准化、回声消除
+class SpeechProcessingService {
+  static final SpeechProcessingService _instance = SpeechProcessingService._();
+  static SpeechProcessingService get instance => _instance;
+  SpeechProcessingService._();
+
+  // 识别状态
+  bool _isListening = false;
+  String _lastRecognizedText = '';
+  final List<Map<String, dynamic>> _recognitionHistory = [];
+  static const int _maxHistorySize = 100;
+
+  // 语音合成状态
+  bool _isSpeaking = false;
+  double _speechRate = 1.0;    // 语速 (0.5 ~ 2.0)
+  double _pitch = 1.0;         // 音调 (0.5 ~ 2.0)
+  double _volume = 1.0;        // 音量 (0.0 ~ 1.0)
+  String _language = 'zh-CN';  // 语言
+
+  // 语音增强参数
+  double _noiseReductionLevel = 0.5;   // 降噪级别 (0.0 ~ 1.0)
+  double _volumeNormalization = 0.8;   // 音量标准化目标 (0.0 ~ 1.0)
+  bool _echoCancellationEnabled = true; // 回声消除
+
+  // 语音处理统计
+  int _totalRecognitions = 0;
+  int _successfulRecognitions = 0;
+  int _totalSynthesis = 0;
+  int _totalEnhancements = 0;
+
+  /// 是否正在监听
+  bool get isListening => _isListening;
+
+  /// 是否正在播放
+  bool get isSpeaking => _isSpeaking;
+
+  /// 最后识别的文本
+  String get lastRecognizedText => _lastRecognizedText;
+
+  /// 获取识别历史
+  List<Map<String, dynamic>> get recognitionHistory =>
+      List.unmodifiable(_recognitionHistory);
+
+  /// 获取语音设置
+  Map<String, dynamic> get voiceSettings => {
+    'speechRate': _speechRate,
+    'pitch': _pitch,
+    'volume': _volume,
+    'language': _language,
+  };
+
+  /// 语音识别：开始语音监听和识别
+  ///
+  /// [language] 识别语言，默认 'zh-CN'
+  /// [onResult] 识别结果回调
+  /// [onPartialResult] 部分结果回调（实时识别）
+  /// [listenDuration] 监听时长限制，默认 60 秒
+  /// 返回识别结果文本
+  Future<String> startListening({
+    String language = 'zh-CN',
+    void Function(String text)? onResult,
+    void Function(String text)? onPartialResult,
+    Duration listenDuration = const Duration(seconds: 60),
+  }) async {
+    if (_isListening) {
+      debugPrint('[SpeechProcessing] 已在监听中，忽略重复请求');
+      return _lastRecognizedText;
+    }
+
+    _isListening = true;
+    _totalRecognitions++;
+    final sw = Stopwatch()..start();
+
+    try {
+      debugPrint('[SpeechProcessing] 开始语音识别 (语言: $language)');
+      _language = language;
+
+      // 模拟语音识别流程
+      // 在实际实现中，这里会调用 speech_to_text 包或系统原生 API
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 语音活动检测（VAD）
+      final hasVoiceActivity = await _detectVoiceActivity();
+      if (!hasVoiceActivity) {
+        _isListening = false;
+        sw.stop();
+        debugPrint('[SpeechProcessing] 未检测到语音活动');
+        return '';
+      }
+
+      // 模拟实时识别过程
+      onPartialResult?.call('正在识别...');
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // 模拟最终结果（实际场景中由 ASR 引擎返回）
+      final recognizedText = '语音识别结果'; // 占位：实际由 STT 引擎填充
+      _lastRecognizedText = recognizedText;
+
+      // 记录到历史
+      _recognitionHistory.add({
+        'text': recognizedText,
+        'language': language,
+        'timestamp': DateTime.now().toIso8601String(),
+        'durationMs': sw.elapsed.inMilliseconds,
+        'confidence': 0.9,
+      });
+      if (_recognitionHistory.length > _maxHistorySize) {
+        _recognitionHistory.removeAt(0);
+      }
+
+      _successfulRecognitions++;
+      onResult?.call(recognizedText);
+      sw.stop();
+      debugPrint('[SpeechProcessing] 语音识别完成: $recognizedText (${sw.elapsed.inMilliseconds}ms)');
+
+      return recognizedText;
+    } catch (e) {
+      sw.stop();
+      debugPrint('[SpeechProcessing] 语音识别失败: $e');
+      return '';
+    } finally {
+      _isListening = false;
+    }
+  }
+
+  /// 停止语音监听
+  Future<void> stopListening() async {
+    _isListening = false;
+    debugPrint('[SpeechProcessing] 停止语音监听');
+  }
+
+  /// 语音合成：将文本转换为语音
+  ///
+  /// [text] 待合成的文本
+  /// [rate] 语速 (0.5 ~ 2.0)，默认使用全局设置
+  /// [pitch] 音调 (0.5 ~ 2.0)，默认使用全局设置
+  /// [volume] 音量 (0.0 ~ 1.0)，默认使用全局设置
+  /// [language] 语言，默认使用全局设置
+  /// 返回是否合成成功
+  Future<bool> synthesizeSpeech(
+    String text, {
+    double? rate,
+    double? pitch,
+    double? volume,
+    String? language,
+  }) async {
+    if (text.trim().isEmpty) return false;
+    if (_isSpeaking) {
+      debugPrint('[SpeechProcessing] 正在播放中，等待完成');
+      return false;
+    }
+
+    _isSpeaking = true;
+    _totalSynthesis++;
+
+    try {
+      final useRate = rate ?? _speechRate;
+      final usePitch = pitch ?? _pitch;
+      final useVolume = volume ?? _volume;
+      final useLanguage = language ?? _language;
+
+      debugPrint('[SpeechProcessing] 语音合成: "${text.substring(0, text.length.clamp(0, 20))}..." '
+          '(rate=$useRate, pitch=$usePitch, volume=$useVolume, lang=$useLanguage)');
+
+      // 模拟语音合成过程
+      // 在实际实现中，这里会调用 flutter_tts 包
+      final estimatedDuration = Duration(
+        milliseconds: (text.length * 100 / useRate).round(),
+      );
+      await Future.delayed(estimatedDuration);
+
+      debugPrint('[SpeechProcessing] 语音合成完成');
+      return true;
+    } catch (e) {
+      debugPrint('[SpeechProcessing] 语音合成失败: $e');
+      return false;
+    } finally {
+      _isSpeaking = false;
+    }
+  }
+
+  /// 停止语音播放
+  Future<void> stopSpeaking() async {
+    _isSpeaking = false;
+    debugPrint('[SpeechProcessing] 停止语音播放');
+  }
+
+  /// 语音转换：改变语音参数
+  ///
+  /// [speechRate] 语速 (0.5 ~ 2.0)
+  /// [pitch] 音调 (0.5 ~ 2.0)
+  /// [volume] 音量 (0.0 ~ 1.0)
+  /// [language] 语言代码
+  void setVoiceParameters({
+    double? speechRate,
+    double? pitch,
+    double? volume,
+    String? language,
+  }) {
+    if (speechRate != null) _speechRate = speechRate.clamp(0.5, 2.0);
+    if (pitch != null) _pitch = pitch.clamp(0.5, 2.0);
+    if (volume != null) _volume = volume.clamp(0.0, 1.0);
+    if (language != null) _language = language;
+    debugPrint('[SpeechProcessing] 语音参数已更新: rate=$_speechRate, pitch=$_pitch, volume=$_volume, lang=$_language');
+  }
+
+  /// 语音转换：变声处理
+  ///
+ /// [audioData] 原始音频数据
+  /// [pitchShift] 音调偏移量 (-12 ~ 12 半音)
+  /// [speedFactor] 速度因子 (0.5 ~ 2.0)
+  /// [formantShift] 共振峰偏移 (-2.0 ~ 2.0)
+  /// 返回处理后的音频数据
+  Future<List<double>> convertVoice(
+    List<double> audioData, {
+    double pitchShift = 0,
+    double speedFactor = 1.0,
+    double formantShift = 0,
+  }) async {
+    try {
+      if (audioData.isEmpty) return audioData;
+
+      debugPrint('[SpeechProcessing] 语音转换: pitch=$pitchShift, speed=$speedFactor, formant=$formantShift');
+
+      final result = List<double>.from(audioData);
+
+      // 速度调节（重采样）
+      if (speedFactor != 1.0) {
+        final newLength = (result.length / speedFactor).round();
+        final resampled = List<double>.filled(newLength, 0);
+        for (int i = 0; i < newLength; i++) {
+          final srcIndex = i * speedFactor;
+          final srcIdx = srcIndex.floor();
+          final frac = srcIndex - srcIdx;
+          if (srcIdx + 1 < result.length) {
+            resampled[i] = result[srcIdx] * (1 - frac) + result[srcIdx + 1] * frac;
+          } else if (srcIdx < result.length) {
+            resampled[i] = result[srcIdx];
+          }
+        }
+        return resampled;
+      }
+
+      // 音调调节（简化实现：通过样本插值）
+      if (pitchShift != 0) {
+        final shiftRatio = pow(2, pitchShift / 12).toDouble();
+        for (int i = 0; i < result.length; i++) {
+          final srcIndex = i / shiftRatio;
+          final srcIdx = srcIndex.floor();
+          final frac = srcIndex - srcIdx;
+          if (srcIdx + 1 < result.length) {
+            result[i] = audioData[srcIdx] * (1 - frac) + audioData[srcIdx + 1] * frac;
+          }
+        }
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('[SpeechProcessing] 语音转换失败: $e');
+      return audioData;
+    }
+  }
+
+  /// 语音增强：对音频信号进行增强处理
+  ///
+  /// [audioData] 原始音频采样数据
+ ///
+  /// 返回增强后的音频数据 Map：
+  /// - data: 增强后的音频数据
+  /// - originalRms: 原始 RMS 能量
+  /// - enhancedRms: 增强后 RMS 能量
+  /// - noiseReduction: 降噪量 (dB)
+  Future<Map<String, dynamic>> enhanceAudio(
+    List<double> audioData, {
+    double? noiseReductionLevel,
+    double? targetVolume,
+    bool? enableEchoCancellation,
+  }) async {
+    _totalEnhancements++;
+    try {
+      if (audioData.isEmpty) {
+        return {'data': audioData, 'originalRms': 0.0, 'enhancedRms': 0.0, 'noiseReduction': 0.0};
+      }
+
+      final useNoiseLevel = noiseReductionLevel ?? _noiseReductionLevel;
+      final useTargetVolume = targetVolume ?? _volumeNormalization;
+      final useEchoCancel = enableEchoCancellation ?? _echoCancellationEnabled;
+
+      final result = List<double>.from(audioData);
+
+      // 1. 计算原始 RMS
+      double originalRms = 0;
+      for (final sample in audioData) {
+        originalRms += sample * sample;
+      }
+      originalRms = sqrt(originalRms / audioData.length);
+
+      // 2. 降噪（频域门限法简化版）
+      if (useNoiseLevel > 0) {
+        final noiseThreshold = useNoiseLevel * 0.1; // 噪声门限
+        for (int i = 0; i < result.length; i++) {
+          if (result[i].abs() < noiseThreshold) {
+            result[i] *= (1 - useNoiseLevel);
+          }
+        }
+      }
+
+      // 3. 音量标准化
+      if (useTargetVolume > 0) {
+        double maxAmplitude = 0;
+        for (final sample in result) {
+          if (sample.abs() > maxAmplitude) maxAmplitude = sample.abs();
+        }
+        if (maxAmplitude > 0) {
+          final gain = useTargetVolume / maxAmplitude;
+          for (int i = 0; i < result.length; i++) {
+            result[i] = (result[i] * gain).clamp(-1.0, 1.0);
+          }
+        }
+      }
+
+      // 4. 回声消除（简化 LMS 自适应滤波）
+      if (useEchoCancel && result.length > 100) {
+        const filterLength = 32;
+        const mu = 0.01; // 自适应步长
+        final weights = List<double>.filled(filterLength, 0);
+        for (int i = filterLength; i < result.length; i++) {
+          double estimated = 0;
+          for (int j = 0; j < filterLength; j++) {
+            estimated += weights[j] * result[i - j - 1];
+          }
+          final error = result[i] - estimated;
+          for (int j = 0; j < filterLength; j++) {
+            weights[j] += mu * error * result[i - j - 1];
+          }
+          result[i] = error;
+        }
+      }
+
+      // 5. 计算增强后 RMS
+      double enhancedRms = 0;
+      for (final sample in result) {
+        enhancedRms += sample * sample;
+      }
+      enhancedRms = sqrt(enhancedRms / result.length);
+
+      final noiseReductionDb = originalRms > 0 && enhancedRms > 0
+          ? 20 * log(originalRms / enhancedRms) / ln10
+          : 0.0;
+
+      debugPrint('[SpeechProcessing] 语音增强完成: '
+          '原始RMS=${originalRms.toStringAsFixed(4)}, '
+          '增强后RMS=${enhancedRms.toStringAsFixed(4)}, '
+          '降噪=${noiseReductionDb.toStringAsFixed(2)}dB');
+
+      return {
+        'data': result,
+        'originalRms': originalRms,
+        'enhancedRms': enhancedRms,
+        'noiseReduction': noiseReductionDb,
+      };
+    } catch (e) {
+      debugPrint('[SpeechProcessing] 语音增强失败: $e');
+      return {'data': audioData, 'originalRms': 0.0, 'enhancedRms': 0.0, 'noiseReduction': 0.0, 'error': e.toString()};
+    }
+  }
+
+  /// 语音活动检测（VAD）
+  Future<bool> _detectVoiceActivity() async {
+    // 模拟 VAD 检测
+    // 实际实现中会检测麦克风输入的能量水平
+    await Future.delayed(const Duration(milliseconds: 100));
+    return true; // 默认检测到语音活动
+  }
+
+  /// 获取语音处理统计报告
+  Map<String, dynamic> getSpeechReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'isListening': _isListening,
+      'isSpeaking': _isSpeaking,
+      'totalRecognitions': _totalRecognitions,
+      'successfulRecognitions': _successfulRecognitions,
+      'successRate': _totalRecognitions > 0
+          ? _successfulRecognitions / _totalRecognitions
+          : 0.0,
+      'totalSynthesis': _totalSynthesis,
+      'totalEnhancements': _totalEnhancements,
+      'voiceSettings': voiceSettings,
+      'enhancementSettings': {
+        'noiseReductionLevel': _noiseReductionLevel,
+        'volumeNormalization': _volumeNormalization,
+        'echoCancellation': _echoCancellationEnabled,
+      },
+      'historySize': _recognitionHistory.length,
+    };
+  }
+
+  /// 更新语音增强参数
+  void setEnhancementParameters({
+    double? noiseReductionLevel,
+    double? volumeNormalization,
+    bool? echoCancellation,
+  }) {
+    if (noiseReductionLevel != null) _noiseReductionLevel = noiseReductionLevel.clamp(0.0, 1.0);
+    if (volumeNormalization != null) _volumeNormalization = volumeNormalization.clamp(0.0, 1.0);
+    if (echoCancellation != null) _echoCancellationEnabled = echoCancellation;
+    debugPrint('[SpeechProcessing] 增强参数已更新: '
+        'noise=$_noiseReductionLevel, volume=$_volumeNormalization, echo=$_echoCancellationEnabled');
+  }
+
+  /// 重置语音处理服务
+  void reset() {
+    _isListening = false;
+    _isSpeaking = false;
+    _lastRecognizedText = '';
+    _recognitionHistory.clear();
+    _totalRecognitions = 0;
+    _successfulRecognitions = 0;
+    _totalSynthesis = 0;
+    _totalEnhancements = 0;
+    debugPrint('[SpeechProcessing] 语音处理服务已重置');
   }
 }
 

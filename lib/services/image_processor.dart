@@ -471,6 +471,423 @@ class ImageProcessor {
   /// 清除轮廓缓存（用于释放内存）
   static void clearContourCache() => _contourCache.clear();
 
+  // ═══════════════════════════════════════════════════════════
+  // 计算机视觉（CV）功能：图像分类、目标检测、图像分割、图像增强
+  // ═══════════════════════════════════════════════════════════
+
+  /// 图像分类：基于图像像素特征进行自动分类
+  ///
+  /// [imageBytes] 图像字节数据
+  /// [categories] 分类类别列表（可选）
+  /// 返回分类结果 Map：
+  /// - category: 分类类别
+  /// - confidence: 置信度 (0.0~1.0)
+  /// - features: 特征信息（颜色分布、亮度、对比度等）
+  static Future<Map<String, dynamic>> classifyImage(
+    Uint8List imageBytes, {
+    List<String>? categories,
+  }) async {
+    _recordUsage('classifyImage');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      final image = img.decodeImage(imageBytes);
+      if (image == null) {
+        _recordError('classifyImage', '图片解码失败');
+        return {'category': 'unknown', 'confidence': 0.0, 'features': {}};
+      }
+
+      // 提取图像特征
+      final features = _extractImageFeatures(image);
+
+      // 基于特征进行分类
+      String category = 'general';
+      double confidence = 0.5;
+
+      final defaultCategories = ['text', 'photo', 'drawing', 'graphic', 'gradient'];
+      final cats = categories ?? defaultCategories;
+
+      // 基于颜色分布和纹理特征判断
+      if (features['blackRatio'] != null && (features['blackRatio'] as double) > 0.3) {
+        category = 'text';
+        confidence = 0.8;
+      } else if (features['edgeDensity'] != null && (features['edgeDensity'] as double) > 0.15) {
+        category = 'drawing';
+        confidence = 0.7;
+      } else if (features['colorVariance'] != null && (features['colorVariance'] as double) > 0.3) {
+        category = 'photo';
+        confidence = 0.75;
+      } else {
+        category = cats.first;
+        confidence = 0.5;
+      }
+
+      sw.stop();
+      _recordPerfTiming('classifyImage', sw.elapsed);
+      _taskCompleted(sw.elapsed);
+
+      return {
+        'category': category,
+        'confidence': confidence,
+        'features': features,
+        'allCategories': cats,
+      };
+    } catch (e) {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordError('classifyImage', e);
+      return {'category': 'unknown', 'confidence': 0.0, 'features': {}, 'error': e.toString()};
+    }
+  }
+
+  /// 提取图像特征（内部方法）
+  static Map<String, dynamic> _extractImageFeatures(img.Image image) {
+    final gray = img.grayscale(image);
+    final width = gray.width, height = gray.height;
+    final totalPixels = width * height;
+    if (totalPixels == 0) return {};
+
+    // 亮度统计
+    double totalBrightness = 0;
+    int blackCount = 0;
+    int whiteCount = 0;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final v = gray.getPixel(x, y).r.toDouble();
+        totalBrightness += v;
+        if (v < 50) blackCount++;
+        if (v > 200) whiteCount++;
+      }
+    }
+    final avgBrightness = totalBrightness / totalPixels;
+
+    // 颜色方差
+    double totalVariance = 0;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final v = gray.getPixel(x, y).r.toDouble();
+        totalVariance += (v - avgBrightness) * (v - avgBrightness);
+      }
+    }
+    final colorVariance = (totalVariance / totalPixels) / (255.0 * 255.0);
+
+    // 边缘密度（简化 Sobel 检测）
+    int edgeCount = 0;
+    for (int y = 1; y < height - 1; y++) {
+      for (int x = 1; x < width - 1; x++) {
+        final gx = gray.getPixel(x + 1, y).r.toDouble() - gray.getPixel(x - 1, y).r.toDouble();
+        final gy = gray.getPixel(x, y + 1).r.toDouble() - gray.getPixel(x, y - 1).r.toDouble();
+        final magnitude = sqrt(gx * gx + gy * gy);
+        if (magnitude > 50) edgeCount++;
+      }
+    }
+    final edgeDensity = edgeCount / totalPixels;
+
+    return {
+      'avgBrightness': avgBrightness / 255.0,
+      'blackRatio': blackCount / totalPixels,
+      'whiteRatio': whiteCount / totalPixels,
+      'colorVariance': colorVariance,
+      'edgeDensity': edgeDensity,
+      'width': width,
+      'height': height,
+      'totalPixels': totalPixels,
+    };
+  }
+
+  /// 目标检测：在图像中检测和定位目标区域
+  ///
+  /// [imageBytes] 图像字节数据
+  /// [minArea] 最小目标面积（像素数），默认 100
+  /// [maxTargets] 最大检测目标数，默认 20
+  /// 返回检测到的目标列表，每个目标包含边界框和特征
+  static Future<List<Map<String, dynamic>>> detectObjects(
+    Uint8List imageBytes, {
+    int minArea = 100,
+    int maxTargets = 20,
+  }) async {
+    _recordUsage('detectObjects');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      final image = img.decodeImage(imageBytes);
+      if (image == null) {
+        _recordError('detectObjects', '图片解码失败');
+        return [];
+      }
+
+      // 预处理
+      final gray = img.grayscale(image);
+      final blurred = _gaussianBlur(gray, strong: false);
+      final threshold = otsuThreshold(blurred);
+      final binary = _binarize(blurred, threshold / 255.0, false);
+
+      // 连通域标记（BFS）
+      final w = binary.width, h = binary.height;
+      final visited = List.generate(h, (_) => List.filled(w, false));
+      final objects = <Map<String, dynamic>>[];
+
+      for (int y = 0; y < h && objects.length < maxTargets; y++) {
+        for (int x = 0; x < w && objects.length < maxTargets; x++) {
+          if (visited[y][x] || !_isBlack(binary, x, y)) continue;
+
+          // BFS 探测连通域
+          int minX = x, maxX = x, minY = y, maxY = y;
+          int pixelCount = 0;
+          final queue = <List<int>>[ [x, y] ];
+          visited[y][x] = true;
+
+          while (queue.isNotEmpty) {
+            final p = queue.removeAt(0);
+            final px = p[0], py = p[1];
+            pixelCount++;
+            if (px < minX) minX = px;
+            if (px > maxX) maxX = px;
+            if (py < minY) minY = py;
+            if (py > maxY) maxY = py;
+
+            for (final d in [[1,0],[-1,0],[0,1],[0,-1]]) {
+              final nx = px + d[0], ny = py + d[1];
+              if (nx >= 0 && nx < w && ny >= 0 && ny < h && !visited[ny][nx] && _isBlack(binary, nx, ny)) {
+                visited[ny][nx] = true;
+                queue.add([nx, ny]);
+              }
+            }
+          }
+
+          if (pixelCount < minArea) continue;
+
+          final bboxW = maxX - minX + 1;
+          final bboxH = maxY - minY + 1;
+
+          objects.add({
+            'boundingBox': {'x': minX, 'y': minY, 'width': bboxW, 'height': bboxH},
+            'center': {'x': (minX + maxX) / 2, 'y': (minY + maxY) / 2},
+            'area': pixelCount,
+            'aspectRatio': bboxW / bboxH,
+            'density': pixelCount / (bboxW * bboxH),
+          });
+        }
+      }
+
+      sw.stop();
+      _recordPerfTiming('detectObjects', sw.elapsed);
+      _taskCompleted(sw.elapsed);
+      debugPrint('[ImageProcessor] 目标检测完成: ${objects.length} 个目标');
+      return objects;
+    } catch (e) {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordError('detectObjects', e);
+      return [];
+    }
+  }
+
+  /// 图像分割：将图像分割为不同的区域
+  ///
+  /// [imageBytes] 图像字节数据
+  /// [method] 分割方法 ('threshold' | 'edge' | 'region')
+  /// [numRegions] 区域分割数量（region 方法），默认 4
+  /// 返回分割结果 Map：
+  /// - segments: 分割区域列表
+  /// - method: 使用的分割方法
+  /// - regionCount: 区域数量
+  static Future<Map<String, dynamic>> segmentImage(
+    Uint8List imageBytes, {
+    String method = 'threshold',
+    int numRegions = 4,
+  }) async {
+    _recordUsage('segmentImage');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      final image = img.decodeImage(imageBytes);
+      if (image == null) {
+        _recordError('segmentImage', '图片解码失败');
+        return {'segments': [], 'method': method, 'regionCount': 0};
+      }
+
+      final segments = <Map<String, dynamic>>[];
+
+      switch (method) {
+        case 'threshold':
+          // 多阈值分割：使用多个阈值将图像分为多个区域
+          final gray = img.grayscale(image);
+          final threshold = otsuThreshold(gray);
+          for (int i = 0; i < 3; i++) {
+            final t = (threshold * (i + 1) / 4).round().clamp(0, 255);
+            int pixelCount = 0;
+            for (int y = 0; y < gray.height; y++) {
+              for (int x = 0; x < gray.width; x++) {
+                final v = gray.getPixel(x, y).r.toInt();
+                if (i == 0 && v < t) pixelCount++;
+                else if (i == 1 && v >= threshold ~/ 2 && v < threshold) pixelCount++;
+                else if (i == 2 && v >= threshold) pixelCount++;
+              }
+            }
+            segments.add({
+              'label': 'region_$i',
+              'threshold': t,
+              'pixelCount': pixelCount,
+              'pixelRatio': pixelCount / (gray.width * gray.height),
+            });
+          }
+          break;
+
+        case 'edge':
+          // 基于边缘的分割
+          final gray = img.grayscale(image);
+          int edgePixelCount = 0;
+          for (int y = 1; y < gray.height - 1; y++) {
+            for (int x = 1; x < gray.width - 1; x++) {
+              final gx = gray.getPixel(x + 1, y).r.toDouble() - gray.getPixel(x - 1, y).r.toDouble();
+              final gy = gray.getPixel(x, y + 1).r.toDouble() - gray.getPixel(x, y - 1).r.toDouble();
+              if (sqrt(gx * gx + gy * gy) > 30) edgePixelCount++;
+            }
+          }
+          segments.add({
+            'label': 'edge_region',
+            'pixelCount': edgePixelCount,
+            'pixelRatio': edgePixelCount / (gray.width * gray.height),
+          });
+          final interiorPixels = gray.width * gray.height - edgePixelCount;
+          segments.add({
+            'label': 'interior_region',
+            'pixelCount': interiorPixels,
+            'pixelRatio': interiorPixels / (gray.width * gray.height),
+          });
+          break;
+
+        case 'region':
+          // 网格区域分割：将图像均匀分为 N 个区域
+          final cols = sqrt(numRegions).ceil();
+          final rows = (numRegions / cols).ceil();
+          final regionW = image.width ~/ cols;
+          final regionH = image.height ~/ rows;
+          for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols && segments.length < numRegions; c++) {
+              int blackPixels = 0;
+              final startX = c * regionW;
+              final startY = r * regionH;
+              for (int y = startY; y < startY + regionH && y < image.height; y++) {
+                for (int x = startX; x < startX + regionW && x < image.width; x++) {
+                  final pixel = image.getPixel(x, y);
+                  final brightness = 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b;
+                  if (brightness < 128) blackPixels++;
+                }
+              }
+              segments.add({
+                'label': 'region_${r}_$c',
+                'boundingBox': {'x': startX, 'y': startY, 'width': regionW, 'height': regionH},
+                'pixelCount': blackPixels,
+                'pixelRatio': blackPixels / (regionW * regionH),
+              });
+            }
+          }
+          break;
+      }
+
+      sw.stop();
+      _recordPerfTiming('segmentImage', sw.elapsed);
+      _taskCompleted(sw.elapsed);
+
+      return {
+        'segments': segments,
+        'method': method,
+        'regionCount': segments.length,
+      };
+    } catch (e) {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordError('segmentImage', e);
+      return {'segments': [], 'method': method, 'regionCount': 0, 'error': e.toString()};
+    }
+  }
+
+  /// 图像增强：对图像进行增强处理以提升质量
+  ///
+  /// [imageBytes] 图像字节数据
+  /// [brightness] 亮度调节 (-1.0 ~ 1.0)，默认 0
+  /// [contrast] 对比度调节 (0.5 ~ 2.0)，默认 1.0
+  /// [sharpness] 锐化强度 (0.0 ~ 2.0)，默认 0
+  /// [denoise] 是否降噪，默认 false
+  /// 返回增强后的图像字节数据
+  static Future<Uint8List> enhanceImage(
+    Uint8List imageBytes, {
+    double brightness = 0,
+    double contrast = 1.0,
+    double sharpness = 0,
+    bool denoise = false,
+  }) async {
+    _recordUsage('enhanceImage');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      final image = img.decodeImage(imageBytes);
+      if (image == null) {
+        _recordError('enhanceImage', '图片解码失败');
+        return imageBytes; // 返回原图
+      }
+
+      img.Image result = image;
+
+      // 亮度和对比度调节
+      if (brightness != 0 || contrast != 1.0) {
+        result = img.adjustColor(result,
+          brightness: 1.0 + brightness,
+          contrast: contrast,
+        );
+      }
+
+      // 降噪处理
+      if (denoise) {
+        result = _gaussianBlur(result, strong: false);
+      }
+
+      // 锐化处理
+      if (sharpness > 0) {
+        final sharpImg = img.Image(width: result.width, height: result.height);
+        final kernel = [0, -sharpness, 0, -sharpness, 1 + 4 * sharpness, -sharpness, 0, -sharpness, 0];
+        for (int y = 1; y < result.height - 1; y++) {
+          for (int x = 1; x < result.width - 1; x++) {
+            num r = 0, g = 0, b = 0;
+            int ki = 0;
+            for (int dy = -1; dy <= 1; dy++) {
+              for (int dx = -1; dx <= 1; dx++) {
+                final pixel = result.getPixel(x + dx, y + dy);
+                r += pixel.r * kernel[ki];
+                g += pixel.g * kernel[ki];
+                b += pixel.b * kernel[ki];
+                ki++;
+              }
+            }
+            sharpImg.setPixelRgba(x, y,
+              r.clamp(0, 255).toInt(),
+              g.clamp(0, 255).toInt(),
+              b.clamp(0, 255).toInt(),
+              255);
+          }
+        }
+        result = sharpImg;
+      }
+
+      // 编码回 PNG
+      final encoded = img.encodePng(result);
+
+      sw.stop();
+      _recordPerfTiming('enhanceImage', sw.elapsed);
+      _taskCompleted(sw.elapsed);
+      debugPrint('[ImageProcessor] 图像增强完成: brightness=$brightness, contrast=$contrast, sharpness=$sharpness, denoise=$denoise');
+
+      return Uint8List.fromList(encoded);
+    } catch (e) {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordError('enhanceImage', e);
+      return imageBytes; // 出错返回原图
+    }
+  }
+
   /// Process a source image into individual character glyphs.
   /// Assumes characters are written on a grid (e.g., graph paper).
   /// Returns a map of character string -> binary image data.
