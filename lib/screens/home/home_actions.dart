@@ -9,6 +9,7 @@ import '../character_grid_screen.dart';
 import '../processing_screen.dart';
 import '../project_list_screen.dart';
 import '../style_transfer_screen.dart';
+import '../ai_font_generator_screen.dart';
 
 /// 首页业务逻辑辅助类
 class HomeActions {
@@ -150,6 +151,14 @@ class HomeActions {
     Navigator.push(
       context,
       WFAnimations.slideRoute(const StyleTransferScreen()),
+    );
+  }
+
+  /// 打开 AI 智能字体生成器
+  static void openAiFontGenerator(BuildContext context) {
+    Navigator.push(
+      context,
+      WFAnimations.slideRoute(const AiFontGeneratorScreen()),
     );
   }
 }

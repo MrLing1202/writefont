@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'generated/l10n/app_localizations.dart';
 import 'services/locale_service.dart';
 import 'models/project.dart';
+import 'screens/ai_font_generator_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/auto_generate_screen.dart';
@@ -384,6 +385,8 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             return MaterialPageRoute(builder: (_) => const ProjectListScreen());
           case '/settings':
             return MaterialPageRoute(builder: (_) => SettingsScreen(onThemeChanged: () => _loadThemeMode()));
+          case '/ai-font-generator':
+            return MaterialPageRoute(builder: (_) => const AiFontGeneratorScreen());
           case '/auto-generate':
             final imageBytes = (settings.arguments as Map<String, dynamic>?)?['imageBytes'] as Uint8List?;
             if (imageBytes != null) {

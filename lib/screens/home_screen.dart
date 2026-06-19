@@ -202,6 +202,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 14),
 
+              // ── AI 智能字体生成器 ──
+              WFAnimations.fadeInSlide(
+                WFActionCard(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'AI 智能生成',
+                  subtitle: '通过文字描述，AI 自动生成独特字体风格',
+                  color: const Color(0xFF8E44AD), // 紫色区分
+                  onTap: () => HomeActions.openAiFontGenerator(context),
+                ),
+                delay: const Duration(milliseconds: 360),
+              ),
+              const SizedBox(height: 14),
+
               // ── 辅助功能入口 ──
               WFAnimations.fadeInSlide(
                 SecondaryEntryCard(
