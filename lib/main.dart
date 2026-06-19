@@ -2103,6 +2103,549 @@ class RecommendationService {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// 社区服务：社区帖子、话题、排行榜、活动
+// ═══════════════════════════════════════════════════════════
+
+/// 社区帖子数据模型
+class CommunityPost {
+  final String id;
+  final String authorId;
+  final String authorName;
+  final String title;
+  final String content;
+  final String category; // showcase, tutorial, question, discussion
+  final List<String> tags;
+  final int likeCount;
+  final int commentCount;
+  final int viewCount;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+  final bool isPinned;
+
+  CommunityPost({
+    required this.id,
+    required this.authorId,
+    required this.authorName,
+    required this.title,
+    required this.content,
+    this.category = 'discussion',
+    this.tags = const [],
+    this.likeCount = 0,
+    this.commentCount = 0,
+    this.viewCount = 0,
+    DateTime? createdAt,
+    this.updatedAt,
+    this.isPinned = false,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'authorId': authorId,
+        'authorName': authorName,
+        'title': title,
+        'content': content,
+        'category': category,
+        'tags': tags,
+        'likeCount': likeCount,
+        'commentCount': commentCount,
+        'viewCount': viewCount,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt?.toIso8601String(),
+        'isPinned': isPinned,
+      };
+
+  factory CommunityPost.fromJson(Map<String, dynamic> json) => CommunityPost(
+        id: json['id'] as String,
+        authorId: json['authorId'] as String? ?? '',
+        authorName: json['authorName'] as String? ?? '',
+        title: json['title'] as String,
+        content: json['content'] as String,
+        category: json['category'] as String? ?? 'discussion',
+        tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+        likeCount: json['likeCount'] as int? ?? 0,
+        commentCount: json['commentCount'] as int? ?? 0,
+        viewCount: json['viewCount'] as int? ?? 0,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt'] as String) : null,
+        isPinned: json['isPinned'] as bool? ?? false,
+      );
+}
+
+/// 社区话题数据模型
+class CommunityTopic {
+  final String id;
+  final String name;
+  final String description;
+  final String icon;
+  final int postCount;
+  final int participantCount;
+  final DateTime createdAt;
+  final bool isHot;
+
+  CommunityTopic({
+    required this.id,
+    required this.name,
+    required this.description,
+    this.icon = '💬',
+    this.postCount = 0,
+    this.participantCount = 0,
+    DateTime? createdAt,
+    this.isHot = false,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'icon': icon,
+        'postCount': postCount,
+        'participantCount': participantCount,
+        'createdAt': createdAt.toIso8601String(),
+        'isHot': isHot,
+      };
+
+  factory CommunityTopic.fromJson(Map<String, dynamic> json) => CommunityTopic(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        description: json['description'] as String? ?? '',
+        icon: json['icon'] as String? ?? '💬',
+        postCount: json['postCount'] as int? ?? 0,
+        participantCount: json['participantCount'] as int? ?? 0,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        isHot: json['isHot'] as bool? ?? false,
+      );
+}
+
+/// 社区排行榜条目
+class LeaderboardEntry {
+  final String userId;
+  final String userName;
+  final String avatar;
+  final int score;
+  final int rank;
+  final Map<String, dynamic> stats; // {projects: n, likes: n, shares: n}
+
+  LeaderboardEntry({
+    required this.userId,
+    required this.userName,
+    this.avatar = '',
+    this.score = 0,
+    this.rank = 0,
+    this.stats = const {},
+  });
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'userName': userName,
+        'avatar': avatar,
+        'score': score,
+        'rank': rank,
+        'stats': stats,
+      };
+
+  factory LeaderboardEntry.fromJson(Map<String, dynamic> json) => LeaderboardEntry(
+        userId: json['userId'] as String,
+        userName: json['userName'] as String? ?? '',
+        avatar: json['avatar'] as String? ?? '',
+        score: json['score'] as int? ?? 0,
+        rank: json['rank'] as int? ?? 0,
+        stats: json['stats'] as Map<String, dynamic>? ?? {},
+      );
+}
+
+/// 社区活动数据模型
+class CommunityActivity {
+  final String id;
+  final String title;
+  final String description;
+  final String type; // challenge, contest, workshop, meetup
+  final DateTime startTime;
+  final DateTime endTime;
+  final int participantCount;
+  final int maxParticipants;
+  final String? rewardDescription;
+  final bool isActive;
+
+  CommunityActivity({
+    required this.id,
+    required this.title,
+    required this.description,
+    this.type = 'challenge',
+    required this.startTime,
+    required this.endTime,
+    this.participantCount = 0,
+    this.maxParticipants = 100,
+    this.rewardDescription,
+    this.isActive = true,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'type': type,
+        'startTime': startTime.toIso8601String(),
+        'endTime': endTime.toIso8601String(),
+        'participantCount': participantCount,
+        'maxParticipants': maxParticipants,
+        'rewardDescription': rewardDescription,
+        'isActive': isActive,
+      };
+
+  factory CommunityActivity.fromJson(Map<String, dynamic> json) => CommunityActivity(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String? ?? '',
+        type: json['type'] as String? ?? 'challenge',
+        startTime: DateTime.parse(json['startTime'] as String),
+        endTime: DateTime.parse(json['endTime'] as String),
+        participantCount: json['participantCount'] as int? ?? 0,
+        maxParticipants: json['maxParticipants'] as int? ?? 100,
+        rewardDescription: json['rewardDescription'] as String?,
+        isActive: json['isActive'] as bool? ?? true,
+      );
+}
+
+/// 社区服务
+///
+/// 功能：
+/// - 社区帖子管理（发布、浏览、搜索）
+/// - 社区话题管理（创建、浏览热门话题）
+/// - 社区排行榜（贡献排名、活跃排名）
+/// - 社区活动管理（创建、参与活动）
+class CommunityService {
+  static final CommunityService _instance = CommunityService._();
+  static CommunityService get instance => _instance;
+  CommunityService._();
+
+  static const String _postsKey = 'community_posts';
+  static const String _topicsKey = 'community_topics';
+  static const String _activitiesKey = 'community_activities';
+  static const String _leaderboardKey = 'community_leaderboard';
+  static const int _maxPosts = 500;
+
+  final List<CommunityPost> _posts = [];
+  final List<CommunityTopic> _topics = [];
+  final List<CommunityActivity> _activities = [];
+  final List<LeaderboardEntry> _leaderboard = [];
+
+  /// 获取帖子列表
+  List<CommunityPost> get posts => List.unmodifiable(_posts);
+
+  /// 获取话题列表
+  List<CommunityTopic> get topics => List.unmodifiable(_topics);
+
+  /// 获取活动列表
+  List<CommunityActivity> get activities => List.unmodifiable(_activities);
+
+  /// 获取排行榜
+  List<LeaderboardEntry> get leaderboard => List.unmodifiable(_leaderboard);
+
+  /// 初始化社区服务
+  Future<void> init() async {
+    try {
+      await _loadPosts();
+      await _loadTopics();
+      await _loadActivities();
+      await _loadLeaderboard();
+
+      // 如果没有默认话题，创建默认话题
+      if (_topics.isEmpty) {
+        _createDefaultTopics();
+      }
+
+      debugPrint('[Community] 初始化完成: ${_posts.length} 帖子, ${_topics.length} 话题');
+    } catch (e) {
+      debugPrint('[Community] 初始化失败: $e');
+    }
+  }
+
+  /// 创建默认话题
+  void _createDefaultTopics() {
+    _topics.addAll([
+      CommunityTopic(id: 'showcase', name: '作品展示', description: '展示你的手写字体作品', icon: '🎨', isHot: true),
+      CommunityTopic(id: 'tutorial', name: '教程分享', description: '分享字体创作技巧和教程', icon: '📚'),
+      CommunityTopic(id: 'question', name: '问答求助', description: '遇到问题？寻求社区帮助', icon: '❓'),
+      CommunityTopic(id: 'discussion', name: '交流讨论', description: '关于字体设计的交流讨论', icon: '💬', isHot: true),
+      CommunityTopic(id: 'feedback', name: '反馈建议', description: '对应用的反馈和建议', icon: '💡'),
+    ]);
+    _saveTopics();
+  }
+
+  /// 发布帖子
+  Future<CommunityPost?> createPost({
+    required String title,
+    required String content,
+    required String authorName,
+    String category = 'discussion',
+    List<String> tags = const [],
+  }) async {
+    try {
+      final post = CommunityPost(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        authorId: 'local_user',
+        authorName: authorName,
+        title: title,
+        content: content,
+        category: category,
+        tags: tags,
+      );
+
+      _posts.insert(0, post);
+      // 限制帖子数量
+      while (_posts.length > _maxPosts) {
+        _posts.removeLast();
+      }
+      await _savePosts();
+
+      debugPrint('[Community] 帖子已发布: $title');
+      return post;
+    } catch (e) {
+      debugPrint('[Community] 发布帖子失败: $e');
+      return null;
+    }
+  }
+
+  /// 搜索帖子
+  List<CommunityPost> searchPosts(String query, {String? category}) {
+    final lowerQuery = query.toLowerCase();
+    return _posts.where((post) {
+      if (category != null && post.category != category) return false;
+      return post.title.toLowerCase().contains(lowerQuery) ||
+          post.content.toLowerCase().contains(lowerQuery) ||
+          post.tags.any((tag) => tag.toLowerCase().contains(lowerQuery));
+    }).toList();
+  }
+
+  /// 按话题获取帖子
+  List<CommunityPost> getPostsByTopic(String topicId) {
+    return _posts.where((post) => post.category == topicId).toList();
+  }
+
+  /// 获取热门帖子（按点赞数排序）
+  List<CommunityPost> getHotPosts({int limit = 10}) {
+    final sorted = List<CommunityPost>.from(_posts)
+      ..sort((a, b) => b.likeCount.compareTo(a.likeCount));
+    return sorted.take(limit).toList();
+  }
+
+  /// 获取最新帖子
+  List<CommunityPost> getRecentPosts({int limit = 20}) {
+    return _posts.take(limit).toList();
+  }
+
+  /// 获取热门话题
+  List<CommunityTopic> getHotTopics() {
+    return _topics.where((t) => t.isHot).toList();
+  }
+
+  /// 创建社区活动
+  Future<CommunityActivity?> createActivity({
+    required String title,
+    required String description,
+    required DateTime startTime,
+    required DateTime endTime,
+    String type = 'challenge',
+    int maxParticipants = 100,
+    String? rewardDescription,
+  }) async {
+    try {
+      final activity = CommunityActivity(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: title,
+        description: description,
+        type: type,
+        startTime: startTime,
+        endTime: endTime,
+        maxParticipants: maxParticipants,
+        rewardDescription: rewardDescription,
+      );
+
+      _activities.insert(0, activity);
+      await _saveActivities();
+
+      debugPrint('[Community] 活动已创建: $title');
+      return activity;
+    } catch (e) {
+      debugPrint('[Community] 创建活动失败: $e');
+      return null;
+    }
+  }
+
+  /// 获取进行中的活动
+  List<CommunityActivity> getActiveActivities() {
+    final now = DateTime.now();
+    return _activities.where((a) => a.isActive && a.startTime.isBefore(now) && a.endTime.isAfter(now)).toList();
+  }
+
+  /// 获取即将开始的活动
+  List<CommunityActivity> getUpcomingActivities() {
+    final now = DateTime.now();
+    return _activities.where((a) => a.isActive && a.startTime.isAfter(now)).toList();
+  }
+
+  /// 更新排行榜
+  Future<void> updateLeaderboard({
+    required String userId,
+    required String userName,
+    required int score,
+    Map<String, dynamic>? stats,
+  }) async {
+    try {
+      final index = _leaderboard.indexWhere((e) => e.userId == userId);
+      if (index >= 0) {
+        _leaderboard[index] = LeaderboardEntry(
+          userId: userId,
+          userName: userName,
+          score: score,
+          stats: stats ?? _leaderboard[index].stats,
+        );
+      } else {
+        _leaderboard.add(LeaderboardEntry(
+          userId: userId,
+          userName: userName,
+          score: score,
+          stats: stats ?? {},
+        ));
+      }
+
+      // 按分数排序并更新排名
+      _leaderboard.sort((a, b) => b.score.compareTo(a.score));
+      for (int i = 0; i < _leaderboard.length; i++) {
+        _leaderboard[i] = LeaderboardEntry(
+          userId: _leaderboard[i].userId,
+          userName: _leaderboard[i].userName,
+          avatar: _leaderboard[i].avatar,
+          score: _leaderboard[i].score,
+          rank: i + 1,
+          stats: _leaderboard[i].stats,
+        );
+      }
+
+      await _saveLeaderboard();
+      debugPrint('[Community] 排行榜已更新');
+    } catch (e) {
+      debugPrint('[Community] 更新排行榜失败: $e');
+    }
+  }
+
+  /// 获取排行榜前N名
+  List<LeaderboardEntry> getTopRankings({int limit = 10}) {
+    return _leaderboard.take(limit).toList();
+  }
+
+  /// 获取社区统计摘要
+  Map<String, dynamic> getCommunityStats() {
+    final now = DateTime.now();
+    return {
+      'totalPosts': _posts.length,
+      'totalTopics': _topics.length,
+      'activeActivities': _activities.where((a) => a.isActive && a.startTime.isBefore(now) && a.endTime.isAfter(now)).length,
+      'totalParticipants': _leaderboard.length,
+      'hotTopics': _topics.where((t) => t.isHot).length,
+    };
+  }
+
+  // ── 持久化方法 ──
+
+  Future<void> _savePosts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_posts.map((e) => e.toJson()).toList());
+      await prefs.setString(_postsKey, json);
+    } catch (e) {
+      debugPrint('[Community] 保存帖子失败: $e');
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_postsKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _posts.clear();
+        _posts.addAll(list.map((e) => CommunityPost.fromJson(e as Map<String, dynamic>)));
+      }
+    } catch (e) {
+      debugPrint('[Community] 加载帖子失败: $e');
+    }
+  }
+
+  Future<void> _saveTopics() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_topics.map((e) => e.toJson()).toList());
+      await prefs.setString(_topicsKey, json);
+    } catch (e) {
+      debugPrint('[Community] 保存话题失败: $e');
+    }
+  }
+
+  Future<void> _loadTopics() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_topicsKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _topics.clear();
+        _topics.addAll(list.map((e) => CommunityTopic.fromJson(e as Map<String, dynamic>)));
+      }
+    } catch (e) {
+      debugPrint('[Community] 加载话题失败: $e');
+    }
+  }
+
+  Future<void> _saveActivities() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_activities.map((e) => e.toJson()).toList());
+      await prefs.setString(_activitiesKey, json);
+    } catch (e) {
+      debugPrint('[Community] 保存活动失败: $e');
+    }
+  }
+
+  Future<void> _loadActivities() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_activitiesKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _activities.clear();
+        _activities.addAll(list.map((e) => CommunityActivity.fromJson(e as Map<String, dynamic>)));
+      }
+    } catch (e) {
+      debugPrint('[Community] 加载活动失败: $e');
+    }
+  }
+
+  Future<void> _saveLeaderboard() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_leaderboard.map((e) => e.toJson()).toList());
+      await prefs.setString(_leaderboardKey, json);
+    } catch (e) {
+      debugPrint('[Community] 保存排行榜失败: $e');
+    }
+  }
+
+  Future<void> _loadLeaderboard() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_leaderboardKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _leaderboard.clear();
+        _leaderboard.addAll(list.map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>)));
+      }
+    } catch (e) {
+      debugPrint('[Community] 加载排行榜失败: $e');
+    }
+  }
+}
+
 /// 应用主导航页面 - 包含底部导航栏和页面状态保持
 class MainNavigationPage extends StatefulWidget {
   final VoidCallback? onThemeChanged;
@@ -2196,6 +2739,7 @@ void main() async {
   await NotificationService.instance.init(); // 初始化通知服务
   await CategoryService.instance.init(); // 初始化分类服务
   await CompatibilityService.instance.init(); // 初始化兼容性服务
+  await CommunityService.instance.init(); // 初始化社区服务
   FlutterError.onError = (details) {
     AppAnalytics.trackError(
       details.exceptionAsString(),

@@ -663,6 +663,10 @@ class CloudSyncService {
         await _refreshSession();
       }
 
+      // 加载分享统计和社交数据
+      await _loadShareStats();
+      await _loadSocialData();
+
       _addLog('info', '云同步服务初始化完成');
     } catch (e) {
       _addLog('error', '云同步服务初始化失败: $e');
@@ -1742,6 +1746,605 @@ class CloudSyncService {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // 社交分享功能增强
+  // ═══════════════════════════════════════════════════════════
+
+  /// 分享统计数据模型
+  final Map<String, ShareStats> _shareStatsMap = {};
+  static const String _keyShareStats = 'cloud_share_stats';
+
+  /// 分享奖励积分
+  int _shareRewardPoints = 0;
+  static const String _keyShareRewardPoints = 'cloud_share_reward_points';
+
+  /// 分享奖励等级
+  static const Map<String, int> _shareRewardTiers = {
+    'bronze': 10,    // 10积分
+    'silver': 30,    // 30积分
+    'gold': 50,      // 50积分
+    'diamond': 100,  // 100积分
+  };
+
+  /// 获取分享统计
+  Map<String, ShareStats> get shareStats => Map.unmodifiable(_shareStatsMap);
+
+  /// 获取分享奖励积分
+  int get shareRewardPoints => _shareRewardPoints;
+
+  /// 获取分享奖励等级
+  String get shareRewardTier {
+    if (_shareRewardPoints >= 1000) return 'diamond';
+    if (_shareRewardPoints >= 500) return 'gold';
+    if (_shareRewardPoints >= 200) return 'silver';
+    return 'bronze';
+  }
+
+  /// 记录分享统计
+  ///
+  /// [projectId] 项目 ID
+  /// [platform] 分享平台
+  /// [shareType] 分享类型
+  Future<void> recordShareStats({
+    required String projectId,
+    required String platform,
+    String shareType = 'project',
+  }) async {
+    try {
+      final key = '${projectId}_$platform';
+      final existing = _shareStatsMap[key];
+      final now = DateTime.now();
+
+      _shareStatsMap[key] = ShareStats(
+        projectId: projectId,
+        platform: platform,
+        shareType: shareType,
+        shareCount: (existing?.shareCount ?? 0) + 1,
+        firstSharedAt: existing?.firstSharedAt ?? now,
+        lastSharedAt: now,
+      );
+
+      // 计算分享奖励积分
+      final rewardPoints = _calculateRewardPoints(platform, shareType);
+      _shareRewardPoints += rewardPoints;
+
+      // 持久化
+      await _saveShareStats();
+      await _saveShareRewardPoints();
+
+      _addLog('info', '分享统计已记录: $platform ($shareType), +$rewardPoints 积分');
+    } catch (e) {
+      debugPrint('记录分享统计失败: $e');
+    }
+  }
+
+  /// 计算分享奖励积分
+  int _calculateRewardPoints(String platform, String shareType) {
+    int basePoints = _shareRewardTiers['bronze'] ?? 10;
+
+    // 根据平台加成
+    switch (platform) {
+      case 'wechat':
+      case 'weibo':
+        basePoints += 5; // 国内社交平台加成
+        break;
+      case 'twitter':
+      case 'facebook':
+        basePoints += 3; // 国际社交平台加成
+        break;
+      default:
+        break;
+    }
+
+    // 根据分享类型加成
+    if (shareType == 'font') {
+      basePoints += 10; // 字体分享加成
+    }
+
+    return basePoints;
+  }
+
+  /// 获取分享推荐列表
+  ///
+  /// 基于用户分享历史和项目热度生成推荐
+  Future<List<ShareRecommendation>> getShareRecommendations() async {
+    final recommendations = <ShareRecommendation>[];
+
+    try {
+      final projects = await StorageService.loadProjects();
+
+      for (final project in projects) {
+        final stats = _getProjectShareStats(project.id);
+
+        // 从未分享过的项目
+        if (stats.isEmpty) {
+          recommendations.add(ShareRecommendation(
+            projectId: project.id,
+            projectName: project.name,
+            reason: '从未分享，尝试分享给朋友',
+            priority: 1,
+            suggestedPlatforms: ['wechat', 'weibo'],
+          ));
+        }
+        // 分享次数较少的项目
+        else if (stats.values.every((s) => s.shareCount < 3)) {
+          recommendations.add(ShareRecommendation(
+            projectId: project.id,
+            projectName: project.name,
+            reason: '分享次数较少，可以再分享一下',
+            priority: 2,
+            suggestedPlatforms: ['wechat', 'twitter'],
+          ));
+        }
+      }
+
+      // 按优先级排序
+      recommendations.sort((a, b) => a.priority.compareTo(b.priority));
+
+      _addLog('info', '生成分享推荐: ${recommendations.length} 条');
+    } catch (e) {
+      debugPrint('生成分享推荐失败: $e');
+    }
+
+    return recommendations;
+  }
+
+  /// 获取项目分享统计
+  Map<String, ShareStats> _getProjectShareStats(String projectId) {
+    return Map.fromEntries(
+      _shareStatsMap.entries.where((e) => e.value.projectId == projectId),
+    );
+  }
+
+  /// 获取分享历史
+  List<ShareStats> getShareHistory({int limit = 50}) {
+    final sorted = _shareStatsMap.values.toList()
+      ..sort((a, b) => b.lastSharedAt.compareTo(a.lastSharedAt));
+    return sorted.take(limit).toList();
+  }
+
+  /// 获取分享统计摘要
+  Map<String, dynamic> getShareStatsSummary() {
+    final totalShares = _shareStatsMap.values.fold<int>(
+      0, (sum, stats) => sum + stats.shareCount,
+    );
+
+    final platformCounts = <String, int>{};
+    for (final stats in _shareStatsMap.values) {
+      platformCounts[stats.platform] =
+          (platformCounts[stats.platform] ?? 0) + stats.shareCount;
+    }
+
+    return {
+      'totalShares': totalShares,
+      'uniqueProjects': _shareStatsMap.values.map((s) => s.projectId).toSet().length,
+      'platformBreakdown': platformCounts,
+      'rewardPoints': _shareRewardPoints,
+      'rewardTier': shareRewardTier,
+    };
+  }
+
+  /// 持久化分享统计
+  Future<void> _saveShareStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(
+        _shareStatsMap.map((k, v) => MapEntry(k, v.toJson())),
+      );
+      await prefs.setString(_keyShareStats, json);
+    } catch (e) {
+      debugPrint('保存分享统计失败: $e');
+    }
+  }
+
+  /// 持久化分享奖励积分
+  Future<void> _saveShareRewardPoints() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyShareRewardPoints, _shareRewardPoints);
+    } catch (e) {
+      debugPrint('保存分享奖励积分失败: $e');
+    }
+  }
+
+  /// 加载分享统计数据
+  Future<void> _loadShareStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 加载分享统计
+      final statsJson = prefs.getString(_keyShareStats);
+      if (statsJson != null) {
+        final map = jsonDecode(statsJson) as Map<String, dynamic>;
+        _shareStatsMap.clear();
+        for (final entry in map.entries) {
+          _shareStatsMap[entry.key] = ShareStats.fromJson(entry.value as Map<String, dynamic>);
+        }
+      }
+
+      // 加载奖励积分
+      _shareRewardPoints = prefs.getInt(_keyShareRewardPoints) ?? 0;
+
+      _addLog('info', '分享统计数据已加载');
+    } catch (e) {
+      debugPrint('加载分享统计失败: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 社交功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 好友列表
+  final List<FriendInfo> _friends = [];
+  static const String _keyFriends = 'cloud_friends';
+
+  /// 关注列表
+  final List<FollowInfo> _following = [];
+  static const String _keyFollowing = 'cloud_following';
+
+  /// 粉丝列表
+  final List<FollowInfo> _followers = [];
+  static const String _keyFollowers = 'cloud_followers';
+
+  /// 私信列表
+  final List<DirectMessage> _directMessages = [];
+  static const String _keyDirectMessages = 'cloud_direct_messages';
+
+  /// 动态列表
+  final List<ActivityFeed> _activityFeed = [];
+  static const String _keyActivityFeed = 'cloud_activity_feed';
+
+  /// 获取好友列表
+  List<FriendInfo> get friends => List.unmodifiable(_friends);
+
+  /// 获取关注列表
+  List<FollowInfo> get following => List.unmodifiable(_following);
+
+  /// 获取粉丝列表
+  List<FollowInfo> get followers => List.unmodifiable(_followers);
+
+  /// 获取未读私信数量
+  int get unreadDirectMessageCount =>
+      _directMessages.where((m) => !m.isRead && m.receiverId == _userId).length;
+
+  /// 获取动态列表
+  List<ActivityFeed> get activityFeed => List.unmodifiable(_activityFeed);
+
+  /// 添加好友
+  ///
+  /// [friendId] 好友 ID
+  /// [friendName] 好友名称
+  Future<String?> addFriend(String friendId, String friendName) async {
+    if (!isSignedIn()) return '请先登录';
+
+    try {
+      // 检查是否已经是好友
+      if (_friends.any((f) => f.friendId == friendId)) {
+        return '已经是好友';
+      }
+
+      // 发送好友请求到云端
+      await http.post(
+        Uri.parse('${SupabaseConfig.url}/rest/v1/friendships'),
+        headers: _authHeaders(),
+        body: jsonEncode({
+          'user_id': _userId,
+          'friend_id': friendId,
+          'status': 'pending',
+        }),
+      ).timeout(const Duration(seconds: 5));
+
+      // 本地保存
+      _friends.add(FriendInfo(
+        friendId: friendId,
+        friendName: friendName,
+        addedAt: DateTime.now(),
+        status: 'pending',
+      ));
+      await _saveFriends();
+
+      // 记录动态
+      await _addActivity(
+        type: 'friend_request',
+        content: '向 $friendName 发送了好友请求',
+        targetId: friendId,
+      );
+
+      _addLog('info', '好友请求已发送: $friendName');
+      return null;
+    } catch (e) {
+      _addLog('error', '添加好友失败: $e');
+      return '添加好友失败: $e';
+    }
+  }
+
+  /// 接受好友请求
+  Future<String?> acceptFriendRequest(String friendId) async {
+    try {
+      final index = _friends.indexWhere((f) => f.friendId == friendId && f.status == 'pending');
+      if (index < 0) return '好友请求不存在';
+
+      _friends[index] = FriendInfo(
+        friendId: _friends[index].friendId,
+        friendName: _friends[index].friendName,
+        addedAt: _friends[index].addedAt,
+        status: 'accepted',
+      );
+      await _saveFriends();
+
+      _addLog('info', '好友请求已接受: ${_friends[index].friendName}');
+      return null;
+    } catch (e) {
+      _addLog('error', '接受好友请求失败: $e');
+      return '接受好友请求失败: $e';
+    }
+  }
+
+  /// 删除好友
+  Future<String?> removeFriend(String friendId) async {
+    try {
+      _friends.removeWhere((f) => f.friendId == friendId);
+      await _saveFriends();
+
+      _addLog('info', '好友已删除');
+      return null;
+    } catch (e) {
+      _addLog('error', '删除好友失败: $e');
+      return '删除好友失败: $e';
+    }
+  }
+
+  /// 关注用户
+  ///
+  /// [userId] 要关注的用户 ID
+  /// [userName] 用户名称
+  Future<String?> followUser(String userId, String userName) async {
+    if (!isSignedIn()) return '请先登录';
+
+    try {
+      if (_following.any((f) => f.targetId == userId)) {
+        return '已经关注';
+      }
+
+      _following.add(FollowInfo(
+        userId: _userId!,
+        targetId: userId,
+        targetName: userName,
+        followedAt: DateTime.now(),
+      ));
+      await _saveFollowing();
+
+      // 记录动态
+      await _addActivity(
+        type: 'follow',
+        content: '关注了 $userName',
+        targetId: userId,
+      );
+
+      _addLog('info', '已关注: $userName');
+      return null;
+    } catch (e) {
+      _addLog('error', '关注失败: $e');
+      return '关注失败: $e';
+    }
+  }
+
+  /// 取消关注
+  Future<String?> unfollowUser(String userId) async {
+    try {
+      _following.removeWhere((f) => f.targetId == userId);
+      await _saveFollowing();
+
+      _addLog('info', '已取消关注');
+      return null;
+    } catch (e) {
+      _addLog('error', '取消关注失败: $e');
+      return '取消关注失败: $e';
+    }
+  }
+
+  /// 发送私信
+  ///
+  /// [receiverId] 接收者 ID
+  /// [content] 消息内容
+  Future<String?> sendDirectMessage({
+    required String receiverId,
+    required String content,
+  }) async {
+    if (!isSignedIn()) return '请先登录';
+
+    try {
+      final message = DirectMessage(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        senderId: _userId!,
+        senderName: _userEmail ?? '未知',
+        receiverId: receiverId,
+        content: content,
+        timestamp: DateTime.now(),
+      );
+
+      _directMessages.insert(0, message);
+      // 限制私信数量
+      while (_directMessages.length > 500) {
+        _directMessages.removeLast();
+      }
+      await _saveDirectMessages();
+
+      _addLog('info', '私信已发送');
+      return null;
+    } catch (e) {
+      _addLog('error', '发送私信失败: $e');
+      return '发送私信失败: $e';
+    }
+  }
+
+  /// 获取与指定用户的私信
+  List<DirectMessage> getConversation(String otherUserId) {
+    return _directMessages.where((m) =>
+      (m.senderId == _userId && m.receiverId == otherUserId) ||
+      (m.senderId == otherUserId && m.receiverId == _userId)
+    ).toList();
+  }
+
+  /// 标记私信已读
+  Future<void> markDirectMessageAsRead(String messageId) async {
+    try {
+      final index = _directMessages.indexWhere((m) => m.id == messageId);
+      if (index >= 0) {
+        _directMessages[index] = DirectMessage(
+          id: _directMessages[index].id,
+          senderId: _directMessages[index].senderId,
+          senderName: _directMessages[index].senderName,
+          receiverId: _directMessages[index].receiverId,
+          content: _directMessages[index].content,
+          timestamp: _directMessages[index].timestamp,
+          isRead: true,
+        );
+        await _saveDirectMessages();
+      }
+    } catch (_) {}
+  }
+
+  /// 添加动态
+  Future<void> _addActivity({
+    required String type,
+    required String content,
+    String? targetId,
+    Map<String, dynamic>? metadata,
+  }) async {
+    try {
+      _activityFeed.insert(0, ActivityFeed(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        userId: _userId ?? '',
+        userName: _userEmail ?? '未知',
+        type: type,
+        content: content,
+        targetId: targetId,
+        timestamp: DateTime.now(),
+        metadata: metadata,
+      ));
+      // 限制动态数量
+      while (_activityFeed.length > 200) {
+        _activityFeed.removeLast();
+      }
+      await _saveActivityFeed();
+    } catch (e) {
+      debugPrint('添加动态失败: $e');
+    }
+  }
+
+  /// 获取好友动态
+  List<ActivityFeed> getFriendActivities({int limit = 50}) {
+    return _activityFeed.take(limit).toList();
+  }
+
+  /// 持久化好友列表
+  Future<void> _saveFriends() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_friends.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyFriends, json);
+    } catch (e) {
+      debugPrint('保存好友列表失败: $e');
+    }
+  }
+
+  /// 持久化关注列表
+  Future<void> _saveFollowing() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_following.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyFollowing, json);
+    } catch (e) {
+      debugPrint('保存关注列表失败: $e');
+    }
+  }
+
+  /// 持久化粉丝列表
+  Future<void> _saveFollowers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_followers.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyFollowers, json);
+    } catch (e) {
+      debugPrint('保存粉丝列表失败: $e');
+    }
+  }
+
+  /// 持久化私信列表
+  Future<void> _saveDirectMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_directMessages.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyDirectMessages, json);
+    } catch (e) {
+      debugPrint('保存私信列表失败: $e');
+    }
+  }
+
+  /// 持久化动态列表
+  Future<void> _saveActivityFeed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_activityFeed.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyActivityFeed, json);
+    } catch (e) {
+      debugPrint('保存动态列表失败: $e');
+    }
+  }
+
+  /// 加载社交数据
+  Future<void> _loadSocialData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 加载好友列表
+      final friendsJson = prefs.getString(_keyFriends);
+      if (friendsJson != null) {
+        final list = jsonDecode(friendsJson) as List;
+        _friends.clear();
+        _friends.addAll(list.map((e) => FriendInfo.fromJson(e as Map<String, dynamic>)));
+      }
+
+      // 加载关注列表
+      final followingJson = prefs.getString(_keyFollowing);
+      if (followingJson != null) {
+        final list = jsonDecode(followingJson) as List;
+        _following.clear();
+        _following.addAll(list.map((e) => FollowInfo.fromJson(e as Map<String, dynamic>)));
+      }
+
+      // 加载粉丝列表
+      final followersJson = prefs.getString(_keyFollowers);
+      if (followersJson != null) {
+        final list = jsonDecode(followersJson) as List;
+        _followers.clear();
+        _followers.addAll(list.map((e) => FollowInfo.fromJson(e as Map<String, dynamic>)));
+      }
+
+      // 加载私信列表
+      final dmJson = prefs.getString(_keyDirectMessages);
+      if (dmJson != null) {
+        final list = jsonDecode(dmJson) as List;
+        _directMessages.clear();
+        _directMessages.addAll(list.map((e) => DirectMessage.fromJson(e as Map<String, dynamic>)));
+      }
+
+      // 加载动态列表
+      final feedJson = prefs.getString(_keyActivityFeed);
+      if (feedJson != null) {
+        final list = jsonDecode(feedJson) as List;
+        _activityFeed.clear();
+        _activityFeed.addAll(list.map((e) => ActivityFeed.fromJson(e as Map<String, dynamic>)));
+      }
+
+      _addLog('info', '社交数据已加载');
+    } catch (e) {
+      debugPrint('加载社交数据失败: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // 协作功能
   // ═══════════════════════════════════════════════════════════
 
@@ -2306,6 +2909,204 @@ class CloudSyncService {
 
     return conflicts;
   }
+}
+/// 分享统计数据模型
+class ShareStats {
+  final String projectId;
+  final String platform;
+  final String shareType;
+  final int shareCount;
+  final DateTime firstSharedAt;
+  final DateTime lastSharedAt;
+
+  ShareStats({
+    required this.projectId,
+    required this.platform,
+    required this.shareType,
+    this.shareCount = 1,
+    DateTime? firstSharedAt,
+    DateTime? lastSharedAt,
+  })  : firstSharedAt = firstSharedAt ?? DateTime.now(),
+        lastSharedAt = lastSharedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'projectId': projectId,
+        'platform': platform,
+        'shareType': shareType,
+        'shareCount': shareCount,
+        'firstSharedAt': firstSharedAt.toIso8601String(),
+        'lastSharedAt': lastSharedAt.toIso8601String(),
+      };
+
+  factory ShareStats.fromJson(Map<String, dynamic> json) => ShareStats(
+        projectId: json['projectId'] as String,
+        platform: json['platform'] as String,
+        shareType: json['shareType'] as String? ?? 'project',
+        shareCount: json['shareCount'] as int? ?? 1,
+        firstSharedAt: DateTime.parse(json['firstSharedAt'] as String),
+        lastSharedAt: DateTime.parse(json['lastSharedAt'] as String),
+      );
+}
+
+/// 分享推荐数据模型
+class ShareRecommendation {
+  final String projectId;
+  final String projectName;
+  final String reason;
+  final int priority;
+  final List<String> suggestedPlatforms;
+
+  ShareRecommendation({
+    required this.projectId,
+    required this.projectName,
+    required this.reason,
+    this.priority = 1,
+    this.suggestedPlatforms = const [],
+  });
+}
+
+/// 好友信息数据模型
+class FriendInfo {
+  final String friendId;
+  final String friendName;
+  final DateTime addedAt;
+  final String status; // pending, accepted, blocked
+
+  FriendInfo({
+    required this.friendId,
+    required this.friendName,
+    DateTime? addedAt,
+    this.status = 'pending',
+  }) : addedAt = addedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'friendId': friendId,
+        'friendName': friendName,
+        'addedAt': addedAt.toIso8601String(),
+        'status': status,
+      };
+
+  factory FriendInfo.fromJson(Map<String, dynamic> json) => FriendInfo(
+        friendId: json['friendId'] as String,
+        friendName: json['friendName'] as String,
+        addedAt: DateTime.parse(json['addedAt'] as String),
+        status: json['status'] as String? ?? 'pending',
+      );
+}
+
+/// 关注信息数据模型
+class FollowInfo {
+  final String userId;
+  final String targetId;
+  final String targetName;
+  final DateTime followedAt;
+
+  FollowInfo({
+    required this.userId,
+    required this.targetId,
+    required this.targetName,
+    DateTime? followedAt,
+  }) : followedAt = followedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'targetId': targetId,
+        'targetName': targetName,
+        'followedAt': followedAt.toIso8601String(),
+      };
+
+  factory FollowInfo.fromJson(Map<String, dynamic> json) => FollowInfo(
+        userId: json['userId'] as String,
+        targetId: json['targetId'] as String,
+        targetName: json['targetName'] as String? ?? '',
+        followedAt: DateTime.parse(json['followedAt'] as String),
+      );
+}
+
+/// 私信数据模型
+class DirectMessage {
+  final String id;
+  final String senderId;
+  final String senderName;
+  final String receiverId;
+  final String content;
+  final DateTime timestamp;
+  final bool isRead;
+
+  DirectMessage({
+    required this.id,
+    required this.senderId,
+    required this.senderName,
+    required this.receiverId,
+    required this.content,
+    DateTime? timestamp,
+    this.isRead = false,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'senderId': senderId,
+        'senderName': senderName,
+        'receiverId': receiverId,
+        'content': content,
+        'timestamp': timestamp.toIso8601String(),
+        'isRead': isRead,
+      };
+
+  factory DirectMessage.fromJson(Map<String, dynamic> json) => DirectMessage(
+        id: json['id'] as String,
+        senderId: json['senderId'] as String,
+        senderName: json['senderName'] as String? ?? '',
+        receiverId: json['receiverId'] as String,
+        content: json['content'] as String,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        isRead: json['isRead'] as bool? ?? false,
+      );
+}
+
+/// 动态信息数据模型
+class ActivityFeed {
+  final String id;
+  final String userId;
+  final String userName;
+  final String type; // friend_request, follow, share, like, comment
+  final String content;
+  final String? targetId;
+  final DateTime timestamp;
+  final Map<String, dynamic>? metadata;
+
+  ActivityFeed({
+    required this.id,
+    required this.userId,
+    required this.userName,
+    required this.type,
+    required this.content,
+    this.targetId,
+    DateTime? timestamp,
+    this.metadata,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+          'userId': userId,
+        'userName': userName,
+        'type': type,
+        'content': content,
+        'targetId': targetId,
+        'timestamp': timestamp.toIso8601String(),
+        'metadata': metadata,
+      };
+
+  factory ActivityFeed.fromJson(Map<String, dynamic> json) => ActivityFeed(
+        id: json['id'] as String,
+        userId: json['userId'] as String,
+        userName: json['userName'] as String? ?? '',
+        type: json['type'] as String,
+        content: json['content'] as String,
+        targetId: json['targetId'] as String?,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        metadata: json['metadata'] as Map<String, dynamic>?,
+      );
 }
 
 /// 离线操作数据模型

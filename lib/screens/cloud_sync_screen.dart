@@ -60,6 +60,28 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   /// 协作邀请邮箱输入
   final TextEditingController _inviteEmailController = TextEditingController();
 
+  // ═══════════════════════════════════════════════════════
+  // 社交功能状态
+  // ═══════════════════════════════════════════════════════
+
+  /// 好友列表
+  List<FriendInfo> _friends = [];
+
+  /// 关注列表
+  List<FollowInfo> _following = [];
+
+  /// 粉丝列表
+  List<FollowInfo> _followers = [];
+
+  /// 私信列表
+  List<DirectMessage> _directMessages = [];
+
+  /// 动态列表
+  List<ActivityFeed> _activityFeed = [];
+
+  /// 社交Tab索引
+  int _socialTabIndex = 0; // 0=好友, 1=关注, 2=私信, 3=动态
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +99,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   Future<void> _initScreen() async {
     await _sync.init();
     await _refreshData();
+    _loadSocialData();
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -794,6 +817,10 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         _buildCollaborationSection(),
         const SizedBox(height: 16),
 
+        // 社交互动
+        _buildSocialSection(),
+        const SizedBox(height: 16),
+
         // 同步历史
         _buildHistorySectionHeader(),
         _buildHistoryCard(),
@@ -1471,6 +1498,212 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 社交功能操作
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载社交数据
+  Future<void> _loadSocialData() async {
+    try {
+      if (mounted) {
+        setState(() {
+          _friends = _sync.friends;
+          _following = _sync.following;
+          _followers = _sync.followers;
+          _directMessages = _sync.getConversation('');
+          _activityFeed = _sync.activityFeed;
+        });
+      }
+    } catch (e) {
+      debugPrint('加载社交数据失败: $e');
+    }
+  }
+
+  /// 发送好友请求
+  Future<void> _sendFriendRequest(String friendId, String friendName) async {
+    setState(() => _isSyncing = true);
+    final error = await _sync.addFriend(friendId, friendName);
+    if (mounted) {
+      setState(() => _isSyncing = false);
+      if (error == null) {
+        WFSnackBar.show(context, '好友请求已发送');
+        _loadSocialData();
+      } else {
+        WFSnackBar.error(context, error);
+      }
+    }
+  }
+
+  /// 关注用户
+  Future<void> _followUser(String userId, String userName) async {
+    setState(() => _isSyncing = true);
+    final error = await _sync.followUser(userId, userName);
+    if (mounted) {
+      setState(() => _isSyncing = false);
+      if (error == null) {
+        WFSnackBar.show(context, '已关注 $userName');
+        _loadSocialData();
+      } else {
+        WFSnackBar.error(context, error);
+      }
+    }
+  }
+
+  /// 发送私信
+  Future<void> _sendDirectMessage(String receiverId, String content) async {
+    final error = await _sync.sendDirectMessage(
+      receiverId: receiverId,
+      content: content,
+    );
+    if (mounted) {
+      if (error == null) {
+        WFSnackBar.show(context, '私信已发送');
+        _loadSocialData();
+      } else {
+        WFSnackBar.error(context, error);
+      }
+    }
+  }
+
+  /// 构建社交功能区域
+  Widget _buildSocialSection() {
+    return WFCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.people_alt, color: WFColors.accent, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                '社交互动',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildSocialTab('好友', 0, Icons.person),
+              const SizedBox(width: 8),
+              _buildSocialTab('关注', 1, Icons.person_add),
+              const SizedBox(width: 8),
+              _buildSocialTab('私信', 2, Icons.message),
+              const SizedBox(width: 8),
+              _buildSocialTab('动态', 3, Icons.dynamic_feed),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSocialContent(),
+        ],
+      ),
+    );
+  }
+
+  /// 构建社交Tab按钮
+  Widget _buildSocialTab(String label, int index, IconData icon) {
+    final isActive = _socialTabIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _socialTabIndex = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isActive ? WFColors.primary.withValues(alpha: 0.1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isActive ? WFColors.primary : WFColors.textLight.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 18, color: isActive ? WFColors.primary : WFColors.textSecondary),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(fontSize: 11, color: isActive ? WFColors.primary : WFColors.textSecondary, fontWeight: isActive ? FontWeight.w600 : FontWeight.normal)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建社交内容区域
+  Widget _buildSocialContent() {
+    switch (_socialTabIndex) {
+      case 0: return _buildFriendsList();
+      case 1: return _buildFollowingList();
+      case 2: return _buildDirectMessagesList();
+      case 3: return _buildActivityFeedList();
+      default: return _buildFriendsList();
+    }
+  }
+
+  /// 构建好友列表
+  Widget _buildFriendsList() {
+    if (_friends.isEmpty) return _buildEmptySocialState('暂无好友', '点击下方按钮添加好友');
+    return Column(
+      children: _friends.take(5).map((friend) => ListTile(
+        dense: true, contentPadding: EdgeInsets.zero,
+        leading: CircleAvatar(radius: 16, backgroundColor: WFColors.accent.withValues(alpha: 0.1), child: Text(friend.friendName.isNotEmpty ? friend.friendName[0].toUpperCase() : '?', style: TextStyle(fontSize: 14, color: WFColors.accent))),
+        title: Text(friend.friendName, style: const TextStyle(fontSize: 14)),
+        subtitle: Text(friend.status == 'accepted' ? '已添加' : '待接受', style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+        trailing: friend.status == 'pending' ? TextButton(onPressed: () { _sync.acceptFriendRequest(friend.friendId).then((_) => _loadSocialData()); }, child: const Text('接受', style: TextStyle(fontSize: 12))) : null,
+      )).toList(),
+    );
+  }
+
+  /// 构建关注列表
+  Widget _buildFollowingList() {
+    if (_following.isEmpty) return _buildEmptySocialState('暂无关注', '关注感兴趣的用户');
+    return Column(
+      children: _following.take(5).map((follow) => ListTile(
+        dense: true, contentPadding: EdgeInsets.zero,
+        leading: CircleAvatar(radius: 16, backgroundColor: WFColors.info.withValues(alpha: 0.1), child: Text(follow.targetName.isNotEmpty ? follow.targetName[0].toUpperCase() : '?', style: TextStyle(fontSize: 14, color: WFColors.info))),
+        title: Text(follow.targetName, style: const TextStyle(fontSize: 14)),
+        trailing: IconButton(icon: Icon(Icons.person_remove, size: 18, color: WFColors.textSecondary), onPressed: () async { await _sync.unfollowUser(follow.targetId); _loadSocialData(); }),
+      )).toList(),
+    );
+  }
+
+  /// 构建私信列表
+  Widget _buildDirectMessagesList() {
+    if (_directMessages.isEmpty) return _buildEmptySocialState('暂无私信', '与好友分享您的创作');
+    return Column(
+      children: _directMessages.take(5).map((msg) => ListTile(
+        dense: true, contentPadding: EdgeInsets.zero,
+        leading: CircleAvatar(radius: 16, backgroundColor: WFColors.success.withValues(alpha: 0.1), child: Text(msg.senderName.isNotEmpty ? msg.senderName[0].toUpperCase() : '?', style: TextStyle(fontSize: 14, color: WFColors.success))),
+        title: Text(msg.content, style: const TextStyle(fontSize: 13)),
+        subtitle: Text(_formatTime(msg.timestamp), style: TextStyle(fontSize: 11, color: WFColors.textSecondary)),
+      )).toList(),
+    );
+  }
+
+  /// 构建动态列表
+  Widget _buildActivityFeedList() {
+    if (_activityFeed.isEmpty) return _buildEmptySocialState('暂无动态', '分享您的创作动态');
+    return Column(
+      children: _activityFeed.take(5).map((activity) {
+        final icon = activity.type == 'friend_request' ? Icons.person_add : activity.type == 'follow' ? Icons.favorite : activity.type == 'share' ? Icons.share : Icons.notifications;
+        final color = activity.type == 'friend_request' ? WFColors.accent : activity.type == 'follow' ? WFColors.error : activity.type == 'share' ? WFColors.info : WFColors.primary;
+        return ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(icon, size: 20, color: color), title: Text(activity.content, style: const TextStyle(fontSize: 13)), subtitle: Text(_formatTime(activity.timestamp), style: TextStyle(fontSize: 11, color: WFColors.textSecondary)));
+      }).toList(),
+    );
+  }
+
+  /// 构建空社交状态
+  Widget _buildEmptySocialState(String title, String subtitle) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: Column(children: [
+          Icon(Icons.people_outline, size: 36, color: WFColors.textLight),
+          const SizedBox(height: 8),
+          Text(title, style: TextStyle(color: WFColors.textSecondary, fontSize: 14)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(color: WFColors.textLight, fontSize: 12)),
+        ]),
+      ),
     );
   }
 

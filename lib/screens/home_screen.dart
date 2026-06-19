@@ -113,6 +113,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   PushSettings _pushSettings = PushSettings();
   int _unreadNotificationCount = 0;
 
+  // ═══ 互动功能状态 ═══
+  /// 项目点赞记录: {projectId: isLiked}
+  final Map<String, bool> _likedProjects = {};
+  /// 项目点赞数: {projectId: count}
+  final Map<String, int> _likeCounts = {};
+  /// 项目评论列表: {projectId: [{id, content, author, timestamp}]}
+  final Map<String, List<Map<String, dynamic>>> _projectComments = {};
+  /// 项目收藏记录: {projectId: isFavorited}
+  final Map<String, bool> _favoritedProjects = {};
+  /// 项目转发数: {projectId: count}
+  final Map<String, int> _repostCounts = {};
+
   // 分类统计
   Map<String, int> _categoryStats = {};
 
@@ -481,6 +493,185 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         setState(() => _personalizedTheme = id);
         _savePersonalizationSettings();
       },
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 互动功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 切换项目点赞状态
+  void _toggleLike(String projectId) {
+    setState(() {
+      final isLiked = _likedProjects[projectId] ?? false;
+      _likedProjects[projectId] = !isLiked;
+      _likeCounts[projectId] = (_likeCounts[projectId] ?? 0) + (isLiked ? -1 : 1);
+    });
+    WFSnackBar.show(context, _likedProjects[projectId] == true ? '已点赞' : '已取消点赞');
+  }
+
+  /// 添加评论
+  void _addComment(String projectId, String content) {
+    if (content.trim().isEmpty) return;
+    setState(() {
+      _projectComments.putIfAbsent(projectId, () => []);
+      _projectComments[projectId]!.add({
+        'id': DateTime.now().microsecondsSinceEpoch.toString(),
+        'content': content,
+        'author': '我',
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+    });
+    WFSnackBar.show(context, '评论已添加');
+  }
+
+  /// 切换项目收藏状态
+  void _toggleFavorite(String projectId) {
+    setState(() {
+      final isFav = _favoritedProjects[projectId] ?? false;
+      _favoritedProjects[projectId] = !isFav;
+    });
+    WFSnackBar.show(context, _favoritedProjects[projectId] == true ? '已收藏' : '已取消收藏');
+  }
+
+  /// 转发项目
+  void _repost(String projectId) {
+    setState(() {
+      _repostCounts[projectId] = (_repostCounts[projectId] ?? 0) + 1;
+    });
+    WFSnackBar.show(context, '已转发');
+  }
+
+  /// 显示评论对话框
+  void _showCommentDialog(String projectId, String projectName) {
+    final controller = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 24, right: 24, top: 24,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('评论 "$projectName"', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            // 已有评论列表
+            if ((_projectComments[projectId] ?? []).isNotEmpty) ...[
+              ...(_projectComments[projectId] ?? []).take(5).map((c) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(radius: 12, backgroundColor: WFColors.primary.withValues(alpha: 0.1), child: Text((c['author'] as String)[0], style: TextStyle(fontSize: 10, color: WFColors.primary))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(c['author'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: WFColors.textPrimary)),
+                        Text(c['content'] as String, style: TextStyle(fontSize: 13, color: WFColors.textSecondary)),
+                      ]),
+                    ),
+                  ],
+                ),
+              )),
+              const Divider(),
+            ],
+            // 输入评论
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    decoration: InputDecoration(
+                      hintText: '写下您的评论...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    maxLines: 2,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () {
+                    _addComment(projectId, controller.text);
+                    controller.clear();
+                    Navigator.pop(ctx);
+                  },
+                  icon: Icon(Icons.send, color: WFColors.primary),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建项目互动操作栏
+  Widget _buildInteractionBar(String projectId, String projectName) {
+    final isLiked = _likedProjects[projectId] ?? false;
+    final isFav = _favoritedProjects[projectId] ?? false;
+    final likeCount = _likeCounts[projectId] ?? 0;
+    final commentCount = (_projectComments[projectId] ?? []).length;
+    final repostCount = _repostCounts[projectId] ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildInteractionButton(
+            icon: isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+            label: likeCount > 0 ? '$likeCount' : '点赞',
+            color: isLiked ? WFColors.primary : WFColors.textSecondary,
+            onTap: () => _toggleLike(projectId),
+          ),
+          _buildInteractionButton(
+            icon: Icons.comment_outlined,
+            label: commentCount > 0 ? '$commentCount' : '评论',
+            color: WFColors.textSecondary,
+            onTap: () => _showCommentDialog(projectId, projectName),
+          ),
+          _buildInteractionButton(
+            icon: isFav ? Icons.star : Icons.star_border,
+            label: isFav ? '已收藏' : '收藏',
+            color: isFav ? WFColors.warning : WFColors.textSecondary,
+            onTap: () => _toggleFavorite(projectId),
+          ),
+          _buildInteractionButton(
+            icon: Icons.share_outlined,
+            label: repostCount > 0 ? '$repostCount' : '转发',
+            color: WFColors.textSecondary,
+            onTap: () => _repost(projectId),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建单个互动按钮
+  Widget _buildInteractionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 11, color: color)),
+        ],
+      ),
     );
   }
 
