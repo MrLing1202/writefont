@@ -175,6 +175,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // ── 多设备适配：检测设备类型和方向 ──
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    final isTablet = screenWidth >= 600;
+    final isLargeTablet = screenWidth >= 900;
+    // 根据屏幕宽度计算内容区域最大宽度（适配平板）
+    final contentMaxWidth = isLargeTablet ? 800.0 : isTablet ? 600.0 : double.infinity;
+    // 根据设备调整内边距
+    final horizontalPadding = isTablet ? screenWidth * 0.08 : 20.0;
+
     return Scaffold(
       appBar: WFAppBar(
         title: l10n.appName,
@@ -212,9 +223,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             onRefresh: _onRefresh,
             color: WFColors.primary,
             child: Center(
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
               child: Column(
                 children: [
                   // ── 欢迎语 + 统计 ──
@@ -359,6 +372,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ],
               ),
             ),
+            ), // end ConstrainedBox
           ), // end RefreshIndicator
 
           // 新手引导遮罩
@@ -368,9 +382,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  /// 构建快速操作网格
+  /// 构建快速操作网格（适配平板和横屏）
   Widget _buildQuickActionsGrid(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth >= 600;
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
     
     final actions = [
       _QuickAction(
@@ -405,8 +422,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     ];
 
+    // 平板/横屏使用 Wrap 布局，手机使用 Row 布局
+    final iconSize = isTablet ? 28.0 : 24.0;
+    final buttonSize = isTablet ? 56.0 : 48.0;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isTablet ? 20 : 16),
       decoration: BoxDecoration(
         color: WFColors.bgCard,
         borderRadius: BorderRadius.circular(12),
@@ -418,16 +439,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: actions.map((action) => _buildQuickActionButton(action)).toList(),
+      child: isTablet || isLandscape
+          ? Wrap(
+              alignment: WrapAlignment.spaceAround,
+              spacing: 16,
+              runSpacing: 16,
+              children: actions.map((action) => _buildQuickActionButton(action, iconSize: iconSize, buttonSize: buttonSize)).toList(),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: actions.map((action) => _buildQuickActionButton(action, iconSize: iconSize, buttonSize: buttonSize)).toList(),
+            ),
       ),
     );
   }
 
-  /// 构建快速操作按钮
-  Widget _buildQuickActionButton(_QuickAction action) {
-    return GestureDetector(
+  /// 构建快速操作按钮（支持自定义尺寸，适配不同设备）
+  Widget _buildQuickActionButton(_QuickAction action, {double iconSize = 24.0, double buttonSize = 48.0}) {
+    return Semantics(
+      label: action.label,
+      button: true,
+      child: GestureDetector(
       onTapDown: (_) => _quickActionAnimController.forward(),
       onTapUp: (_) {
         _quickActionAnimController.reverse();
@@ -437,8 +469,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       child: Column(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: buttonSize,
+            height: buttonSize,
             decoration: BoxDecoration(
               color: action.color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
@@ -446,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             child: Icon(
               action.icon,
               color: action.color,
-              size: 24,
+              size: iconSize,
             ),
           ),
           const SizedBox(height: 8),
@@ -460,14 +492,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
+    ),
     );
   }
 
-  /// 构建使用统计卡片
+  /// 构建使用统计卡片（含无障碍语义标注）
   Widget _buildUsageStatsCard(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     
-    return Container(
+    return Semantics(
+      label: '${l10n.createdProjects}: $_savedProjectCount, ${l10n.recognizedChars}: $_totalCharCount',
+      child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: WFColors.bgCard,
@@ -531,6 +566,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ],
       ),
+    ),
     );
   }
 

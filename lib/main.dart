@@ -338,6 +338,19 @@ void main() async {
   runApp(const WriteFontApp());
 }
 
+// ── 无障碍：键盘快捷键 Intent 定义 ──
+class _ToggleHighContrastIntent extends Intent {
+  const _ToggleHighContrastIntent();
+}
+
+class _IncreaseFontIntent extends Intent {
+  const _IncreaseFontIntent();
+}
+
+class _DecreaseFontIntent extends Intent {
+  const _DecreaseFontIntent();
+}
+
 class WriteFontApp extends StatefulWidget {
   const WriteFontApp({super.key});
 
@@ -352,6 +365,11 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   Locale _locale = const Locale('zh');
   bool _useBottomNav = true; // 是否使用底部导航栏
   bool _isAppInForeground = true; // 电池优化：追踪应用前后台状态
+
+  // ── 无障碍设置 ──
+  bool _highContrastMode = false;       // 高对比度模式
+  double _accessibilityFontScale = 1.0; // 无障碍字体缩放（独立于主题字体缩放）
+  bool _reducedMotion = false;          // 减少动画效果（屏幕阅读器友好）
 
   /// SharedPreferences 缓存，避免重复同步 I/O
   static SharedPreferences? _prefsCache;
@@ -374,6 +392,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     _loadLocale();
     _checkOnboarding();
     _loadNavigationPreference();
+    _loadAccessibilitySettings();
     // 3秒兜底：如果 _checkOnboarding 还没完成，强制标记为已检查，避免永久 loading
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && !_onboardingChecked) {
@@ -391,6 +410,20 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       if (mounted) {
         setState(() {
           _useBottomNav = prefs.getBool('use_bottom_nav') ?? true;
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 加载无障碍设置
+  Future<void> _loadAccessibilitySettings() async {
+    try {
+      final prefs = await getPrefs();
+      if (mounted) {
+        setState(() {
+          _highContrastMode = prefs.getBool('high_contrast_mode') ?? false;
+          _accessibilityFontScale = prefs.getDouble('accessibility_font_scale') ?? 1.0;
+          _reducedMotion = prefs.getBool('reduced_motion') ?? false;
         });
       }
     } catch (_) {}
@@ -470,6 +503,34 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     if (mounted) {
       setState(() => _locale = localeService.locale);
     }
+  }
+
+  /// 切换高对比度模式
+  void _toggleHighContrast() {
+    setState(() => _highContrastMode = !_highContrastMode);
+    _saveAccessibilitySetting('high_contrast_mode', _highContrastMode);
+    AppAnalytics.trackFeature('toggle_high_contrast');
+  }
+
+  /// 调整无障碍字体缩放
+  void _adjustAccessibilityFont(double delta) {
+    final newScale = (_accessibilityFontScale + delta).clamp(0.8, 2.0);
+    if (newScale == _accessibilityFontScale) return;
+    setState(() => _accessibilityFontScale = newScale);
+    _saveAccessibilitySetting('accessibility_font_scale', _accessibilityFontScale);
+    AppAnalytics.trackFeature('adjust_accessibility_font');
+  }
+
+  /// 保存无障碍设置
+  Future<void> _saveAccessibilitySetting(String key, dynamic value) async {
+    try {
+      final prefs = await getPrefs();
+      if (value is bool) {
+        await prefs.setBool(key, value);
+      } else if (value is double) {
+        await prefs.setDouble(key, value);
+      }
+    } catch (_) {}
   }
 
   /// 根据字符串获取 ThemeMode
@@ -688,6 +749,30 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     );
   }
 
+  /// 构建高对比度主题覆盖（无障碍支持）
+  ThemeData _buildHighContrastOverlay(ThemeData base) {
+    return base.copyWith(
+      colorScheme: base.colorScheme.copyWith(
+        primary: base.brightness == Brightness.dark ? Colors.white : Colors.black,
+        onPrimary: base.brightness == Brightness.dark ? Colors.black : Colors.white,
+        surface: base.brightness == Brightness.dark ? Colors.black : Colors.white,
+      ),
+      appBarTheme: base.appBarTheme.copyWith(
+        backgroundColor: base.brightness == Brightness.dark ? Colors.black : Colors.white,
+        foregroundColor: base.brightness == Brightness.dark ? Colors.white : Colors.black,
+        titleTextStyle: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: base.brightness == Brightness.dark ? Colors.white : Colors.black,
+        ),
+      ),
+      textTheme: base.textTheme.apply(
+        bodyColor: base.brightness == Brightness.dark ? Colors.white : Colors.black,
+        displayColor: base.brightness == Brightness.dark ? Colors.white : Colors.black,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 决定首页显示什么
@@ -716,10 +801,55 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         Locale('zh'),
         Locale('en'),
         Locale('ja'),
+        Locale('ko'),
+        Locale('fr'),
+        Locale('de'),
+        Locale('es'),
       ],
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
       themeMode: _themeMode,
+      // ── 无障碍：键盘快捷键支持 ──
+      shortcuts: {
+        ...WidgetsApp.defaultShortcuts,
+        const SingleActivator(LogicalKeyboardKey.keyH, control: true):
+            const _ToggleHighContrastIntent(),
+        const SingleActivator(LogicalKeyboardKey.equal, control: true):
+            const _IncreaseFontIntent(),
+        const SingleActivator(LogicalKeyboardKey.minus, control: true):
+            const _DecreaseFontIntent(),
+      },
+      actions: {
+        ...WidgetsApp.defaultActions,
+        _ToggleHighContrastIntent: CallbackAction<_ToggleHighContrastIntent>(
+          onInvoke: (_) => _toggleHighContrast(),
+        ),
+        _IncreaseFontIntent: CallbackAction<_IncreaseFontIntent>(
+          onInvoke: (_) => _adjustAccessibilityFont(0.1),
+        ),
+        _DecreaseFontIntent: CallbackAction<_DecreaseFontIntent>(
+          onInvoke: (_) => _adjustAccessibilityFont(-0.1),
+        ),
+      },
+      // ── 无障碍：全局字体缩放 + 高对比度 + 减少动画 ──
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        final effectiveScale = mediaQuery.textScaler.scale(_accessibilityFontScale);
+        Widget result = MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: TextScaler.linear(effectiveScale),
+            highContrast: _highContrastMode,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+        if (_highContrastMode) {
+          result = Theme(
+            data: _buildHighContrastOverlay(Theme.of(context)),
+            child: result,
+          );
+        }
+        return result;
+      },
       home: homeWidget,
       onGenerateRoute: (settings) {
         // 分析：记录路由导航

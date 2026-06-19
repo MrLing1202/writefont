@@ -10,6 +10,9 @@ class ThemeConfigService extends ChangeNotifier {
   static const String _keyThemeColor = 'theme_color';
   static const String _keyFontSize = 'font_size';
   static const String _keyBorderRadius = 'border_radius';
+  static const String _keyFontStyle = 'font_style';
+  static const String _keyAnimationSpeed = 'animation_speed';
+  static const String _keyLayoutDensity = 'layout_density';
 
   static ThemeConfigService? _instance;
   static ThemeConfigService get instance => _instance ??= ThemeConfigService._();
@@ -27,7 +30,19 @@ class ThemeConfigService extends ChangeNotifier {
   double _borderRadius = 12.0;
   double get borderRadius => _borderRadius;
 
-  /// 预设主题色列表
+  /// 字体样式索引
+  int _fontStyleIndex = 0;
+  int get fontStyleIndex => _fontStyleIndex;
+
+  /// 动画速度索引
+  int _animationSpeedIndex = 1; // 默认正常速度
+  int get animationSpeedIndex => _animationSpeedIndex;
+
+  /// 布局密度索引
+  int _layoutDensityIndex = 1; // 默认标准密度
+  int get layoutDensityIndex => _layoutDensityIndex;
+
+  /// 预设主题色列表（扩展至12种）
   static const List<Color> themeColors = [
     Color(0xFF2C3E50), // 深墨蓝（默认）
     Color(0xFF8E44AD), // 紫色
@@ -37,6 +52,10 @@ class ThemeConfigService extends ChangeNotifier {
     Color(0xFFC0392B), // 红色
     Color(0xFF16A085), // 青色
     Color(0xFFF39C12), // 黄色
+    Color(0xFF1ABC9C), // 翠绿
+    Color(0xFF34495E), // 灰蓝
+    Color(0xFFE67E22), // 琥珀
+    Color(0xFF9B59B6), // 薰衣草
   ];
 
   /// 主题色名称
@@ -49,10 +68,75 @@ class ThemeConfigService extends ChangeNotifier {
     '红色',
     '青色',
     '黄色',
+    '翠绿',
+    '灰蓝',
+    '琥珀',
+    '薰衣草',
+  ];
+
+  /// 字体样式列表
+  static const List<String> fontStyleNames = [
+    '系统默认',
+    '衬线体',
+    '无衬线体',
+    '等宽体',
+  ];
+
+  /// 字体样式对应的 fontFamily
+  static const List<String?> fontFamilies = [
+    null,           // 系统默认
+    'serif',        // 衬线体
+    'sans-serif',   // 无衬线体
+    'monospace',    // 等宽体
+  ];
+
+  /// 动画速度列表
+  static const List<String> animationSpeedNames = [
+    '关闭动画',
+    '正常',
+    '快速',
+    '缓慢',
+  ];
+
+  /// 动画速度倍率
+  static const List<double> animationSpeedMultipliers = [
+    0.0,  // 关闭
+    1.0,  // 正常
+    0.5,  // 快速（更短的动画）
+    2.0,  // 缓慢（更长的动画）
+  ];
+
+  /// 布局密度列表
+  static const List<String> layoutDensityNames = [
+    '紧凑',
+    '标准',
+    '宽松',
+  ];
+
+  /// 布局密度对应的间距倍率
+  static const List<double> layoutDensityMultipliers = [
+    0.75, // 紧凑
+    1.0,  // 标准
+    1.25, // 宽松
   ];
 
   /// 获取当前主题色
   Color get currentThemeColor => themeColors[_themeColorIndex];
+
+  /// 获取当前字体样式
+  String? get currentFontFamily => fontFamilies[_fontStyleIndex];
+
+  /// 获取当前动画速度倍率
+  double get animationSpeedMultiplier => animationSpeedMultipliers[_animationSpeedIndex];
+
+  /// 获取当前布局密度倍率
+  double get layoutDensityMultiplier => layoutDensityMultipliers[_layoutDensityIndex];
+
+  /// 获取动画时长（根据动画速度设置调整）
+  Duration getAnimationDuration(int baseMs) {
+    if (_animationSpeedIndex == 0) return Duration.zero; // 关闭动画
+    return Duration(milliseconds: (baseMs * animationSpeedMultiplier).round());
+  }
 
   /// 初始化配置
   Future<void> init() async {
@@ -61,6 +145,9 @@ class ThemeConfigService extends ChangeNotifier {
       _themeColorIndex = prefs.getInt(_keyThemeColor) ?? 0;
       _fontScale = prefs.getDouble(_keyFontSize) ?? 1.0;
       _borderRadius = prefs.getDouble(_keyBorderRadius) ?? 12.0;
+      _fontStyleIndex = prefs.getInt(_keyFontStyle) ?? 0;
+      _animationSpeedIndex = prefs.getInt(_keyAnimationSpeed) ?? 1;
+      _layoutDensityIndex = prefs.getInt(_keyLayoutDensity) ?? 1;
       notifyListeners();
     } catch (e) {
       debugPrint('加载主题配置失败: $e');
@@ -109,17 +196,65 @@ class ThemeConfigService extends ChangeNotifier {
     }
   }
 
+  /// 设置字体样式
+  Future<void> setFontStyle(int index) async {
+    if (index < 0 || index >= fontFamilies.length) return;
+    if (_fontStyleIndex == index) return;
+    _fontStyleIndex = index;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyFontStyle, index);
+    } catch (e) {
+      debugPrint('保存字体样式失败: $e');
+    }
+  }
+
+  /// 设置动画速度
+  Future<void> setAnimationSpeed(int index) async {
+    if (index < 0 || index >= animationSpeedMultipliers.length) return;
+    if (_animationSpeedIndex == index) return;
+    _animationSpeedIndex = index;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyAnimationSpeed, index);
+    } catch (e) {
+      debugPrint('保存动画速度失败: $e');
+    }
+  }
+
+  /// 设置布局密度
+  Future<void> setLayoutDensity(int index) async {
+    if (index < 0 || index >= layoutDensityMultipliers.length) return;
+    if (_layoutDensityIndex == index) return;
+    _layoutDensityIndex = index;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyLayoutDensity, index);
+    } catch (e) {
+      debugPrint('保存布局密度失败: $e');
+    }
+  }
+
   /// 重置为默认配置
   Future<void> resetToDefault() async {
     _themeColorIndex = 0;
     _fontScale = 1.0;
     _borderRadius = 12.0;
+    _fontStyleIndex = 0;
+    _animationSpeedIndex = 1;
+    _layoutDensityIndex = 1;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyThemeColor);
       await prefs.remove(_keyFontSize);
       await prefs.remove(_keyBorderRadius);
+      await prefs.remove(_keyFontStyle);
+      await prefs.remove(_keyAnimationSpeed);
+      await prefs.remove(_keyLayoutDensity);
     } catch (e) {
       debugPrint('重置主题配置失败: $e');
     }
@@ -231,7 +366,10 @@ class WFActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WFCard(
+    return Semantics(
+      label: '$title: $subtitle',
+      button: true,
+      child: WFCard(
       onTap: onTap,
       padding: EdgeInsets.zero,
       child: Container(
@@ -292,6 +430,7 @@ class WFActionCard extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }
@@ -300,7 +439,7 @@ class WFActionCard extends StatelessWidget {
 // 按钮组件
 // ═══════════════════════════════════════════════════════════
 
-/// 主要操作按钮 — 圆角 24px，渐变效果
+/// 主要操作按钮 — 圆角 24px，渐变效果，含无障碍语义支持
 class WFPrimaryButton extends StatelessWidget {
   final String text;
   final VoidCallback? onPressed;
@@ -316,7 +455,11 @@ class WFPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDisabled = onPressed == null;
-    return Container(
+    return Semantics(
+      label: text,
+      button: true,
+      enabled: !isDisabled,
+      child: Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: isDisabled
@@ -361,6 +504,7 @@ class WFPrimaryButton extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

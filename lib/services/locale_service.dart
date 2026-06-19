@@ -29,6 +29,10 @@ class LocaleService extends ChangeNotifier {
     Locale('zh'),
     Locale('en'),
     Locale('ja'),
+    Locale('ko'),
+    Locale('fr'),
+    Locale('de'),
+    Locale('es'),
   ];
 
   /// 语言代码到显示名称的映射
@@ -36,6 +40,10 @@ class LocaleService extends ChangeNotifier {
     'zh': '中文',
     'en': 'English',
     'ja': '日本語',
+    'ko': '한국어',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'es': 'Español',
   };
 
   /// 初始化，从持久化存储加载语言设置
@@ -212,6 +220,90 @@ class LocaleService extends ChangeNotifier {
       'cancel': 'キャンセル',
       'confirm': '確認',
     },
+    'ko': {
+      'just_now': '방금',
+      'minutes_ago': '{0}분 전',
+      'hours_ago': '{0}시간 전',
+      'days_ago': '{0}일 전',
+      'error_network': '네트워크 연결에 실패했습니다. 네트워크 설정을 확인하세요',
+      'error_timeout': '요청 시간이 초과되었습니다. 나중에 다시 시도하세요',
+      'error_unknown': '알 수 없는 오류가 발생했습니다',
+      'error_permission': '권한이 부족합니다. 설정에서 권한을 활성화하세요',
+      'error_storage': '저장 공간이 부족합니다',
+      'error_format': '데이터 형식 오류',
+      'success_save': '저장 완료',
+      'success_delete': '삭제 완료',
+      'success_export': '내보내기 완료',
+      'confirm_delete': '삭제하시겠습니까?',
+      'confirm_cancel': '현재 작업을 취소하시겠습니까?',
+      'loading': '로딩 중...',
+      'retry': '재시도',
+      'cancel': '취소',
+      'confirm': '확인',
+    },
+    'fr': {
+      'just_now': 'À l\'instant',
+      'minutes_ago': 'Il y a {0} minutes',
+      'hours_ago': 'Il y a {0} heures',
+      'days_ago': 'Il y a {0} jours',
+      'error_network': 'Échec de la connexion réseau, veuillez vérifier vos paramètres réseau',
+      'error_timeout': 'La requête a expiré, veuillez réessayer plus tard',
+      'error_unknown': 'Une erreur inconnue s\'est produite',
+      'error_permission': 'Permissions insuffisantes, veuillez les activer dans les paramètres',
+      'error_storage': 'Espace de stockage insuffisant',
+      'error_format': 'Erreur de format de données',
+      'success_save': 'Enregistré avec succès',
+      'success_delete': 'Supprimé avec succès',
+      'success_export': 'Exporté avec succès',
+      'confirm_delete': 'Êtes-vous sûr de vouloir supprimer ?',
+      'confirm_cancel': 'Êtes-vous sûr de vouloir annuler ?',
+      'loading': 'Chargement...',
+      'retry': 'Réessayer',
+      'cancel': 'Annuler',
+      'confirm': 'Confirmer',
+    },
+    'de': {
+      'just_now': 'Gerade eben',
+      'minutes_ago': 'Vor {0} Minuten',
+      'hours_ago': 'Vor {0} Stunden',
+      'days_ago': 'Vor {0} Tagen',
+      'error_network': 'Netzwerkverbindung fehlgeschlagen, bitte überprüfen Sie Ihre Netzwerkeinstellungen',
+      'error_timeout': 'Anfrage abgelaufen, bitte versuchen Sie es später erneut',
+      'error_unknown': 'Ein unbekannter Fehler ist aufgetreten',
+      'error_permission': 'Unzureichende Berechtigungen, bitte in den Einstellungen aktivieren',
+      'error_storage': 'Nicht genügend Speicherplatz',
+      'error_format': 'Datenformatfehler',
+      'success_save': 'Erfolgreich gespeichert',
+      'success_delete': 'Erfolgreich gelöscht',
+      'success_export': 'Erfolgreich exportiert',
+      'confirm_delete': 'Sind Sie sicher, dass Sie löschen möchten?',
+      'confirm_cancel': 'Sind Sie sicher, dass Sie abbrechen möchten?',
+      'loading': 'Laden...',
+      'retry': 'Erneut versuchen',
+      'cancel': 'Abbrechen',
+      'confirm': 'Bestätigen',
+    },
+    'es': {
+      'just_now': 'Ahora mismo',
+      'minutes_ago': 'Hace {0} minutos',
+      'hours_ago': 'Hace {0} horas',
+      'days_ago': 'Hace {0} días',
+      'error_network': 'Error de conexión de red, verifique su configuración de red',
+      'error_timeout': 'La solicitud ha expirado, inténtelo de nuevo más tarde',
+      'error_unknown': 'Se produjo un error desconocido',
+      'error_permission': 'Permisos insuficientes, actívelos en la configuración',
+      'error_storage': 'Espacio de almacenamiento insuficiente',
+      'error_format': 'Error de formato de datos',
+      'success_save': 'Guardado exitosamente',
+      'success_delete': 'Eliminado exitosamente',
+      'success_export': 'Exportado exitosamente',
+      'confirm_delete': '¿Está seguro de que desea eliminar?',
+      'confirm_cancel': '¿Está seguro de que desea cancelar?',
+      'loading': 'Cargando...',
+      'retry': 'Reintentar',
+      'cancel': 'Cancelar',
+      'confirm': 'Confirmar',
+    },
   };
 
   /// 格式化数字
@@ -244,12 +336,16 @@ class LocaleService extends ChangeNotifier {
     }
   }
 
-  /// 获取默认货币代码
+  /// 获取默认货币代码（含新增语言支持）
   String _getDefaultCurrencyCode(String localeCode) {
     switch (localeCode) {
-      case 'zh': return '¥';
-      case 'en': return '\$';
-      case 'ja': return '¥';
+      case 'zh': return '¥';    // 人民币
+      case 'en': return '\$';   // 美元
+      case 'ja': return '¥';    // 日元
+      case 'ko': return '₩';    // 韩元
+      case 'fr': return '€';    // 欧元
+      case 'de': return '€';    // 欧元
+      case 'es': return '€';    // 欧元
       default: return '\$';
     }
   }
