@@ -6,6 +6,7 @@ import '../../models/project.dart';
 import '../../services/storage_service.dart';
 import 'drawing_models.dart';
 
+import '../character_edit_screen.dart';
 /// CharacterEditDialog 的业务逻辑 mixin
 ///
 /// 包含绘画状态、手势处理、撤销重做、自动保存、缩放平移等方法。

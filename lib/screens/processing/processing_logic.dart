@@ -8,6 +8,7 @@ import '../../services/recognition_service.dart';
 import '../../services/app_config_service.dart';
 import '../widgets/edit_character_dialog.dart';
 import 'cell_result.dart';
+import '../processing_screen.dart';
 import 'semaphore.dart';
 
 /// ProcessingScreen 的业务逻辑 mixin
