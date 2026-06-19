@@ -93,6 +93,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _scaleFactor = 1.0; // 捏合缩放比例
   double _previousScale = 1.0;
 
+  // ═══ 个性化功能状态 ═══
+  // 个性化推荐
+  List<Map<String, dynamic>> _personalizedRecommendations = [];
+  String _userPreferredCategory = 'standard'; // standard | quick | ai | free
+  int _userSkillLevel = 1; // 1=新手, 2=进阶, 3=专家
+  // 个性化主题
+  String _personalizedTheme = 'default'; // default | warm | cool | nature
+  double _cardBorderRadius = 12.0;
+  double _fontScale = 1.0;
+  // 个性化布局
+  int _layoutMode = 0; // 0=标准, 1=紧凑, 2=宽松
+  bool _showQuickStats = true;
+  bool _showRecentProjects = true;
+  bool _showVisualizations = true;
+  int _maxRecentProjects = 2;
+
   // 推送设置状态
   PushSettings _pushSettings = PushSettings();
   int _unreadNotificationCount = 0;
@@ -116,6 +132,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _checkFeatureGuideProgress();
     _loadPushSettings();
     _loadNotificationCount();
+    _loadPersonalizationSettings();
+    _generatePersonalizedRecommendations();
     _quickActionAnimController = AnimationController(
       duration: const Duration(milliseconds: 150),
       vsync: this,
@@ -139,6 +157,440 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _quickActionAnimController.dispose();
     _doubleTapAnimController.dispose();
     super.dispose();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 个性化功能优化
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载个性化设置（从 SharedPreferences 持久化读取）
+  Future<void> _loadPersonalizationSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _userPreferredCategory = prefs.getString('user_preferred_category') ?? 'standard';
+          _userSkillLevel = prefs.getInt('user_skill_level') ?? 1;
+          _personalizedTheme = prefs.getString('personalized_theme') ?? 'default';
+          _cardBorderRadius = prefs.getDouble('card_border_radius') ?? 12.0;
+          _fontScale = prefs.getDouble('font_scale') ?? 1.0;
+          _layoutMode = prefs.getInt('layout_mode') ?? 0;
+          _showQuickStats = prefs.getBool('show_quick_stats') ?? true;
+          _showRecentProjects = prefs.getBool('show_recent_projects') ?? true;
+          _showVisualizations = prefs.getBool('show_visualizations') ?? true;
+          _maxRecentProjects = prefs.getInt('max_recent_projects') ?? 2;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Home] 加载个性化设置失败: $e');
+    }
+  }
+
+  /// 保存个性化设置到持久化存储
+  Future<void> _savePersonalizationSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_preferred_category', _userPreferredCategory);
+      await prefs.setInt('user_skill_level', _userSkillLevel);
+      await prefs.setString('personalized_theme', _personalizedTheme);
+      await prefs.setDouble('card_border_radius', _cardBorderRadius);
+      await prefs.setDouble('font_scale', _fontScale);
+      await prefs.setInt('layout_mode', _layoutMode);
+      await prefs.setBool('show_quick_stats', _showQuickStats);
+      await prefs.setBool('show_recent_projects', _showRecentProjects);
+      await prefs.setBool('show_visualizations', _showVisualizations);
+      await prefs.setInt('max_recent_projects', _maxRecentProjects);
+    } catch (e) {
+      debugPrint('[Home] 保存个性化设置失败: $e');
+    }
+  }
+
+  /// 生成个性化推荐（基于用户使用模式和偏好）
+  void _generatePersonalizedRecommendations() {
+    try {
+      final recommendations = <Map<String, dynamic>>[];
+
+      // 基于用户技能等级推荐
+      if (_userSkillLevel == 1) {
+        // 新手：推荐快速体验和一键生成
+        recommendations.add({
+          'title': '快速体验模式',
+          'desc': '无需完整拍摄，快速生成体验版字体',
+          'icon': Icons.bolt,
+          'color': WFColors.warning,
+          'priority': 1,
+          'action': 'quick',
+        });
+        recommendations.add({
+          'title': '一键生成字体',
+          'desc': '拍照即可自动生成手写字体',
+          'icon': Icons.auto_awesome,
+          'color': WFColors.primary,
+          'priority': 2,
+          'action': 'capture',
+        });
+      } else if (_userSkillLevel == 2) {
+        // 进阶：推荐标准字表和自由拍摄
+        recommendations.add({
+          'title': '标准字表模式',
+          'desc': '使用标准字表逐字拍摄，覆盖常用汉字',
+          'icon': Icons.grid_on,
+          'color': WFColors.info,
+          'priority': 1,
+          'action': 'standard',
+        });
+        recommendations.add({
+          'title': '自由拍摄',
+          'desc': '灵活拍摄任意字符',
+          'icon': Icons.camera_alt,
+          'color': WFColors.accent,
+          'priority': 2,
+          'action': 'free',
+        });
+      } else {
+        // 专家：推荐AI生成和高级功能
+        recommendations.add({
+          'title': 'AI 智能生成',
+          'desc': '通过文字描述，AI 自动生成独特字体',
+          'icon': Icons.auto_awesome_outlined,
+          'color': const Color(0xFF8E44AD),
+          'priority': 1,
+          'action': 'ai',
+        });
+        recommendations.add({
+          'title': '增强预览',
+          'desc': '使用高级预览功能调整字体效果',
+          'icon': Icons.preview,
+          'color': WFColors.success,
+          'priority': 2,
+          'action': 'preview',
+        });
+      }
+
+      // 基于最近使用偏好推荐
+      if (_userPreferredCategory == 'standard' && _userSkillLevel >= 2) {
+        recommendations.add({
+          'title': '继续创作',
+          'desc': '使用标准字表继续您的字体项目',
+          'icon': Icons.play_circle_outline,
+          'color': WFColors.primary,
+          'priority': 3,
+          'action': 'standard',
+        });
+      }
+
+      // 按优先级排序
+      recommendations.sort((a, b) => (a['priority'] as int).compareTo(b['priority'] as int));
+
+      if (mounted) {
+        setState(() {
+          _personalizedRecommendations = recommendations;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Home] 生成个性化推荐失败: $e');
+    }
+  }
+
+  /// 获取个性化主题颜色
+  Color _getPersonalizedAccentColor() {
+    switch (_personalizedTheme) {
+      case 'warm':
+        return const Color(0xFFE67E22); // 暖橙色
+      case 'cool':
+        return const Color(0xFF3498DB); // 冷蓝色
+      case 'nature':
+        return const Color(0xFF27AE60); // 自然绿
+      default:
+        return WFColors.primary;
+    }
+  }
+
+  /// 根据布局模式获取内边距
+  EdgeInsets _getLayoutPadding() {
+    switch (_layoutMode) {
+      case 1: // 紧凑
+        return const EdgeInsets.symmetric(horizontal: 16, vertical: 8);
+      case 2: // 宽松
+        return const EdgeInsets.symmetric(horizontal: 24, vertical: 24);
+      default: // 标准
+        return const EdgeInsets.symmetric(horizontal: 20, vertical: 16);
+    }
+  }
+
+  /// 显示个性化设置面板
+  void _showPersonalizationSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '个性化设置',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: WFColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // 技能等级
+                  const Text('使用水平', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 1, label: Text('新手')),
+                      ButtonSegment(value: 2, label: Text('进阶')),
+                      ButtonSegment(value: 3, label: Text('专家')),
+                    ],
+                    selected: {_userSkillLevel},
+                    onSelectionChanged: (selected) {
+                      final value = selected.first;
+                      setSheetState(() => _userSkillLevel = value);
+                      setState(() => _userSkillLevel = value);
+                      _savePersonalizationSettings();
+                      _generatePersonalizedRecommendations();
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  // 主题风格
+                  const Text('主题风格', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      _buildThemeChip('default', '默认', WFColors.primary, setSheetState),
+                      _buildThemeChip('warm', '暖色', const Color(0xFFE67E22), setSheetState),
+                      _buildThemeChip('cool', '冷色', const Color(0xFF3498DB), setSheetState),
+                      _buildThemeChip('nature', '自然', const Color(0xFF27AE60), setSheetState),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // 布局模式
+                  const Text('布局模式', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('标准')),
+                      ButtonSegment(value: 1, label: Text('紧凑')),
+                      ButtonSegment(value: 2, label: Text('宽松')),
+                    ],
+                    selected: {_layoutMode},
+                    onSelectionChanged: (selected) {
+                      final value = selected.first;
+                      setSheetState(() => _layoutMode = value);
+                      setState(() => _layoutMode = value);
+                      _savePersonalizationSettings();
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  // 字体缩放
+                  const Text('字体大小', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  Slider(
+                    value: _fontScale,
+                    min: 0.8,
+                    max: 1.3,
+                    divisions: 5,
+                    label: '${(_fontScale * 100).toInt()}%',
+                    onChanged: (v) {
+                      setSheetState(() => _fontScale = v);
+                      setState(() => _fontScale = v);
+                    },
+                    onChangeEnd: (_) => _savePersonalizationSettings(),
+                  ),
+                  const SizedBox(height: 12),
+                  // 显示选项
+                  SwitchListTile(
+                    title: const Text('显示快速统计'),
+                    value: _showQuickStats,
+                    onChanged: (v) {
+                      setSheetState(() => _showQuickStats = v);
+                      setState(() => _showQuickStats = v);
+                      _savePersonalizationSettings();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('显示最近项目'),
+                    value: _showRecentProjects,
+                    onChanged: (v) {
+                      setSheetState(() => _showRecentProjects = v);
+                      setState(() => _showRecentProjects = v);
+                      _savePersonalizationSettings();
+                    },
+                  ),
+                  SwitchListTile(
+                    title: const Text('显示数据可视化'),
+                    value: _showVisualizations,
+                    onChanged: (v) {
+                      setSheetState(() => _showVisualizations = v);
+                      setState(() => _showVisualizations = v);
+                      _savePersonalizationSettings();
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // 重置按钮
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () {
+                        setSheetState(() {
+                          _userSkillLevel = 1;
+                          _personalizedTheme = 'default';
+                          _layoutMode = 0;
+                          _fontScale = 1.0;
+                          _showQuickStats = true;
+                          _showRecentProjects = true;
+                          _showVisualizations = true;
+                          _maxRecentProjects = 2;
+                        });
+                        setState(() {});
+                        _savePersonalizationSettings();
+                        _generatePersonalizedRecommendations();
+                        WFSnackBar.show(context, '已重置为默认个性化设置');
+                      },
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('重置默认'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建主题风格选择芯片
+  Widget _buildThemeChip(String id, String label, Color color, StateSetter setSheetState) {
+    final isSelected = _personalizedTheme == id;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: color.withValues(alpha: 0.2),
+      labelStyle: TextStyle(color: isSelected ? color : WFColors.textSecondary),
+      onSelected: (_) {
+        setSheetState(() => _personalizedTheme = id);
+        setState(() => _personalizedTheme = id);
+        _savePersonalizationSettings();
+      },
+    );
+  }
+
+  /// 构建个性化推荐卡片区域
+  Widget _buildPersonalizedRecommendations(BuildContext context) {
+    if (_personalizedRecommendations.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            _getPersonalizedAccentColor().withValues(alpha: 0.06),
+            _getPersonalizedAccentColor().withValues(alpha: 0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(_cardBorderRadius),
+        border: Border.all(color: _getPersonalizedAccentColor().withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.recommend, size: 20, color: _getPersonalizedAccentColor()),
+              const SizedBox(width: 8),
+              Text(
+                '为你推荐',
+                style: TextStyle(
+                  fontSize: 16 * _fontScale,
+                  fontWeight: FontWeight.w600,
+                  color: WFColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.tune, size: 18),
+                color: WFColors.textSecondary,
+                tooltip: '个性化设置',
+                onPressed: _showPersonalizationSettingsSheet,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...List.generate(_personalizedRecommendations.length, (index) {
+            final rec = _personalizedRecommendations[index];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                dense: _layoutMode == 1,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: _layoutMode == 2 ? 8 : 4,
+                ),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: (rec['color'] as Color).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(rec['icon'] as IconData, color: rec['color'] as Color, size: 22),
+                ),
+                title: Text(
+                  rec['title'] as String,
+                  style: TextStyle(fontSize: 14 * _fontScale, fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  rec['desc'] as String,
+                  style: TextStyle(fontSize: 12 * _fontScale, color: WFColors.textSecondary),
+                ),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                onTap: () => _handleRecommendationAction(rec['action'] as String),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  /// 处理推荐项点击事件
+  void _handleRecommendationAction(String action) {
+    try {
+      switch (action) {
+        case 'quick':
+          HomeActions.startQuickMode(context);
+          break;
+        case 'capture':
+          HomeActions.quickCapture(context);
+          break;
+        case 'standard':
+          Navigator.push(context, WFAnimations.slideRoute(const WritingTipsScreen()));
+          break;
+        case 'free':
+          HomeActions.pickImages(context);
+          break;
+        case 'ai':
+          HomeActions.openAiFontGenerator(context);
+          break;
+        case 'preview':
+          Navigator.push(context, WFAnimations.slideRoute(const FontPreviewEnhancedScreen()));
+          break;
+        default:
+          HomeActions.quickCapture(context);
+      }
+    } catch (e) {
+      debugPrint('[Home] 处理推荐操作失败: $e');
+    }
   }
 
   /// 检查是否需要显示新手引导
@@ -852,6 +1304,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             tooltip: '通知中心',
             onPressed: _showNotificationCenter,
           ),
+          // 个性化设置按钮
+          IconButton(
+            icon: const Icon(Icons.palette_outlined),
+            tooltip: '个性化设置',
+            onPressed: _showPersonalizationSettingsSheet,
+          ),
           // 推送设置按钮
           IconButton(
             icon: const Icon(Icons.tune),
@@ -913,7 +1371,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 constraints: BoxConstraints(maxWidth: contentMaxWidth),
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: _getLayoutPadding().vertical),
               child: Column(
                 children: [
                   // ── 欢迎语 + 统计 ──
@@ -1034,56 +1492,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 24),
 
+                  // ── 个性化推荐区域 ──
+                  if (_personalizedRecommendations.isNotEmpty)
+                    WFAnimations.fadeInSlide(
+                      _buildPersonalizedRecommendations(context),
+                      delay: const Duration(milliseconds: 120),
+                    ),
+                  if (_personalizedRecommendations.isNotEmpty) const SizedBox(height: 20),
+
                   // ── 使用统计卡片 ──
+                  if (_showQuickStats)
                   WFAnimations.fadeInSlide(
                     _buildUsageStatsCard(context),
                     delay: const Duration(milliseconds: 640),
                   ),
-                  const SizedBox(height: 16),
+                  if (_showQuickStats) const SizedBox(height: 16),
 
-                  // ── 数据可视化区域 ──
+                  // ── 数据可视化区域（受个性化设置控制）──
                   // 项目进度可视化
-                  if (_savedProjectCount > 0)
+                  if (_showVisualizations && _savedProjectCount > 0)
                     WFAnimations.fadeInSlide(
                       _buildProjectProgressVisualization(context),
                       delay: const Duration(milliseconds: 700),
                     ),
-                  if (_savedProjectCount > 0) const SizedBox(height: 16),
+                  if (_showVisualizations && _savedProjectCount > 0) const SizedBox(height: 16),
 
                   // 字符使用统计可视化
-                  if (_totalCharCount > 0)
+                  if (_showVisualizations && _totalCharCount > 0)
                     WFAnimations.fadeInSlide(
                       _buildCharUsageVisualization(context),
                       delay: const Duration(milliseconds: 740),
                     ),
-                  if (_totalCharCount > 0) const SizedBox(height: 16),
+                  if (_showVisualizations && _totalCharCount > 0) const SizedBox(height: 16),
 
                   // 时间线可视化
-                  if (_recentProjects.isNotEmpty)
+                  if (_showVisualizations && _recentProjects.isNotEmpty)
                     WFAnimations.fadeInSlide(
                       _buildTimelineVisualization(context),
                       delay: const Duration(milliseconds: 780),
                     ),
-                  if (_recentProjects.isNotEmpty) const SizedBox(height: 16),
+                  if (_showVisualizations && _recentProjects.isNotEmpty) const SizedBox(height: 16),
 
                   // 趋势分析可视化
-                  if (_savedProjectCount > 1)
+                  if (_showVisualizations && _savedProjectCount > 1)
                     WFAnimations.fadeInSlide(
                       _buildTrendAnalysisVisualization(context),
                       delay: const Duration(milliseconds: 820),
                     ),
-                  if (_savedProjectCount > 1) const SizedBox(height: 24),
+                  if (_showVisualizations && _savedProjectCount > 1) const SizedBox(height: 24),
 
                   // ── 分类统计卡片 ──
-                  if (_savedProjectCount > 0)
+                  if (_showVisualizations && _savedProjectCount > 0)
                     WFAnimations.fadeInSlide(
                       _buildCategoryStatsCard(context),
                       delay: const Duration(milliseconds: 680),
                     ),
-                  if (_savedProjectCount > 0) const SizedBox(height: 24),
+                  if (_showVisualizations && _savedProjectCount > 0) const SizedBox(height: 24),
 
                   // ── 最近项目快捷入口 ──
-                  if (_recentProjects.isNotEmpty) ...[
+                  if (_showRecentProjects && _recentProjects.isNotEmpty) ...[
                     WFAnimations.fadeInSlide(
                       RecentProjectsSection(recentProjects: _recentProjects),
                       delay: const Duration(milliseconds: 720),

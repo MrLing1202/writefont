@@ -2476,3 +2476,474 @@ class CrashReport {
   @override
   String toString() => 'CrashReport[$errorType]: $error (${fatal ? "fatal" : "non-fatal"})';
 }
+
+// ═══════════════════════════════════════════════════════════
+// 学习功能优化：学习进度跟踪、学习建议、学习统计、学习报告
+// ═══════════════════════════════════════════════════════════
+
+/// 学习进度数据模型
+class LearningProgress {
+  final String projectId;
+  final String projectName;
+  final int totalChars;
+  final int completedChars;
+  final DateTime lastAccessTime;
+  final Duration totalTimeSpent;
+  final Map<String, dynamic> metadata;
+
+  LearningProgress({
+    required this.projectId,
+    required this.projectName,
+    required this.totalChars,
+    required this.completedChars,
+    DateTime? lastAccessTime,
+    Duration? totalTimeSpent,
+    Map<String, dynamic>? metadata,
+  })  : lastAccessTime = lastAccessTime ?? DateTime.now(),
+        totalTimeSpent = totalTimeSpent ?? Duration.zero,
+        metadata = metadata ?? {};
+
+  double get progressPercent =>
+      totalChars > 0 ? (completedChars / totalChars * 100).clamp(0, 100) : 0;
+
+  bool get isCompleted => progressPercent >= 80;
+  bool get isInProgress => completedChars > 0 && progressPercent < 80;
+
+  Map<String, dynamic> toJson() => {
+        'projectId': projectId,
+        'projectName': projectName,
+        'totalChars': totalChars,
+        'completedChars': completedChars,
+        'lastAccessTime': lastAccessTime.toIso8601String(),
+        'totalTimeSpentMs': totalTimeSpent.inMilliseconds,
+        'metadata': metadata,
+      };
+
+  factory LearningProgress.fromJson(Map<String, dynamic> json) =>
+      LearningProgress(
+        projectId: json['projectId'] as String,
+        projectName: json['projectName'] as String,
+        totalChars: json['totalChars'] as int? ?? 0,
+        completedChars: json['completedChars'] as int? ?? 0,
+        lastAccessTime: json['lastAccessTime'] != null
+            ? DateTime.parse(json['lastAccessTime'] as String)
+            : null,
+        totalTimeSpent: Duration(
+            milliseconds: json['totalTimeSpentMs'] as int? ?? 0),
+        metadata: (json['metadata'] as Map<String, dynamic>?) ?? {},
+      );
+}
+
+/// 学习服务
+///
+/// 功能：
+/// - 学习进度跟踪：自动记录每个项目的学习进度
+/// - 学习建议功能：基于进度和使用模式提供学习建议
+/// - 学习统计功能：统计学习时长、频率、效率等
+/// - 学习报告功能：生成详细的学习报告
+class LearningService {
+  static final LearningService _instance = LearningService._();
+  static LearningService get instance => _instance;
+  LearningService._();
+
+  static const String _progressKey = 'learning_progress';
+  static const String _sessionsKey = 'learning_sessions';
+  static const String _statsKey = 'learning_stats';
+  static const int _maxSessions = 500;
+
+  List<LearningProgress> _progressList = [];
+  List<Map<String, dynamic>> _sessions = [];
+  DateTime? _sessionStartTime;
+
+  /// 初始化学习服务
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // 加载学习进度
+      final progressJson = prefs.getString(_progressKey);
+      if (progressJson != null) {
+        final list = jsonDecode(progressJson) as List;
+        _progressList = list
+            .map((e) => LearningProgress.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      // 加载学习会话
+      final sessionsJson = prefs.getString(_sessionsKey);
+      if (sessionsJson != null) {
+        _sessions = (jsonDecode(sessionsJson) as List).cast<Map<String, dynamic>>();
+      }
+      debugPrint('[Learning] 初始化完成，${_progressList.length} 个项目进度');
+    } catch (e) {
+      debugPrint('[Learning] 初始化失败: $e');
+    }
+  }
+
+  /// 开始学习会话
+  void startSession() {
+    _sessionStartTime = DateTime.now();
+    debugPrint('[Learning] 学习会话开始');
+  }
+
+  /// 结束学习会话
+  Future<void> endSession({String? projectId}) async {
+    if (_sessionStartTime == null) return;
+
+    final duration = DateTime.now().difference(_sessionStartTime!);
+    _sessionStartTime = null;
+
+    if (duration.inSeconds < 10) return; // 忽略太短的会话
+
+    try {
+      _sessions.add({
+        'projectId': projectId,
+        'startTime': _sessionStartTime?.toIso8601String() ??
+            DateTime.now().subtract(duration).toIso8601String(),
+        'endTime': DateTime.now().toIso8601String(),
+        'durationMs': duration.inMilliseconds,
+      });
+
+      // 限制会话记录数量
+      if (_sessions.length > _maxSessions) {
+        _sessions = _sessions.sublist(_sessions.length - _maxSessions);
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_sessionsKey, jsonEncode(_sessions));
+      debugPrint('[Learning] 学习会话结束，时长: ${duration.inMinutes}分钟');
+    } catch (e) {
+      debugPrint('[Learning] 保存学习会话失败: $e');
+    }
+  }
+
+  /// 更新项目学习进度
+  Future<void> updateProgress(FontProject project) async {
+    try {
+      final totalChars = project.glyphs.length;
+      final completedChars =
+          project.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+
+      final existingIndex =
+          _progressList.indexWhere((p) => p.projectId == project.id);
+
+      final progress = LearningProgress(
+        projectId: project.id,
+        projectName: project.name,
+        totalChars: totalChars,
+        completedChars: completedChars,
+        lastAccessTime: DateTime.now(),
+        totalTimeSpent: existingIndex >= 0
+            ? _progressList[existingIndex].totalTimeSpent +
+                (_sessionStartTime != null
+                    ? DateTime.now().difference(_sessionStartTime!)
+                    : Duration.zero)
+            : Duration.zero,
+      );
+
+      if (existingIndex >= 0) {
+        _progressList[existingIndex] = progress;
+      } else {
+        _progressList.add(progress);
+      }
+
+      // 持久化保存
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _progressKey,
+        jsonEncode(_progressList.map((e) => e.toJson()).toList()),
+      );
+    } catch (e) {
+      debugPrint('[Learning] 更新学习进度失败: $e');
+    }
+  }
+
+  /// 获取学习进度列表
+  List<LearningProgress> get progressList => List.unmodifiable(_progressList);
+
+  /// 获取项目学习进度
+  LearningProgress? getProjectProgress(String projectId) {
+    try {
+      return _progressList.firstWhere((p) => p.projectId == projectId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 学习建议功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取学习建议
+  ///
+  /// 基于学习进度、使用频率和项目状态生成个性化建议
+  List<Map<String, dynamic>> getLearningSuggestions() {
+    final suggestions = <Map<String, dynamic>>[];
+
+    try {
+      final stats = getLearningStats();
+
+      // 建议1：未完成的项目
+      final incompleteProjects =
+          _progressList.where((p) => p.isInProgress).toList();
+      if (incompleteProjects.isNotEmpty) {
+        final project = incompleteProjects.first;
+        suggestions.add({
+          'type': 'continue',
+          'title': '继续创作「${project.projectName}」',
+          'desc': '已完成 ${project.progressPercent.toStringAsFixed(0)}%，'
+              '还需完成 ${project.totalChars - project.completedChars} 个字符',
+          'icon': Icons.play_circle_outline,
+          'priority': 1,
+          'projectId': project.projectId,
+        });
+      }
+
+      // 建议2：长时间未访问的项目
+      final now = DateTime.now();
+      final staleProjects = _progressList
+          .where((p) => now.difference(p.lastAccessTime).inDays > 7)
+          .toList();
+      if (staleProjects.isNotEmpty) {
+        suggestions.add({
+          'type': 'revisit',
+          'title': '回顾「${staleProjects.first.projectName}」',
+          'desc': '已经超过 ${now.difference(staleProjects.first.lastAccessTime).inDays} 天没有编辑',
+          'icon': Icons.update,
+          'priority': 2,
+          'projectId': staleProjects.first.projectId,
+        });
+      }
+
+      // 建议3：学习频率建议
+      final recentSessions = _sessions
+          .where((s) {
+            final ts = DateTime.tryParse(s['startTime'] as String? ?? '');
+            return ts != null && now.difference(ts).inDays <= 7;
+          })
+          .length;
+      if (recentSessions < 3) {
+        suggestions.add({
+          'type': 'frequency',
+          'title': '增加学习频率',
+          'desc': '本周仅学习 $recentSessions 次，建议每天花 15 分钟练习',
+          'icon': Icons.schedule,
+          'priority': 3,
+        });
+      }
+
+      // 建议4：尝试新功能
+      final completedCount = _progressList.where((p) => p.isCompleted).length;
+      if (completedCount >= 2) {
+        suggestions.add({
+          'type': 'explore',
+          'title': '尝试 AI 智能生成',
+          'desc': '您已完成 $completedCount 个项目，试试 AI 生成独特风格',
+          'icon': Icons.auto_awesome_outlined,
+          'priority': 4,
+        });
+      }
+
+      // 建议5：导出和分享
+      final readyToExport =
+          _progressList.where((p) => p.progressPercent >= 80).toList();
+      if (readyToExport.isNotEmpty) {
+        suggestions.add({
+          'type': 'export',
+          'title': '导出「${readyToExport.first.projectName}」',
+          'desc': '该项目已基本完成，可以导出为字体使用',
+          'icon': Icons.file_download,
+          'priority': 2,
+          'projectId': readyToExport.first.projectId,
+        });
+      }
+
+      // 按优先级排序
+      suggestions.sort(
+          (a, b) => (a['priority'] as int).compareTo(b['priority'] as int));
+    } catch (e) {
+      debugPrint('[Learning] 生成学习建议失败: $e');
+    }
+
+    return suggestions;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 学习统计功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取学习统计数据
+  Map<String, dynamic> getLearningStats() {
+    try {
+      final now = DateTime.now();
+
+      // 会话统计
+      final totalSessions = _sessions.length;
+      final totalDurationMs = _sessions.fold<int>(
+          0, (sum, s) => sum + ((s['durationMs'] as int?) ?? 0));
+      final totalDuration = Duration(milliseconds: totalDurationMs);
+
+      // 最近 7 天统计
+      final recentSessions = _sessions.where((s) {
+        final ts = DateTime.tryParse(s['startTime'] as String? ?? '');
+        return ts != null && now.difference(ts).inDays <= 7;
+      }).toList();
+      final recentDurationMs = recentSessions.fold<int>(
+          0, (sum, s) => sum + ((s['durationMs'] as int?) ?? 0));
+
+      // 项目进度统计
+      final totalProjects = _progressList.length;
+      final completedProjects = _progressList.where((p) => p.isCompleted).length;
+      final inProgressProjects =
+          _progressList.where((p) => p.isInProgress).length;
+      final totalCharsCompleted =
+          _progressList.fold<int>(0, (sum, p) => sum + p.completedChars);
+      final totalCharsAll =
+          _progressList.fold<int>(0, (sum, p) => sum + p.totalChars);
+
+      // 学习效率（字符/小时）
+      final efficiency = totalDuration.inHours > 0
+          ? totalCharsCompleted / totalDuration.inHours
+          : 0.0;
+
+      // 学习连续天数
+      int streakDays = 0;
+      for (int i = 0; i < 365; i++) {
+        final day = now.subtract(Duration(days: i));
+        final hasSession = _sessions.any((s) {
+          final ts = DateTime.tryParse(s['startTime'] as String? ?? '');
+          return ts != null &&
+              ts.year == day.year &&
+              ts.month == day.month &&
+              ts.day == day.day;
+        });
+        if (hasSession) {
+          streakDays++;
+        } else {
+          break;
+        }
+      }
+
+      return {
+        'totalSessions': totalSessions,
+        'totalDuration': totalDuration,
+        'totalDurationFormatted': _formatDuration(totalDuration),
+        'recentSessions7d': recentSessions.length,
+        'recentDuration7d': Duration(milliseconds: recentDurationMs),
+        'recentDuration7dFormatted':
+            _formatDuration(Duration(milliseconds: recentDurationMs)),
+        'totalProjects': totalProjects,
+        'completedProjects': completedProjects,
+        'inProgressProjects': inProgressProjects,
+        'totalCharsCompleted': totalCharsCompleted,
+        'totalCharsAll': totalCharsAll,
+        'overallProgressPercent': totalCharsAll > 0
+            ? (totalCharsCompleted / totalCharsAll * 100).clamp(0, 100)
+            : 0.0,
+        'efficiency': efficiency,
+        'efficiencyFormatted': '${efficiency.toStringAsFixed(1)} 字符/小时',
+        'streakDays': streakDays,
+      };
+    } catch (e) {
+      debugPrint('[Learning] 获取学习统计失败: $e');
+      return {};
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 学习报告功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 生成学习报告
+  String generateLearningReport() {
+    try {
+      final stats = getLearningStats();
+      final buffer = StringBuffer();
+
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 学习报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      // 学习概览
+      buffer.writeln('【学习概览】');
+      buffer.writeln('  总学习会话: ${stats['totalSessions'] ?? 0} 次');
+      buffer.writeln('  总学习时长: ${stats['totalDurationFormatted'] ?? '0 分钟'}');
+      buffer.writeln('  连续学习天数: ${stats['streakDays'] ?? 0} 天');
+      buffer.writeln('  学习效率: ${stats['efficiencyFormatted'] ?? '0 字符/小时'}');
+      buffer.writeln();
+
+      // 最近 7 天
+      buffer.writeln('【最近 7 天】');
+      buffer.writeln('  学习会话: ${stats['recentSessions7d'] ?? 0} 次');
+      buffer.writeln('  学习时长: ${stats['recentDuration7dFormatted'] ?? '0 分钟'}');
+      buffer.writeln();
+
+      // 项目进度
+      buffer.writeln('【项目进度】');
+      buffer.writeln('  总项目数: ${stats['totalProjects'] ?? 0}');
+      buffer.writeln('  已完成: ${stats['completedProjects'] ?? 0} 个项目');
+      buffer.writeln('  进行中: ${stats['inProgressProjects'] ?? 0} 个项目');
+      buffer.writeln('  已完成字符: ${stats['totalCharsCompleted'] ?? 0} / ${stats['totalCharsAll'] ?? 0}');
+      buffer.writeln('  整体进度: ${(stats['overallProgressPercent'] as double? ?? 0).toStringAsFixed(1)}%');
+      buffer.writeln();
+
+      // 各项目详情
+      buffer.writeln('【项目详情】');
+      for (int i = 0; i < _progressList.length; i++) {
+        final p = _progressList[i];
+        buffer.writeln('  ${i + 1}. ${p.projectName}');
+        buffer.writeln('     进度: ${p.progressPercent.toStringAsFixed(1)}% (${p.completedChars}/${p.totalChars})');
+        buffer.writeln('     学习时长: ${_formatDuration(p.totalTimeSpent)}');
+        buffer.writeln('     最近访问: ${p.lastAccessTime.toLocal()}');
+      }
+
+      // 学习建议
+      buffer.writeln();
+      buffer.writeln('【学习建议】');
+      final suggestions = getLearningSuggestions();
+      if (suggestions.isEmpty) {
+        buffer.writeln('  暂无建议，继续保持良好的学习习惯！');
+      } else {
+        for (int i = 0; i < suggestions.length; i++) {
+          final s = suggestions[i];
+          buffer.writeln('  ${i + 1}. ${s['title']}');
+          buffer.writeln('     ${s['desc']}');
+        }
+      }
+
+      buffer.writeln();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[Learning] 生成学习报告失败: $e');
+      return '报告生成失败: $e';
+    }
+  }
+
+  /// 格式化时长
+  String _formatDuration(Duration duration) {
+    if (duration.inHours > 0) {
+      return '${duration.inHours} 小时 ${duration.inMinutes % 60} 分钟';
+    } else if (duration.inMinutes > 0) {
+      return '${duration.inMinutes} 分钟';
+    } else {
+      return '${duration.inSeconds} 秒';
+    }
+  }
+
+  /// 清除学习数据
+  Future<void> clearAll() async {
+    _progressList.clear();
+    _sessions.clear();
+    _sessionStartTime = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_progressKey);
+      await prefs.remove(_sessionsKey);
+      await prefs.remove(_statsKey);
+    } catch (_) {}
+  }
+}

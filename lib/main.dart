@@ -1817,6 +1817,292 @@ class CompatibilityService {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// 推荐功能优化：智能推荐、热门推荐、相关推荐、个性化推荐
+// ═══════════════════════════════════════════════════════════
+
+/// 推荐服务
+///
+/// 功能：
+/// - 智能推荐：基于用户使用模式和项目状态推荐最佳操作
+/// - 热门推荐：基于功能使用频率推荐最常用的功能
+/// - 相关推荐：基于当前上下文推荐相关功能
+/// - 个性化推荐：基于用户偏好和技能等级推荐
+class RecommendationService {
+  static final RecommendationService _instance = RecommendationService._();
+  static RecommendationService get instance => _instance;
+  RecommendationService._();
+
+  static const String _usageHistoryKey = 'recommendation_usage_history';
+  static const int _maxHistoryItems = 100;
+  List<Map<String, dynamic>> _usageHistory = [];
+
+  /// 初始化推荐服务
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_usageHistoryKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _usageHistory = list.cast<Map<String, dynamic>>();
+      }
+      debugPrint('[Recommendation] 初始化完成，${_usageHistory.length} 条历史');
+    } catch (e) {
+      debugPrint('[Recommendation] 初始化失败: $e');
+    }
+  }
+
+  /// 记录用户操作（用于智能推荐的数据积累）
+  Future<void> trackAction(String action, {Map<String, dynamic>? metadata}) async {
+    try {
+      _usageHistory.add({
+        'action': action,
+        'timestamp': DateTime.now().toIso8601String(),
+        if (metadata != null) ...metadata,
+      });
+      // 限制历史记录数量
+      if (_usageHistory.length > _maxHistoryItems) {
+        _usageHistory = _usageHistory.sublist(_usageHistory.length - _maxHistoryItems);
+      }
+      // 异步保存
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_usageHistoryKey, jsonEncode(_usageHistory));
+    } catch (e) {
+      debugPrint('[Recommendation] 记录操作失败: $e');
+    }
+  }
+
+  /// 智能推荐：基于用户使用模式推荐最佳操作
+  ///
+  /// 分析最近的操作历史，推荐最可能需要的下一步操作
+  List<Map<String, dynamic>> getSmartRecommendations({int limit = 3}) {
+    try {
+      final recommendations = <Map<String, dynamic>>[];
+      final recentActions = _usageHistory.take(20).toList();
+
+      // 统计操作频率
+      final actionCounts = <String, int>{};
+      for (final action in recentActions) {
+        final key = action['action'] as String? ?? 'unknown';
+        actionCounts[key] = (actionCounts[key] ?? 0) + 1;
+      }
+
+      // 推荐最频繁的操作
+      final sortedActions = actionCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      for (final entry in sortedActions.take(limit)) {
+        final actionInfo = _getActionInfo(entry.key);
+        if (actionInfo != null) {
+          recommendations.add({
+            ...actionInfo,
+            'score': entry.value,
+            'reason': '基于您的使用习惯',
+          });
+        }
+      }
+
+      // 如果历史不足，补充默认推荐
+      if (recommendations.length < limit) {
+        final defaults = _getDefaultRecommendations(limit - recommendations.length);
+        recommendations.addAll(defaults);
+      }
+
+      return recommendations;
+    } catch (e) {
+      debugPrint('[Recommendation] 智能推荐失败: $e');
+      return _getDefaultRecommendations(limit);
+    }
+  }
+
+  /// 热门推荐：基于全局使用频率推荐最常用的功能
+  List<Map<String, dynamic>> getPopularRecommendations({int limit = 3}) {
+    try {
+      // 统计所有操作频率
+      final actionCounts = <String, int>{};
+      for (final action in _usageHistory) {
+        final key = action['action'] as String? ?? 'unknown';
+        actionCounts[key] = (actionCounts[key] ?? 0) + 1;
+      }
+
+      final sortedActions = actionCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+
+      final recommendations = <Map<String, dynamic>>[];
+      for (final entry in sortedActions.take(limit)) {
+        final actionInfo = _getActionInfo(entry.key);
+        if (actionInfo != null) {
+          recommendations.add({
+            ...actionInfo,
+            'score': entry.value,
+            'reason': '最受欢迎的功能',
+          });
+        }
+      }
+
+      return recommendations;
+    } catch (e) {
+      debugPrint('[Recommendation] 热门推荐失败: $e');
+      return [];
+    }
+  }
+
+  /// 相关推荐：基于当前上下文推荐相关功能
+  ///
+  /// [currentAction] 当前正在执行的操作
+  List<Map<String, dynamic>> getRelatedRecommendations(String currentAction, {int limit = 3}) {
+    try {
+      // 定义功能关联关系
+      final relatedMap = <String, List<String>>{
+        'capture': ['standard', 'quick', 'free'],
+        'standard': ['capture', 'preview', 'export'],
+        'quick': ['capture', 'preview', 'ai'],
+        'free': ['capture', 'standard', 'ai'],
+        'ai': ['quick', 'preview', 'export'],
+        'preview': ['export', 'share', 'edit'],
+        'export': ['share', 'preview'],
+        'projects': ['capture', 'preview', 'export'],
+      };
+
+      final related = relatedMap[currentAction] ?? ['capture', 'standard', 'quick'];
+      final recommendations = <Map<String, dynamic>>[];
+
+      for (final action in related.take(limit)) {
+        final actionInfo = _getActionInfo(action);
+        if (actionInfo != null) {
+          recommendations.add({
+            ...actionInfo,
+            'reason': '与「${_getActionDisplayName(currentAction)}」相关的功能',
+          });
+        }
+      }
+
+      return recommendations;
+    } catch (e) {
+      debugPrint('[Recommendation] 相关推荐失败: $e');
+      return [];
+    }
+  }
+
+  /// 个性化推荐：基于用户偏好和项目状态推荐
+  List<Map<String, dynamic>> getPersonalizedRecommendations({
+    required int skillLevel,
+    required String preferredCategory,
+    int limit = 3,
+  }) {
+    try {
+      final recommendations = <Map<String, dynamic>>[];
+
+      // 基于技能等级
+      if (skillLevel == 1) {
+        recommendations.add(_buildRecommendation('quick', '快速体验模式', '无需完整拍摄，快速生成体验版', Icons.bolt, '适合新手入门'));
+        recommendations.add(_buildRecommendation('capture', '一键生成', '拍照即可自动生成手写字体', Icons.auto_awesome, '最简单的创建方式'));
+      } else if (skillLevel == 2) {
+        recommendations.add(_buildRecommendation('standard', '标准字表模式', '使用标准字表逐字拍摄', Icons.grid_on, '生成完整字体的最佳方式'));
+        recommendations.add(_buildRecommendation('free', '自由拍摄', '灵活拍摄任意字符', Icons.camera_alt, '自由创作'));
+      } else {
+        recommendations.add(_buildRecommendation('ai', 'AI 智能生成', '通过文字描述生成字体', Icons.auto_awesome_outlined, '高级创作方式'));
+        recommendations.add(_buildRecommendation('preview', '增强预览', '高级预览和调整功能', Icons.preview, '精细化调整'));
+      }
+
+      // 基于偏好类别
+      if (preferredCategory == 'standard') {
+        recommendations.add(_buildRecommendation('standard', '继续字表创作', '使用标准字表继续创作', Icons.play_circle_outline, '基于您的偏好'));
+      } else if (preferredCategory == 'ai') {
+        recommendations.add(_buildRecommendation('ai', 'AI 风格探索', '探索更多 AI 字体风格', Icons.explore, '基于您的偏好'));
+      }
+
+      return recommendations.take(limit).toList();
+    } catch (e) {
+      debugPrint('[Recommendation] 个性化推荐失败: $e');
+      return [];
+    }
+  }
+
+  /// 获取使用统计（供推荐引擎参考）
+  Map<String, dynamic> getUsageStats() {
+    final actionCounts = <String, int>{};
+    for (final action in _usageHistory) {
+      final key = action['action'] as String? ?? 'unknown';
+      actionCounts[key] = (actionCounts[key] ?? 0) + 1;
+    }
+
+    final now = DateTime.now();
+    final todayCount = _usageHistory.where((a) {
+      final ts = DateTime.tryParse(a['timestamp'] as String? ?? '');
+      return ts != null && now.difference(ts).inDays == 0;
+    }).length;
+
+    return {
+      'totalActions': _usageHistory.length,
+      'todayActions': todayCount,
+      'actionCounts': actionCounts,
+      'mostUsedAction': actionCounts.isNotEmpty
+          ? actionCounts.entries.reduce((a, b) => a.value >= b.value ? a : b).key
+          : null,
+    };
+  }
+
+  // ── 辅助方法 ──
+
+  Map<String, dynamic>? _getActionInfo(String action) {
+    final infoMap = <String, Map<String, dynamic>>{
+      'capture': {'title': '一键生成', 'desc': '拍照自动生成手写字体', 'icon': Icons.auto_awesome, 'action': 'capture'},
+      'standard': {'title': '标准字表', 'desc': '使用标准字表逐字拍摄', 'icon': Icons.grid_on, 'action': 'standard'},
+      'quick': {'title': '快速体验', 'desc': '快速生成体验版字体', 'icon': Icons.bolt, 'action': 'quick'},
+      'free': {'title': '自由拍摄', 'desc': '灵活拍摄任意字符', 'icon': Icons.camera_alt, 'action': 'free'},
+      'ai': {'title': 'AI 生成', 'desc': 'AI 自动生成独特字体', 'icon': Icons.auto_awesome_outlined, 'action': 'ai'},
+      'preview': {'title': '字体预览', 'desc': '预览和调整字体效果', 'icon': Icons.preview, 'action': 'preview'},
+      'export': {'title': '导出字体', 'desc': '导出为 TTF/OTF 文件', 'icon': Icons.file_download, 'action': 'export'},
+      'projects': {'title': '我的字体', 'desc': '管理所有字体项目', 'icon': Icons.folder, 'action': 'projects'},
+    };
+    return infoMap[action];
+  }
+
+  String _getActionDisplayName(String action) {
+    final names = {
+      'capture': '一键生成',
+      'standard': '标准字表',
+      'quick': '快速体验',
+      'free': '自由拍摄',
+      'ai': 'AI 生成',
+      'preview': '字体预览',
+      'export': '导出字体',
+      'projects': '我的字体',
+    };
+    return names[action] ?? action;
+  }
+
+  Map<String, dynamic> _buildRecommendation(
+    String action, String title, String desc, IconData icon, String reason,
+  ) {
+    return {
+      'title': title,
+      'desc': desc,
+      'icon': icon,
+      'action': action,
+      'reason': reason,
+    };
+  }
+
+  List<Map<String, dynamic>> _getDefaultRecommendations(int count) {
+    return [
+      _buildRecommendation('capture', '一键生成字体', '拍照自动生成手写字体', Icons.auto_awesome, '推荐的入门方式'),
+      _buildRecommendation('standard', '标准字表模式', '使用标准字表逐字拍摄', Icons.grid_on, '生成完整字体'),
+      _buildRecommendation('ai', 'AI 智能生成', '通过文字描述生成字体', Icons.auto_awesome_outlined, '创新创作方式'),
+    ].take(count).toList();
+  }
+
+  /// 清除使用历史
+  Future<void> clearHistory() async {
+    _usageHistory.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_usageHistoryKey);
+    } catch (_) {}
+  }
+}
+
 /// 应用主导航页面 - 包含底部导航栏和页面状态保持
 class MainNavigationPage extends StatefulWidget {
   final VoidCallback? onThemeChanged;

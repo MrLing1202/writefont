@@ -93,12 +93,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _version = '';
   String _buildNumber = '';
 
+  // ═══ 自定义功能状态 ═══
+  // 自定义快捷键
+  Map<String, String> _customShortcuts = {};
+  static const String _shortcutsKey = 'custom_shortcuts';
+  // 自定义工具栏
+  List<String> _toolbarOrder = ['capture', 'standard', 'quick', 'free', 'ai'];
+  static const String _toolbarKey = 'toolbar_order';
+  // 自定义手势
+  bool _enableSwipeRefresh = true;
+  bool _enableDoubleTapZoom = true;
+  bool _enableLongPressMenu = true;
+  bool _enablePinchZoom = true;
+  static const String _gesturesKey = 'custom_gestures';
+  // 自定义菜单
+  List<String> _quickMenuItems = ['capture', 'fonts', 'refresh'];
+  static const String _menuKey = 'custom_menu';
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
     _loadFeedbackEntries();
     _loadSupportHistory();
+    _loadCustomizationSettings();
   }
 
   @override
@@ -400,6 +418,446 @@ class _SettingsScreenState extends State<SettingsScreen> {
       default:
         return l10n.followSystem;
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 自定义功能优化：快捷键、工具栏、菜单、手势
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载自定义设置
+  Future<void> _loadCustomizationSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // 加载自定义快捷键
+      final shortcutsJson = prefs.getString(_shortcutsKey);
+      if (shortcutsJson != null) {
+        final map = jsonDecode(shortcutsJson) as Map<String, dynamic>;
+        _customShortcuts = map.map((k, v) => MapEntry(k, v as String));
+      }
+      // 加载工具栏顺序
+      final toolbarJson = prefs.getString(_toolbarKey);
+      if (toolbarJson != null) {
+        _toolbarOrder = (jsonDecode(toolbarJson) as List).map((e) => e as String).toList();
+      }
+      // 加载手势设置
+      final gesturesJson = prefs.getString(_gesturesKey);
+      if (gesturesJson != null) {
+        final map = jsonDecode(gesturesJson) as Map<String, dynamic>;
+        _enableSwipeRefresh = map['swipeRefresh'] as bool? ?? true;
+        _enableDoubleTapZoom = map['doubleTapZoom'] as bool? ?? true;
+        _enableLongPressMenu = map['longPressMenu'] as bool? ?? true;
+        _enablePinchZoom = map['pinchZoom'] as bool? ?? true;
+      }
+      // 加载自定义菜单
+      final menuJson = prefs.getString(_menuKey);
+      if (menuJson != null) {
+        _quickMenuItems = (jsonDecode(menuJson) as List).map((e) => e as String).toList();
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('[Settings] 加载自定义设置失败: $e');
+    }
+  }
+
+  /// 保存自定义快捷键
+  Future<void> _saveCustomShortcuts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_shortcutsKey, jsonEncode(_customShortcuts));
+    } catch (e) {
+      debugPrint('[Settings] 保存自定义快捷键失败: $e');
+    }
+  }
+
+  /// 保存工具栏顺序
+  Future<void> _saveToolbarOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_toolbarKey, jsonEncode(_toolbarOrder));
+    } catch (e) {
+      debugPrint('[Settings] 保存工具栏顺序失败: $e');
+    }
+  }
+
+  /// 保存手势设置
+  Future<void> _saveGestureSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_gesturesKey, jsonEncode({
+        'swipeRefresh': _enableSwipeRefresh,
+        'doubleTapZoom': _enableDoubleTapZoom,
+        'longPressMenu': _enableLongPressMenu,
+        'pinchZoom': _enablePinchZoom,
+      }));
+    } catch (e) {
+      debugPrint('[Settings] 保存手势设置失败: $e');
+    }
+  }
+
+  /// 保存自定义菜单
+  Future<void> _saveCustomMenu() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_menuKey, jsonEncode(_quickMenuItems));
+    } catch (e) {
+      debugPrint('[Settings] 保存自定义菜单失败: $e');
+    }
+  }
+
+  /// 显示快捷键自定义对话框
+  void _showShortcutCustomizationDialog() {
+    final actions = {
+      'capture': '一键生成',
+      'standard': '标准字表',
+      'quick': '快速体验',
+      'free': '自由拍摄',
+      'ai': 'AI 生成',
+      'projects': '我的字体',
+      'settings': '设置',
+    };
+    final keys = ['Ctrl+N', 'Ctrl+S', 'Ctrl+O', 'Ctrl+E', 'Ctrl+A', 'Ctrl+P', 'Ctrl+,'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('自定义快捷键'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: actions.entries.map((entry) {
+                  final currentKey = _customShortcuts[entry.key] ?? '';
+                  return ListTile(
+                    dense: true,
+                    title: Text(entry.value, style: const TextStyle(fontSize: 14)),
+                    subtitle: Text(
+                      currentKey.isNotEmpty ? currentKey : '未设置',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: currentKey.isNotEmpty ? WFColors.primary : WFColors.textLight,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DropdownButton<String>(
+                          value: currentKey.isNotEmpty ? currentKey : null,
+                          hint: const Text('选择', style: TextStyle(fontSize: 12)),
+                          items: keys.map((k) => DropdownMenuItem(value: k, child: Text(k, style: const TextStyle(fontSize: 12)))).toList(),
+                          onChanged: (v) {
+                            if (v != null) {
+                              setDialogState(() => _customShortcuts[entry.key] = v);
+                              setState(() => _customShortcuts[entry.key] = v);
+                              _saveCustomShortcuts();
+                            }
+                          },
+                        ),
+                        if (currentKey.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              setDialogState(() => _customShortcuts.remove(entry.key));
+                              setState(() => _customShortcuts.remove(entry.key));
+                              _saveCustomShortcuts();
+                            },
+                          ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setDialogState(() => _customShortcuts.clear());
+                setState(() => _customShortcuts.clear());
+                _saveCustomShortcuts();
+              },
+              child: const Text('全部重置'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 显示工具栏自定义对话框
+  void _showToolbarCustomizationDialog() {
+    final items = {
+      'capture': {'label': '一键生成', 'icon': Icons.auto_awesome},
+      'standard': {'label': '标准字表', 'icon': Icons.grid_on},
+      'quick': {'label': '快速体验', 'icon': Icons.bolt},
+      'free': {'label': '自由拍摄', 'icon': Icons.camera_alt},
+      'ai': {'label': 'AI 生成', 'icon': Icons.auto_awesome_outlined},
+    };
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('自定义工具栏'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('拖拽调整工具栏按钮顺序', style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                const SizedBox(height: 12),
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _toolbarOrder.length,
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) newIndex--;
+                    setDialogState(() {
+                      final item = _toolbarOrder.removeAt(oldIndex);
+                      _toolbarOrder.insert(newIndex, item);
+                    });
+                    setState(() {});
+                    _saveToolbarOrder();
+                  },
+                  itemBuilder: (ctx, index) {
+                    final key = _toolbarOrder[index];
+                    final item = items[key];
+                    if (item == null) return const SizedBox.shrink();
+                    return ListTile(
+                      key: Key(key),
+                      dense: true,
+                      leading: Icon(item['icon'] as IconData, color: WFColors.primary),
+                      title: Text(item['label'] as String, style: const TextStyle(fontSize: 14)),
+                      trailing: const Icon(Icons.drag_handle, color: WFColors.textLight),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setDialogState(() {
+                  _toolbarOrder = ['capture', 'standard', 'quick', 'free', 'ai'];
+                });
+                setState(() {});
+                _saveToolbarOrder();
+              },
+              child: const Text('重置默认'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 显示手势自定义面板
+  void _showGestureCustomizationSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('自定义手势', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('下拉刷新'),
+                  subtitle: const Text('在首页下拉刷新项目数据'),
+                  value: _enableSwipeRefresh,
+                  onChanged: (v) {
+                    setSheetState(() => _enableSwipeRefresh = v);
+                    setState(() => _enableSwipeRefresh = v);
+                    _saveGestureSettings();
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('双击缩放'),
+                  subtitle: const Text('双击切换 1.0x 和 1.5x 缩放'),
+                  value: _enableDoubleTapZoom,
+                  onChanged: (v) {
+                    setSheetState(() => _enableDoubleTapZoom = v);
+                    setState(() => _enableDoubleTapZoom = v);
+                    _saveGestureSettings();
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('长按菜单'),
+                  subtitle: const Text('长按显示快捷操作菜单'),
+                  value: _enableLongPressMenu,
+                  onChanged: (v) {
+                    setSheetState(() => _enableLongPressMenu = v);
+                    setState(() => _enableLongPressMenu = v);
+                    _saveGestureSettings();
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('捏合缩放'),
+                  subtitle: const Text('使用双指捏合缩放内容'),
+                  value: _enablePinchZoom,
+                  onChanged: (v) {
+                    setSheetState(() => _enablePinchZoom = v);
+                    setState(() => _enablePinchZoom = v);
+                    _saveGestureSettings();
+                  },
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      setSheetState(() {
+                        _enableSwipeRefresh = true;
+                        _enableDoubleTapZoom = true;
+                        _enableLongPressMenu = true;
+                        _enablePinchZoom = true;
+                      });
+                      setState(() {});
+                      _saveGestureSettings();
+                    },
+                    child: const Text('全部重置'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 显示菜单自定义对话框
+  void _showMenuCustomizationDialog() {
+    final allItems = {
+      'capture': {'label': '快速拍照', 'icon': Icons.camera_alt},
+      'fonts': {'label': '我的字体', 'icon': Icons.folder},
+      'refresh': {'label': '刷新数据', 'icon': Icons.refresh},
+      'ai': {'label': 'AI 生成', 'icon': Icons.auto_awesome_outlined},
+      'settings': {'label': '打开设置', 'icon': Icons.settings},
+    };
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('自定义快捷菜单'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('选择长按菜单中显示的操作项', style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                  const SizedBox(height: 12),
+                  ...allItems.entries.map((entry) {
+                    final isSelected = _quickMenuItems.contains(entry.key);
+                    return CheckboxListTile(
+                      dense: true,
+                      value: isSelected,
+                      title: Row(
+                        children: [
+                          Icon(entry.value['icon'] as IconData, size: 18, color: WFColors.primary),
+                          const SizedBox(width: 8),
+                          Text(entry.value['label'] as String, style: const TextStyle(fontSize: 14)),
+                        ],
+                      ),
+                      onChanged: (v) {
+                        setDialogState(() {
+                          if (v == true) {
+                            _quickMenuItems.add(entry.key);
+                          } else {
+                            _quickMenuItems.remove(entry.key);
+                          }
+                        });
+                        setState(() {});
+                        _saveCustomMenu();
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                setDialogState(() {
+                  _quickMenuItems = ['capture', 'fonts', 'refresh'];
+                });
+                setState(() {});
+                _saveCustomMenu();
+              },
+              child: const Text('重置默认'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('完成'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建自定义功能卡片
+  Widget _buildCustomizationCard() {
+    return WFCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.keyboard, color: WFColors.primary),
+            title: const Text('自定义快捷键'),
+            subtitle: Text(
+              _customShortcuts.isEmpty ? '未设置自定义快捷键' : '已设置 ${_customShortcuts.length} 个快捷键',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showShortcutCustomizationDialog,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.view_column, color: WFColors.info),
+            title: const Text('自定义工具栏'),
+            subtitle: const Text('调整工具栏按钮顺序'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showToolbarCustomizationDialog,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.touch_app, color: WFColors.accent),
+            title: const Text('自定义手势'),
+            subtitle: Text(
+              '已启用 ${[_enableSwipeRefresh, _enableDoubleTapZoom, _enableLongPressMenu, _enablePinchZoom].where((e) => e).length} 种手势',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showGestureCustomizationSheet,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.menu_open, color: WFColors.success),
+            title: const Text('自定义菜单'),
+            subtitle: Text('长按菜单包含 ${_quickMenuItems.length} 个操作项'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showMenuCustomizationDialog,
+          ),
+        ],
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -721,6 +1179,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ═══ 语言 ═══
                 _buildSectionHeader(l10n.language, Icons.language),
                 _buildLanguageCard(),
+                const SizedBox(height: 16),
+
+                // ═══ 自定义功能 ═══
+                _buildSectionHeader('自定义', Icons.build_circle_outlined),
+                _buildCustomizationCard(),
                 const SizedBox(height: 16),
 
                 // ═══ 识别设置 ═══
