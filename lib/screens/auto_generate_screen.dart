@@ -144,8 +144,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       if (result.hasError) {
         setState(() {
           _hasError = true;
-          _errorMessage = result.error;
-          _status = result.errorStatus;
+          _errorMessage = result.error ?? '未知错误';
+          _status = result.errorStatus ?? '处理失败';
         });
         return;
       }
