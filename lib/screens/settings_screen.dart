@@ -1322,12 +1322,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.language,
             title: 'English',
           ),
-          _buildDivider(),
-          _buildLanguageRadioTile(
-            code: 'ja',
-            icon: Icons.language,
-            title: '日本語',
-          ),
         ],
       ),
     );

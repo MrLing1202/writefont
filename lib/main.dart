@@ -19,6 +19,7 @@ import 'screens/ocr_settings_screen.dart';
 import 'screens/project_list_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/app_config_service.dart';
+import 'services/locale_service.dart';
 import 'services/recognition_service.dart';
 import 'services/image_processor.dart';
 import 'services/cloud_sync_service.dart';
@@ -4919,6 +4920,9 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     _loadNavigationPreference();
     _loadAccessibilitySettings();
     _initSyncStatusMonitor();
+    // 初始化主题和语言服务，使其 notifyListeners 时触发 UI 重建
+    ThemeConfigService.instance.init();
+    LocaleService.instance.init();
     // 3秒兜底：如果 _checkOnboarding 还没完成，强制标记为已检查，避免永久 loading
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && !_onboardingChecked) {
@@ -5186,17 +5190,23 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     }
   }
 
-  /// 构建浅色主题 — 使用 WFColors 统一色彩方案
-  static ThemeData _buildLightTheme() {
+  /// 构建浅色主题 — 使用 WFColors 统一色彩方案，读取 ThemeConfigService 个性化设置
+  ThemeData _buildLightTheme() {
+    final themeConfig = ThemeConfigService.instance;
+    final seedColor = themeConfig.currentThemeColor;
+    final radius = themeConfig.borderRadius;
+    final fontFamily = themeConfig.currentFontFamily;
+    final baseFontSize = 14.0 * themeConfig.fontScale;
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      fontFamily: null, // 使用系统字体
+      fontFamily: fontFamily,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: WFColors.primary,
+        seedColor: seedColor,
         brightness: Brightness.light,
       ).copyWith(
-        primary: WFColors.primary,
+        primary: seedColor,
         onPrimary: Colors.white,
         secondary: WFColors.accent,
         surface: WFColors.bgCard,
@@ -5289,14 +5299,17 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     );
   }
 
-  /// 构建深色主题 — 基于 WFColors 的深色变体
-  static ThemeData _buildDarkTheme() {
+  /// 构建深色主题 — 基于 WFColors 的深色变体，读取 ThemeConfigService 个性化设置
+  ThemeData _buildDarkTheme() {
+    final themeConfig = ThemeConfigService.instance;
+    final seedColor = themeConfig.currentThemeColor;
+    final fontFamily = themeConfig.currentFontFamily;
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      fontFamily: null,
+      fontFamily: fontFamily,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: WFColors.primary,
+        seedColor: seedColor,
         brightness: Brightness.dark,
       ).copyWith(
         primary: WFColors.darkPrimary, // 深色模式下用浅色主色
@@ -5427,9 +5440,16 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         : HomeScreen(onThemeChanged: () => _loadThemeMode());
     }
 
-    return MaterialApp(
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        ThemeConfigService.instance,
+        LocaleService.instance,
+      ]),
+      builder: (context, _) => MaterialApp(
       title: '手迹造字 WriteFont',
       debugShowCheckedModeBanner: false,
+      locale: LocaleService.instance.locale,
+      supportedLocales: LocaleService.supportedLocales,
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
       themeMode: _themeMode,
@@ -5516,6 +5536,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
         }
       },
+    ),
     );
   }
 }
