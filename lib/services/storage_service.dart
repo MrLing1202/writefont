@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
@@ -3551,7 +3552,7 @@ class UserBehaviorAnalysisService {
 
       // 获取最近的行为序列
       final recentActions = _behaviorRecords
-          .takeLast(20)
+          .sublist(_behaviorRecords.length > 20 ? _behaviorRecords.length - 20 : 0)
           .map((r) => r.action)
           .toList();
 

@@ -537,7 +537,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     String? estimatedRemaining;
     if (_processStartTime != null && progressValue > 0 && progressValue < 1) {
       final elapsed = DateTime.now().difference(_processStartTime!);
-      final totalEstimated = elapsed ~/ progressValue;
+      final totalEstimated = elapsed ~/ progressValue.toInt();
       final remaining = totalEstimated - elapsed;
       if (remaining.inSeconds > 0) {
         final remMinutes = remaining.inMinutes;
