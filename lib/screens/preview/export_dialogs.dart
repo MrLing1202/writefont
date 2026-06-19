@@ -8,11 +8,11 @@ import '../../widgets/glyph_widget.dart';
 Widget buildInfoRow(IconData icon, String label, String value) {
   return Row(
     children: [
-      Icon(icon, size: 16, color: WFColors.textSecondary),
+      Icon(icon, size: 16, color: WFColors.textSecondaryColor(context)),
       const SizedBox(width: 8),
       Text(
         '$label：',
-        style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+        style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
       ),
       Expanded(
         child: Text(
@@ -20,7 +20,7 @@ Widget buildInfoRow(IconData icon, String label, String value) {
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: WFColors.textPrimary,
+            color: WFColors.textPrimaryColor(context),
           ),
         ),
       ),
@@ -64,7 +64,7 @@ Future<bool?> showExportConfirmDialog(
               Expanded(
                 child: Text(
                   '导出为 TTF 字体文件，可在电脑或手机上安装使用。',
-                  style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                  style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
                 ),
               ),
             ],
@@ -116,7 +116,7 @@ Future<String?> showFontNameDialog(
                 children: [
                   const Text(
                     '这个名字将作为字体文件名和项目标题',
-                    style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                    style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -164,7 +164,7 @@ Future<String?> showFontNameDialog(
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: WFColors.textSecondary,
+                                  color: WFColors.textSecondaryColor(context),
                                 ),
                               ),
                             ],
@@ -175,7 +175,7 @@ Future<String?> showFontNameDialog(
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: WFColors.textPrimary,
+                              color: WFColors.textPrimaryColor(context),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -188,14 +188,14 @@ Future<String?> showFontNameDialog(
                                 height: 48,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: WFColors.textLight),
-                                  color: WFColors.bgPrimary,
+                                  border: Border.all(color: WFColors.textLightColor(context)),
+                                  color: WFColors.bgPrimaryColor(context),
                                 ),
                                 child: Center(
                                   child: GlyphWidget(
                                     contours: entry.value.contours,
                                     size: 32,
-                                    color: WFColors.textPrimary,
+                                    color: WFColors.textPrimaryColor(context),
                                   ),
                                 ),
                               );
@@ -260,12 +260,12 @@ void showExportSuccessDialog(
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: WFColors.bgPrimary,
+            color: WFColors.bgPrimaryColor(context),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             children: [
-              const Icon(Icons.folder_open, size: 16, color: WFColors.textSecondary),
+              Icon(Icons.folder_open, size: 16, color: WFColors.textSecondaryColor(context)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -282,11 +282,11 @@ void showExportSuccessDialog(
         // 统计信息
         Row(
           children: [
-            const Icon(Icons.text_fields, size: 14, color: WFColors.textSecondary),
+            Icon(Icons.text_fields, size: 14, color: WFColors.textSecondaryColor(context)),
             const SizedBox(width: 6),
             Text(
               '共导出 $editedCount 个字符',
-              style: const TextStyle(color: WFColors.textSecondary, fontSize: 13),
+              style: TextStyle(color: WFColors.textSecondaryColor(context), fontSize: 13),
             ),
           ],
         ),
@@ -295,11 +295,11 @@ void showExportSuccessDialog(
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.tune, size: 14, color: WFColors.textSecondary),
+              Icon(Icons.tune, size: 14, color: WFColors.textSecondaryColor(context)),
               const SizedBox(width: 6),
               Text(
                 extraInfo,
-                style: const TextStyle(color: WFColors.textSecondary, fontSize: 13),
+                style: TextStyle(color: WFColors.textSecondaryColor(context), fontSize: 13),
               ),
             ],
           ),
@@ -320,7 +320,7 @@ void showExportSuccessDialog(
               Expanded(
                 child: Text(
                   '安装字体：将 TTF 文件发送到电脑，双击安装即可在设计软件中使用。Android 可通过「设置→显示→字体」导入。',
-                  style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                  style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
                 ),
               ),
             ],

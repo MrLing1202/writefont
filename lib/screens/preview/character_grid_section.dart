@@ -33,12 +33,12 @@ class CharacterGridSection extends StatelessWidget {
       children: [
         const Text(
           '已收录字符',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: WFColors.textSecondary),
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: WFColors.textSecondaryColor(context)),
         ),
         const SizedBox(height: 4),
         Text(
           '点击字符可编辑 · 长按批量选择',
-          style: TextStyle(fontSize: 12, color: WFColors.textSecondary.withValues(alpha: 0.6)),
+          style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context).withValues(alpha: 0.6)),
         ),
         const SizedBox(height: 8),
         // 搜索框
@@ -86,7 +86,7 @@ class CharacterGridSection extends StatelessWidget {
         alignment: Alignment.center,
         child: const Text(
           '未找到匹配的字符',
-          style: TextStyle(color: WFColors.textLight, fontSize: 14),
+          style: TextStyle(color: WFColors.textLightColor(context), fontSize: 14),
         ),
       );
     }
@@ -106,7 +106,7 @@ class CharacterGridSection extends StatelessWidget {
             ? WFColors.primary
             : isEdited
                 ? WFColors.success
-                : WFColors.textLight;
+                : WFColors.textLightColor(context);
         final borderWidth = isSelected ? 2.5 : isEdited ? 1.5 : 1.0;
 
         return GestureDetector(
@@ -120,7 +120,7 @@ class CharacterGridSection extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: borderColor, width: borderWidth),
-                color: WFColors.bgCard,
+                color: WFColors.bgCardColor(context),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.04),
@@ -139,14 +139,14 @@ class CharacterGridSection extends StatelessWidget {
                             ? GlyphWidget(
                                 contours: glyph.contours,
                                 size: 32,
-                                color: isSelected ? WFColors.primary : WFColors.textPrimary,
+                                color: isSelected ? WFColors.primary : WFColors.textPrimaryColor(context),
                               )
                             : Center(
                                 child: Text(
                                   entry.key,
                                   style: TextStyle(
                                     fontSize: 20,
-                                    color: isSelected ? WFColors.primary : WFColors.textPrimary,
+                                    color: isSelected ? WFColors.primary : WFColors.textPrimaryColor(context),
                                   ),
                                 ),
                               ),
@@ -185,7 +185,7 @@ class CharacterGridSection extends StatelessWidget {
                     unicodeHex.substring(2),
                     style: const TextStyle(
                       fontSize: 8,
-                      color: WFColors.textSecondary,
+                      color: WFColors.textSecondaryColor(context),
                       fontFamily: 'monospace',
                     ),
                   ),

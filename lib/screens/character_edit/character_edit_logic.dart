@@ -182,7 +182,7 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
             '有未保存的修改，是否保存？',
             style: TextStyle(
               fontSize: 15,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
               height: 1.5,
             ),
           ),
@@ -191,7 +191,7 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, 'cancel'),
-          child: const Text('取消', style: TextStyle(color: WFColors.textSecondary)),
+          child: Text('取消', style: TextStyle(color: WFColors.textSecondaryColor(context))),
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, 'discard'),

@@ -278,7 +278,7 @@ class WritingTipsScreen extends StatelessWidget {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: WFColors.textPrimary,
+            color: WFColors.textPrimaryColor(context),
           ),
         ),
       ],

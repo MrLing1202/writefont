@@ -448,7 +448,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
         children: [
           Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const SizedBox(height: 4),
-          Text(answer, style: TextStyle(fontSize: 13, color: WFColors.textSecondary, height: 1.4)),
+          Text(answer, style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context), height: 1.4)),
         ],
       ),
     );
@@ -634,7 +634,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
             margin: const EdgeInsets.all(32),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: WFColors.bgCard,
+              color: WFColors.bgCardColor(context),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -651,7 +651,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -660,7 +660,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   step['desc'] as String,
                   style: const TextStyle(
                     fontSize: 15,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                     height: 1.5,
                   ),
                   textAlign: TextAlign.center,
@@ -677,7 +677,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 4),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: i == _helpStep ? WFColors.primary : WFColors.textLight,
+                        color: i == _helpStep ? WFColors.primary : WFColors.textLightColor(context),
                       ),
                     ),
                   ),
@@ -688,7 +688,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                   children: [
                     TextButton(
                       onPressed: () => setState(() => _showHelpOverlay = false),
-                      child: const Text('跳过', style: TextStyle(color: WFColors.textSecondary)),
+                      child: Text('跳过', style: TextStyle(color: WFColors.textSecondaryColor(context))),
                     ),
                     Row(
                       children: [
@@ -738,7 +738,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
               margin: const EdgeInsets.all(24),
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: WFColors.bgCard,
+                color: WFColors.bgCardColor(context),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: SingleChildScrollView(
@@ -750,7 +750,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: progress,
-                        backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                        backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
                         valueColor: const AlwaysStoppedAnimation<Color>(WFColors.primary),
                         minHeight: 4,
                       ),
@@ -777,7 +777,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -787,7 +787,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       step['desc'] as String,
                       style: const TextStyle(
                         fontSize: 15,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                         height: 1.5,
                       ),
                       textAlign: TextAlign.center,
@@ -798,17 +798,17 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: WFColors.textLight.withValues(alpha: 0.1),
+                        color: WFColors.textLightColor(context).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: WFColors.textLight.withValues(alpha: 0.2),
+                          color: WFColors.textLightColor(context).withValues(alpha: 0.2),
                         ),
                       ),
                       child: Text(
                         step['detail'] as String,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                           height: 1.6,
                         ),
                       ),
@@ -850,7 +850,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
                                 ? WFColors.primary
                                 : _completedTutorials.contains(i)
                                     ? WFColors.success.withValues(alpha: 0.5)
-                                    : WFColors.textLight,
+                                    : WFColors.textLightColor(context),
                           ),
                         ),
                       ),
@@ -862,13 +862,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
                       children: [
                         TextButton(
                           onPressed: () => setState(() => _showTutorial = false),
-                          child: const Text('关闭教程', style: TextStyle(color: WFColors.textSecondary)),
+                          child: Text('关闭教程', style: TextStyle(color: WFColors.textSecondaryColor(context))),
                         ),
                         Row(
                           children: [
                             Text(
                               '${_tutorialStep + 1}/${steps.length}',
-                              style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                              style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                             ),
                             const SizedBox(width: 12),
                             ElevatedButton(

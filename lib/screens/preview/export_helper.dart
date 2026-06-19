@@ -100,7 +100,7 @@ void _showBuildProgress(BuildContext context, {String message = '正在生成字
                         '请稍候，正在处理字体数据...',
                         style: TextStyle(
                           fontSize: 12,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                         ),
                       ),
                     ],
@@ -199,11 +199,11 @@ Future<void> exportFontWithFormatSelection(
       leading: const Icon(Icons.font_download, color: WFColors.primary),
       title: Text(
         fmt.label,
-        style: const TextStyle(fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+        style: TextStyle(fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
       ),
       subtitle: Text(
         fmt.description,
-        style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+        style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
       ),
     ),
   );
@@ -218,11 +218,11 @@ Future<void> exportFontWithFormatSelection(
       leading: const Icon(Icons.high_quality, color: WFColors.primary),
       title: Text(
         q.label,
-        style: const TextStyle(fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+        style: TextStyle(fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
       ),
       subtitle: Text(
         q.description,
-        style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+        style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
       ),
     ),
   );

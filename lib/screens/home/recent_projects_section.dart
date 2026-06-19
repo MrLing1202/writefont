@@ -22,14 +22,14 @@ class RecentProjectsSection extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4),
           child: Row(
             children: [
-              Icon(Icons.history, size: 18, color: WFColors.textSecondary),
+              Icon(Icons.history, size: 18, color: WFColors.textSecondaryColor(context)),
               const SizedBox(width: 8),
               Text(
                 '最近项目',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],
@@ -94,7 +94,7 @@ class _RecentProjectCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -104,13 +104,13 @@ class _RecentProjectCard extends StatelessWidget {
                   '$glyphCount 个字符 · $timeDesc',
                   style: const TextStyle(
                     fontSize: 12,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 20, color: WFColors.textLight),
+          Icon(Icons.chevron_right, size: 20, color: WFColors.textLightColor(context)),
         ],
       ),
     );

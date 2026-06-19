@@ -93,7 +93,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     final glyph = _project.glyphs[char];
     if (glyph == null) {
       // 未开始 - 灰色
-      return WFColors.textLight.withValues(alpha: 0.3);
+      return WFColors.textLightColor(context).withValues(alpha: 0.3);
     }
     if (glyph.contours.isNotEmpty) {
       // 已书写有轮廓数据 - 绿色
@@ -104,14 +104,14 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
       return WFColors.warning.withValues(alpha: 0.15);
     }
     // 未开始 - 灰色
-    return WFColors.textLight.withValues(alpha: 0.3);
+    return WFColors.textLightColor(context).withValues(alpha: 0.3);
   }
 
   /// 获取字符状态图标颜色
   Color _getCharacterIconColor(String char, ColorScheme colorScheme) {
     final glyph = _project.glyphs[char];
     if (glyph == null) {
-      return WFColors.textSecondary.withValues(alpha: 0.4);
+      return WFColors.textSecondaryColor(context).withValues(alpha: 0.4);
     }
     if (glyph.contours.isNotEmpty) {
       return WFColors.success;
@@ -119,7 +119,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     if (glyph.sourceImagePath != null) {
       return WFColors.warning;
     }
-    return WFColors.textSecondary.withValues(alpha: 0.4);
+    return WFColors.textSecondaryColor(context).withValues(alpha: 0.4);
   }
 
   /// 获取字符状态文字
@@ -324,7 +324,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                       _searchQuery.isNotEmpty ? '未找到匹配的字符' : '暂无字符数据',
                       style: TextStyle(
                         fontSize: 16,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                       ),
                     ),
                   )
@@ -357,7 +357,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                 CircularProgressIndicator(
                   value: progress,
                   strokeWidth: 6,
-                  backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                  backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
                   valueColor: AlwaysStoppedAnimation<Color>(
                     progress >= 1.0 ? WFColors.success : WFColors.primary,
                   ),
@@ -386,7 +386,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -394,7 +394,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   '已完成 $completed / $total 个字符',
                   style: TextStyle(
                     fontSize: 14,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                   ),
                 ),
               ],
@@ -410,8 +410,8 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
               _buildLegendItem(
                   WFColors.warning.withValues(alpha: 0.15), WFColors.warning, '已识别'),
               const SizedBox(height: 4),
-              _buildLegendItem(WFColors.textLight.withValues(alpha: 0.3),
-                  WFColors.textSecondary, '未开始'),
+              _buildLegendItem(WFColors.textLightColor(context).withValues(alpha: 0.3),
+                  WFColors.textSecondaryColor(context), '未开始'),
             ],
           ),
         ],
@@ -559,7 +559,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                 ? WFColors.primary
                 : isCompleted
                     ? WFColors.success.withValues(alpha: 0.5)
-                    : WFColors.textLight.withValues(alpha: 0.3),
+                    : WFColors.textLightColor(context).withValues(alpha: 0.3),
             width: isSelected ? 2.0 : 1.0,
           ),
         ),

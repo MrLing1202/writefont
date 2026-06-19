@@ -275,7 +275,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
           const Text(
             '请先在设置中配置智谱AI的API Key才能使用AI生成功能。\n\n'
             'API Key 可在 https://open.bigmodel.cn 免费获取。',
-            style: TextStyle(fontSize: 14, color: WFColors.textSecondary, height: 1.5),
+            style: TextStyle(fontSize: 14, color: WFColors.textSecondaryColor(context), height: 1.5),
           ),
         ],
       ),
@@ -404,13 +404,13 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: WFColors.textPrimary,
+                          color: WFColors.textPrimaryColor(context),
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         '请稍候，正在分析您的描述',
-                        style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                        style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                       ),
                     ],
                   ),
@@ -452,13 +452,13 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     SizedBox(height: 2),
                     Text(
                       '描述你想要的字体风格，越详细效果越好',
-                      style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                      style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                     ),
                   ],
                 ),
@@ -474,26 +474,26 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             maxLength: 200,
             decoration: InputDecoration(
               hintText: '例如：优雅的楷书风格，笔画端正，结构匀称...',
-              hintStyle: TextStyle(color: WFColors.textLight),
+              hintStyle: TextStyle(color: WFColors.textLightColor(context)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: WFColors.textLight),
+                borderSide: BorderSide(color: WFColors.textLightColor(context)),
               ),
               contentPadding: const EdgeInsets.all(14),
               counterText: '$_descCharCount/200',
               counterStyle: TextStyle(
-                color: _descCharCount > 180 ? WFColors.warning : WFColors.textLight,
+                color: _descCharCount > 180 ? WFColors.warning : WFColors.textLightColor(context),
                 fontSize: 12,
               ),
             ),
-            style: const TextStyle(fontSize: 15, color: WFColors.textPrimary, height: 1.5),
+            style: TextStyle(fontSize: 15, color: WFColors.textPrimaryColor(context), height: 1.5),
           ),
           const SizedBox(height: 12),
 
           // 示例按钮
           const Text(
             '快速选择示例：',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: WFColors.textSecondaryColor(context)),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -548,13 +548,13 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     SizedBox(height: 2),
                     Text(
                       '精细控制字体的各个特征',
-                      style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                      style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                     ),
                   ],
                 ),
@@ -649,7 +649,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: WFColors.textPrimary),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: WFColors.textPrimaryColor(context)),
             ),
             const Spacer(),
             Container(
@@ -715,13 +715,13 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     SizedBox(height: 2),
                     Text(
                       '查看字体效果，支持多字号预览',
-                      style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                      style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                     ),
                   ],
                 ),
@@ -747,7 +747,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
           // 字号切换
           Row(
             children: [
-              const Text('字号:', style: TextStyle(fontSize: 13, color: WFColors.textSecondary)),
+              Text('字号:', style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context))),
               const SizedBox(width: 8),
               ...([12.0, 24.0, 36.0, 48.0].map((size) {
                 final isSelected = _previewFontSize == size;
@@ -758,11 +758,11 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                     selected: isSelected,
                     selectedColor: WFColors.success.withValues(alpha: 0.15),
                     labelStyle: TextStyle(
-                      color: isSelected ? WFColors.success : WFColors.textSecondary,
+                      color: isSelected ? WFColors.success : WFColors.textSecondaryColor(context),
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                     ),
                     side: BorderSide(
-                      color: isSelected ? WFColors.success : WFColors.textLight,
+                      color: isSelected ? WFColors.success : WFColors.textLightColor(context),
                     ),
                     onSelected: (_) => setState(() => _previewFontSize = size),
                   ),
@@ -777,9 +777,9 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: WFColors.bgPrimary,
+              color: WFColors.bgPrimaryColor(context),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: WFColors.textLight.withValues(alpha: 0.5)),
+              border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.5)),
             ),
             child: _generatedFontParams != null
                 ? _buildPreviewContent()
@@ -802,17 +802,17 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
         Icon(
           Icons.font_download_outlined,
           size: 48,
-          color: WFColors.textLight.withValues(alpha: 0.5),
+          color: WFColors.textLightColor(context).withValues(alpha: 0.5),
         ),
         const SizedBox(height: 12),
         Text(
           '输入描述后点击"生成"',
-          style: TextStyle(fontSize: 14, color: WFColors.textLight),
+          style: TextStyle(fontSize: 14, color: WFColors.textLightColor(context)),
         ),
         const SizedBox(height: 4),
         Text(
           'AI 将为您生成独特的字体风格',
-          style: TextStyle(fontSize: 12, color: WFColors.textLight),
+          style: TextStyle(fontSize: 12, color: WFColors.textLightColor(context)),
         ),
       ],
     );
@@ -861,7 +861,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
               fontSize: _previewFontSize,
               fontWeight: fontWeight,
               letterSpacing: letterSpacing,
-              color: WFColors.textPrimary,
+              color: WFColors.textPrimaryColor(context),
               height: 1.3,
             ),
             textAlign: TextAlign.center,
@@ -880,9 +880,9 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: WFColors.bgCard,
+                  color: WFColors.bgCardColor(context),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: WFColors.textLight.withValues(alpha: 0.3)),
+                  border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
                 ),
                 child: Center(
                   child: Text(
@@ -966,13 +966,13 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     SizedBox(height: 2),
                     Text(
                       '调整应用强度并保存到项目',
-                      style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+                      style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
                     ),
                   ],
                 ),
@@ -988,7 +988,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
               const SizedBox(width: 8),
               const Text(
                 '应用强度',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: WFColors.textPrimary),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: WFColors.textPrimaryColor(context)),
               ),
               const Spacer(),
               Container(
@@ -1039,20 +1039,20 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.history, size: 20, color: WFColors.textSecondary),
+              Icon(Icons.history, size: 20, color: WFColors.textSecondaryColor(context)),
               const SizedBox(width: 8),
               const Text(
                 '生成历史',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               const Spacer(),
               Text(
                 '${_history.length}/20',
-                style: const TextStyle(fontSize: 12, color: WFColors.textLight),
+                style: TextStyle(fontSize: 12, color: WFColors.textLightColor(context)),
               ),
               if (_history.isNotEmpty) ...[
                 const SizedBox(width: 8),
@@ -1084,9 +1084,9 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: WFColors.bgPrimary,
+        color: WFColors.bgPrimaryColor(context),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: WFColors.textLight.withValues(alpha: 0.3)),
+        border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -1096,10 +1096,10 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
               children: [
                 Text(
                   record.fontName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1107,14 +1107,14 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 const SizedBox(height: 2),
                 Text(
                   record.description,
-                  style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                  style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   timeAgo,
-                  style: const TextStyle(fontSize: 11, color: WFColors.textLight),
+                  style: TextStyle(fontSize: 11, color: WFColors.textLightColor(context)),
                 ),
               ],
             ),
@@ -1125,7 +1125,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
             onPressed: () => _applyHistory(record),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline, size: 20, color: WFColors.textLight),
+            icon: Icon(Icons.delete_outline, size: 20, color: WFColors.textLightColor(context)),
             tooltip: '删除',
             onPressed: () => _deleteHistory(index),
           ),
@@ -1212,7 +1212,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
                 side: BorderSide(
                   color: _generatedFontParams != null
                       ? WFColors.success
-                      : WFColors.textLight,
+                      : WFColors.textLightColor(context),
                 ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),

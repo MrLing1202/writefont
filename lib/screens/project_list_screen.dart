@@ -1186,13 +1186,13 @@ class _ProjectListScreenState extends State<ProjectListScreen>
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 '导出 ${_filteredProjects.length} 个项目的数据',
-                style: const TextStyle(fontSize: 14, color: WFColors.textSecondary),
+                style: TextStyle(fontSize: 14, color: WFColors.textSecondaryColor(context)),
               ),
               const SizedBox(height: 20),
               // CSV 导出
@@ -1629,13 +1629,13 @@ class _ProjectListScreenState extends State<ProjectListScreen>
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 '选择要导入的文件类型',
-                style: const TextStyle(fontSize: 14, color: WFColors.textSecondary),
+                style: TextStyle(fontSize: 14, color: WFColors.textSecondaryColor(context)),
               ),
               const SizedBox(height: 20),
               // 项目备份导入

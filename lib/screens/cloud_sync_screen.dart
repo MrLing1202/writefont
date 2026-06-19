@@ -431,7 +431,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 Expanded(
                   child: Text(
                     '项目"$projectName"被多位协作者同时修改',
-                    style: const TextStyle(fontSize: 13, color: WFColors.textPrimary),
+                    style: TextStyle(fontSize: 13, color: WFColors.textPrimaryColor(context)),
                   ),
                 ),
               ],
@@ -440,15 +440,15 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
           const SizedBox(height: 12),
           Text(
             '冲突版本：${conflictInfo['versionCount'] ?? 2} 个',
-            style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
           ),
           Text(
             '最后修改者：${conflictInfo['lastEditor'] ?? '未知'}',
-            style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
           ),
           Text(
             '修改时间：${conflictInfo['lastEditTime'] ?? '未知'}',
-            style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
           ),
         ],
       ),
@@ -504,7 +504,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         children: [
           Text(
             '项目"$projectName"在本地和云端都有修改，请选择保留哪个版本：',
-            style: const TextStyle(fontSize: 14, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 14, color: WFColors.textSecondaryColor(context)),
           ),
           const SizedBox(height: 16),
           // 本地版本选项
@@ -526,7 +526,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                       Text('保留本地版本',
                           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                       Text('上传本地数据覆盖云端',
-                          style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                          style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context))),
                     ],
                   ),
                 ),
@@ -553,7 +553,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                       Text('保留云端版本',
                           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                       Text('下载云端数据覆盖本地',
-                          style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                          style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context))),
                     ],
                   ),
                 ),
@@ -646,7 +646,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: WFColors.textPrimary,
+              color: WFColors.textPrimaryColor(context),
             ),
           ),
           const SizedBox(height: 8),
@@ -655,7 +655,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
           const SizedBox(height: 32),
@@ -772,7 +772,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             style: TextStyle(
               fontSize: 15,
               fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              color: isActive ? WFColors.primary : WFColors.textSecondary,
+              color: isActive ? WFColors.primary : WFColors.textSecondaryColor(context),
             ),
           ),
           const SizedBox(height: 4),
@@ -854,7 +854,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -862,7 +862,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   '数据已加密存储',
                   style: TextStyle(
                     fontSize: 12,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                   ),
                 ),
               ],
@@ -899,7 +899,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               const Spacer(),
@@ -909,7 +909,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   '上次同步: ${_formatTime(_lastSyncTime!)}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                   ),
                 ),
             ],
@@ -927,7 +927,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 '共 $total 个项目',
                 style: TextStyle(
                   fontSize: 12,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],
@@ -946,7 +946,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 minHeight: 4,
-                backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
                 valueColor: AlwaysStoppedAnimation<Color>(WFColors.primary),
               ),
             ),
@@ -955,7 +955,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               _syncCurrentItem ?? '正在同步...',
               style: TextStyle(
                 fontSize: 12,
-                color: WFColors.textSecondary,
+                color: WFColors.textSecondaryColor(context),
               ),
             ),
           ],
@@ -1034,7 +1034,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1042,7 +1042,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   '项目修改后自动同步到云端',
                   style: TextStyle(
                     fontSize: 12,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                   ),
                 ),
               ],
@@ -1121,12 +1121,12 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Column(
               children: [
-                Icon(Icons.history, size: 36, color: WFColors.textLight),
+                Icon(Icons.history, size: 36, color: WFColors.textLightColor(context)),
                 const SizedBox(height: 8),
                 Text(
                   '暂无同步记录',
                   style: TextStyle(
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                     fontSize: 13,
                   ),
                 ),
@@ -1151,7 +1151,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               if (!isLast)
                 Divider(
                   height: 1,
-                  color: WFColors.textLight.withValues(alpha: 0.3),
+                  color: WFColors.textLightColor(context).withValues(alpha: 0.3),
                 ),
             ],
           );
@@ -1181,11 +1181,11 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       leading: Icon(actionIcon, color: actionColor, size: 22),
       title: Text(
         '${entry.projectName} · $actionLabel',
-        style: const TextStyle(fontSize: 14, color: WFColors.textPrimary),
+        style: TextStyle(fontSize: 14, color: WFColors.textPrimaryColor(context)),
       ),
       subtitle: Text(
         _formatTime(entry.timestamp),
-        style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+        style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
       ),
       trailing: entry.action != 'restore'
           ? IconButton(
@@ -1227,7 +1227,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               const Spacer(),
@@ -1286,7 +1286,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
             ],
@@ -1359,11 +1359,11 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       title: Text(email, style: const TextStyle(fontSize: 14)),
       subtitle: Text(
         _roleLabels[role] ?? role,
-        style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+        style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
       ),
       trailing: role != 'owner'
           ? PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert, size: 18, color: WFColors.textSecondary),
+              icon: Icon(Icons.more_vert, size: 18, color: WFColors.textSecondaryColor(context)),
               onSelected: (value) {
                 if (value == 'remove') {
                   _removeCollaborator('', email);
@@ -1411,7 +1411,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             const SizedBox(height: 8),
             Text(
               '邀请他人一起编辑字体项目，支持实时协作',
-              style: TextStyle(fontSize: 13, color: WFColors.textSecondary),
+              style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
             ),
             const SizedBox(height: 20),
             TextField(
@@ -1487,11 +1487,11 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                     ),
                     subtitle: Text(
                       _formatTime(DateTime.tryParse(item['timestamp'] as String? ?? '') ?? DateTime.now()),
-                      style: TextStyle(fontSize: 11, color: WFColors.textSecondary),
+                      style: TextStyle(fontSize: 11, color: WFColors.textSecondaryColor(context)),
                     ),
                   ),
                   if (!isLast)
-                    Divider(height: 1, color: WFColors.textLight.withValues(alpha: 0.3)),
+                    Divider(height: 1, color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
                 ],
               );
             }).toList(),
@@ -1580,7 +1580,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               const SizedBox(width: 8),
               const Text(
                 '社交互动',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
             ],
           ),
@@ -1614,13 +1614,13 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
           decoration: BoxDecoration(
             color: isActive ? WFColors.primary.withValues(alpha: 0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: isActive ? WFColors.primary : WFColors.textLight.withValues(alpha: 0.3)),
+            border: Border.all(color: isActive ? WFColors.primary : WFColors.textLightColor(context).withValues(alpha: 0.3)),
           ),
           child: Column(
             children: [
-              Icon(icon, size: 18, color: isActive ? WFColors.primary : WFColors.textSecondary),
+              Icon(icon, size: 18, color: isActive ? WFColors.primary : WFColors.textSecondaryColor(context)),
               const SizedBox(height: 4),
-              Text(label, style: TextStyle(fontSize: 11, color: isActive ? WFColors.primary : WFColors.textSecondary, fontWeight: isActive ? FontWeight.w600 : FontWeight.normal)),
+              Text(label, style: TextStyle(fontSize: 11, color: isActive ? WFColors.primary : WFColors.textSecondaryColor(context), fontWeight: isActive ? FontWeight.w600 : FontWeight.normal)),
             ],
           ),
         ),
@@ -1647,7 +1647,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         dense: true, contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(radius: 16, backgroundColor: WFColors.accent.withValues(alpha: 0.1), child: Text(friend.friendName.isNotEmpty ? friend.friendName[0].toUpperCase() : '?', style: TextStyle(fontSize: 14, color: WFColors.accent))),
         title: Text(friend.friendName, style: const TextStyle(fontSize: 14)),
-        subtitle: Text(friend.status == 'accepted' ? '已添加' : '待接受', style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+        subtitle: Text(friend.status == 'accepted' ? '已添加' : '待接受', style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context))),
         trailing: friend.status == 'pending' ? TextButton(onPressed: () { _sync.acceptFriendRequest(friend.friendId).then((_) => _loadSocialData()); }, child: const Text('接受', style: TextStyle(fontSize: 12))) : null,
       )).toList(),
     );
@@ -1661,7 +1661,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         dense: true, contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(radius: 16, backgroundColor: WFColors.info.withValues(alpha: 0.1), child: Text(follow.targetName.isNotEmpty ? follow.targetName[0].toUpperCase() : '?', style: TextStyle(fontSize: 14, color: WFColors.info))),
         title: Text(follow.targetName, style: const TextStyle(fontSize: 14)),
-        trailing: IconButton(icon: Icon(Icons.person_remove, size: 18, color: WFColors.textSecondary), onPressed: () async { await _sync.unfollowUser(follow.targetId); _loadSocialData(); }),
+        trailing: IconButton(icon: Icon(Icons.person_remove, size: 18, color: WFColors.textSecondaryColor(context)), onPressed: () async { await _sync.unfollowUser(follow.targetId); _loadSocialData(); }),
       )).toList(),
     );
   }
@@ -1674,7 +1674,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         dense: true, contentPadding: EdgeInsets.zero,
         leading: CircleAvatar(radius: 16, backgroundColor: WFColors.success.withValues(alpha: 0.1), child: Text(msg.senderName.isNotEmpty ? msg.senderName[0].toUpperCase() : '?', style: TextStyle(fontSize: 14, color: WFColors.success))),
         title: Text(msg.content, style: const TextStyle(fontSize: 13)),
-        subtitle: Text(_formatTime(msg.timestamp), style: TextStyle(fontSize: 11, color: WFColors.textSecondary)),
+        subtitle: Text(_formatTime(msg.timestamp), style: TextStyle(fontSize: 11, color: WFColors.textSecondaryColor(context))),
       )).toList(),
     );
   }
@@ -1686,7 +1686,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       children: _activityFeed.take(5).map((activity) {
         final icon = activity.type == 'friend_request' ? Icons.person_add : activity.type == 'follow' ? Icons.favorite : activity.type == 'share' ? Icons.share : Icons.notifications;
         final color = activity.type == 'friend_request' ? WFColors.accent : activity.type == 'follow' ? WFColors.error : activity.type == 'share' ? WFColors.info : WFColors.primary;
-        return ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(icon, size: 20, color: color), title: Text(activity.content, style: const TextStyle(fontSize: 13)), subtitle: Text(_formatTime(activity.timestamp), style: TextStyle(fontSize: 11, color: WFColors.textSecondary)));
+        return ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(icon, size: 20, color: color), title: Text(activity.content, style: TextStyle(fontSize: 13)), subtitle: Text(_formatTime(activity.timestamp), style: TextStyle(fontSize: 11, color: WFColors.textSecondaryColor(context))));
       }).toList(),
     );
   }
@@ -1697,11 +1697,11 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Center(
         child: Column(children: [
-          Icon(Icons.people_outline, size: 36, color: WFColors.textLight),
+          Icon(Icons.people_outline, size: 36, color: WFColors.textLightColor(context)),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(color: WFColors.textSecondary, fontSize: 14)),
+          Text(title, style: TextStyle(color: WFColors.textSecondaryColor(context), fontSize: 14)),
           const SizedBox(height: 4),
-          Text(subtitle, style: TextStyle(color: WFColors.textLight, fontSize: 12)),
+          Text(subtitle, style: TextStyle(color: WFColors.textLightColor(context), fontSize: 12)),
         ]),
       ),
     );

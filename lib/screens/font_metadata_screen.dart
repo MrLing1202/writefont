@@ -103,7 +103,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
                 Expanded(
                   child: Text(
                     '导出后可在电脑或手机上安装该 TTF 字体文件。',
-                    style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                    style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
                   ),
                 ),
               ],
@@ -133,11 +133,11 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: WFColors.textSecondary),
+        Icon(icon, size: 16, color: WFColors.textSecondaryColor(context)),
         const SizedBox(width: 8),
         Text(
           '$label：',
-          style: const TextStyle(fontSize: 13, color: WFColors.textSecondary),
+          style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context)),
         ),
         Expanded(
           child: Text(
@@ -145,7 +145,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: WFColors.textPrimary,
+              color: WFColors.textPrimaryColor(context),
             ),
             overflow: TextOverflow.ellipsis,
           ),
@@ -214,7 +214,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],
@@ -229,7 +229,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               );
             },
@@ -239,7 +239,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
             _subfamilyName,
             style: const TextStyle(
               fontSize: 14,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
           if (previewGlyphs.isNotEmpty) ...[
@@ -255,14 +255,14 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
                   height: 56,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: WFColors.textLight),
-                    color: WFColors.bgPrimary,
+                    border: Border.all(color: WFColors.textLightColor(context)),
+                    color: WFColors.bgPrimaryColor(context),
                   ),
                   child: Center(
                     child: GlyphWidget(
                       contours: entry.value.contours,
                       size: 36,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                   ),
                 );
@@ -289,7 +289,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],
@@ -374,14 +374,14 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
         children: [
           const Row(
             children: [
-              Icon(Icons.info, size: 18, color: WFColors.textSecondary),
+              Icon(Icons.info, size: 18, color: WFColors.textSecondaryColor(context)),
               SizedBox(width: 6),
               Text(
                 '可选信息',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],
@@ -440,7 +440,7 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],

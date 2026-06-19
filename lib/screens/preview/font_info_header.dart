@@ -34,7 +34,7 @@ class FontInfoHeader extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -42,23 +42,23 @@ class FontInfoHeader extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.text_fields, size: 14, color: WFColors.textSecondary),
+                      Icon(Icons.text_fields, size: 14, color: WFColors.textSecondaryColor(context)),
                       const SizedBox(width: 4),
                       Text(
                         '$editedCount / $totalCount 个字符',
                         style: const TextStyle(
                           fontSize: 13,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Icon(Icons.calendar_today, size: 14, color: WFColors.textSecondary),
+                      Icon(Icons.calendar_today, size: 14, color: WFColors.textSecondaryColor(context)),
                       const SizedBox(width: 4),
                       Text(
                         dateStr,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                         ),
                       ),
                     ],

@@ -27,7 +27,7 @@ void showGlyphListSheet(
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: WFColors.textLight.withValues(alpha: 0.3),
+                color: WFColors.textLightColor(context).withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -56,7 +56,7 @@ void showGlyphListSheet(
                           ? GlyphWidget(
                               contours: entry.value.contours,
                               size: 32,
-                              color: WFColors.textPrimary,
+                              color: WFColors.textPrimaryColor(context),
                             )
                           : Center(
                               child: Text(entry.key, style: const TextStyle(fontSize: 24)),
@@ -71,7 +71,7 @@ void showGlyphListSheet(
                       children: [
                         Text(entry.key, style: const TextStyle(fontSize: 24)),
                         const SizedBox(width: 8),
-                        const Icon(Icons.edit, size: 16, color: WFColors.textLight),
+                        Icon(Icons.edit, size: 16, color: WFColors.textLightColor(context)),
                       ],
                     ),
                   );

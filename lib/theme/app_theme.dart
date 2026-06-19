@@ -313,6 +313,23 @@ class WFColors {
   // ── 预览背景色 ──
   static const Color previewDark = Color(0xFF1A1A1A);   // 深色预览背景
   static const Color previewGray = Color(0xFFE0E0E0);   // 灰色预览背景
+
+  // ── 深色模式感知方法 ──
+  static Color bgCardColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark ? darkSurface : bgCard;
+  }
+  static Color bgPrimaryColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A1A2E) : bgPrimary;
+  }
+  static Color textPrimaryColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark ? Colors.white : textPrimary;
+  }
+  static Color textSecondaryColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark ? const Color(0xFFB0B0B0) : textSecondary;
+  }
+  static Color textLightColor(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark ? const Color(0xFF808080) : textLight;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -340,7 +357,7 @@ class WFCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final card = Container(
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         borderRadius: BorderRadius.circular(12),
         border: accentColor != null
             ? Border(left: BorderSide(color: accentColor!, width: 4))
@@ -486,7 +503,7 @@ class WFPrimaryButton extends StatelessWidget {
             : const LinearGradient(
                 colors: [WFColors.primary, WFColors.primaryLight],
               ),
-        color: isDisabled ? WFColors.textLight : null,
+        color: isDisabled ? WFColors.textLightColor(context) : null,
         boxShadow: isDisabled
             ? null
             : [
@@ -664,9 +681,9 @@ class WFDialog extends StatelessWidget {
             ],
             Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
-                color: WFColors.textSecondary,
+                color: WFColors.textSecondaryColor(context),
                 height: 1.5,
               ),
             ),
@@ -677,7 +694,7 @@ class WFDialog extends StatelessWidget {
             onPressed: () => Navigator.pop(context, false),
             child: Text(
               cancelText,
-              style: const TextStyle(color: WFColors.textSecondary),
+              style: TextStyle(color: WFColors.textSecondaryColor(context)),
             ),
           ),
           const SizedBox(width: 8),
@@ -734,7 +751,7 @@ class WFDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: WFColors.bgCard,
+      backgroundColor: WFColors.bgCardColor(context),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -743,10 +760,10 @@ class WFDialog extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: WFColors.textPrimary,
+                color: WFColors.textPrimaryColor(context),
               ),
             ),
             const SizedBox(height: 16),

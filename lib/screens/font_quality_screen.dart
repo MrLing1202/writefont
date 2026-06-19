@@ -310,7 +310,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
                     CircularProgressIndicator(
                       value: avgScore / 100,
                       strokeWidth: 8,
-                      backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                      backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
                       valueColor: AlwaysStoppedAnimation<Color>(
                         _getScoreColor(avgScore.round()),
                       ),
@@ -330,7 +330,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
                           '均分',
                           style: TextStyle(
                             fontSize: 10,
-                            color: WFColors.textSecondary,
+                            color: WFColors.textSecondaryColor(context),
                           ),
                         ),
                       ],
@@ -349,7 +349,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -357,7 +357,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
                       '已分析 $totalWithGlyphs / ${_qualities.length} 个字符',
                       style: TextStyle(
                         fontSize: 13,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -388,14 +388,14 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
                                     Expanded(
                                       flex: empty,
                                       child: Container(
-                                        color: WFColors.textLight
+                                        color: WFColors.textLightColor(context)
                                             .withValues(alpha: 0.3),
                                       ),
                                     ),
                                 ],
                               )
                             : Container(
-                                color: WFColors.textLight.withValues(alpha: 0.3),
+                                color: WFColors.textLightColor(context).withValues(alpha: 0.3),
                               ),
                       ),
                     ),
@@ -440,7 +440,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+          style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
         ),
       ],
     );
@@ -479,13 +479,13 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
             ),
             alignment: Alignment.center,
             child: quality.status == _QualityStatus.empty
-                ? Icon(Icons.hourglass_empty, size: 20, color: WFColors.textLight)
+                ? Icon(Icons.hourglass_empty, size: 20, color: WFColors.textLightColor(context))
                 : Text(
                     char,
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w600,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                   ),
           ),
@@ -515,7 +515,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
                           '${quality.onCurvePoints} 锚点',
                   style: TextStyle(
                     fontSize: 11,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                   ),
                 ),
               ],
@@ -583,7 +583,7 @@ class _FontQualityScreenState extends State<FontQualityScreen> {
       case _QualityStatus.poor:
         return WFColors.error;
       case _QualityStatus.empty:
-        return WFColors.textLight;
+        return WFColors.textLightColor(context);
     }
   }
 }

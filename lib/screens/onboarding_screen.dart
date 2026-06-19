@@ -75,7 +75,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: WFColors.bgPrimary,
+      backgroundColor: WFColors.bgPrimaryColor(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -90,7 +90,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                         child: Text(
                           '跳过',
                           style: TextStyle(
-                            color: WFColors.textSecondary,
+                            color: WFColors.textSecondaryColor(context),
                             fontSize: 16,
                           ),
                         ),
@@ -156,7 +156,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           decoration: BoxDecoration(
                             color: isActive
                                 ? WFColors.primary
-                                : WFColors.textLight,
+                                : WFColors.textLightColor(context),
                             borderRadius: BorderRadius.circular(4),
                           ),
                         );
@@ -479,7 +479,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 'AI识别 + 手动修正',
                 style: TextStyle(
                   fontSize: 13,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],

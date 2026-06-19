@@ -148,7 +148,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
   bool get _isDarkBg => _bgColorIndex >= 2;
 
   /// 前景色
-  Color get _fgColor => _isDarkBg ? Colors.white : WFColors.textPrimary;
+  Color get _fgColor => _isDarkBg ? Colors.white : WFColors.textPrimaryColor(context);
 
   @override
   Widget build(BuildContext context) {
@@ -185,17 +185,17 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.dashboard_customize, size: 80, color: WFColors.textLight),
+            Icon(Icons.dashboard_customize, size: 80, color: WFColors.textLightColor(context)),
             const SizedBox(height: 24),
             Text(
               message,
-              style: TextStyle(fontSize: 18, color: WFColors.textSecondary),
+              style: TextStyle(fontSize: 18, color: WFColors.textSecondaryColor(context)),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               '在字表中书写字符后即可使用增强预览',
-              style: TextStyle(fontSize: 14, color: WFColors.textLight),
+              style: TextStyle(fontSize: 14, color: WFColors.textLightColor(context)),
               textAlign: TextAlign.center,
             ),
           ],
@@ -236,17 +236,17 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
             onTap: () => setState(() => _inputExpanded = !_inputExpanded),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: WFColors.bgCard,
+              color: WFColors.bgCardColor(context),
               child: Row(
                 children: [
-                  Icon(Icons.edit, size: 18, color: WFColors.textSecondary),
+                  Icon(Icons.edit, size: 18, color: WFColors.textSecondaryColor(context)),
                   const SizedBox(width: 8),
                   Text(
                     '输入设置',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                   ),
                   const Spacer(),
@@ -256,7 +256,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
                     child: Icon(
                       Icons.expand_more,
                       size: 20,
-                      color: WFColors.textSecondary,
+                      color: WFColors.textSecondaryColor(context),
                     ),
                   ),
                 ],
@@ -268,7 +268,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
           if (_inputExpanded) ...[
             Container(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              color: WFColors.bgCard,
+              color: WFColors.bgCardColor(context),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -288,7 +288,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
                         vertical: 10,
                       ),
                       filled: true,
-                      fillColor: WFColors.bgPrimary,
+                      fillColor: WFColors.bgPrimaryColor(context),
                       isDense: true,
                     ),
                     onChanged: (_) => setState(() {}),
@@ -302,7 +302,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
                         '背景',
                         style: TextStyle(
                           fontSize: 13,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -322,7 +322,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
                                 border: Border.all(
                                   color: selected
                                       ? WFColors.primary
-                                      : WFColors.textLight
+                                      : WFColors.textLightColor(context)
                                           .withValues(alpha: 0.4),
                                   width: selected ? 2.5 : 1,
                                 ),
@@ -345,7 +345,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
                         _bgLabels[_bgColorIndex],
                         style: TextStyle(
                           fontSize: 12,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                         ),
                       ),
                     ],
@@ -364,7 +364,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
   Widget _buildSceneSelector() {
     return Container(
       height: 48,
-      color: WFColors.bgPrimary,
+      color: WFColors.bgPrimaryColor(context),
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -402,20 +402,20 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
         avatar: Icon(
           icon,
           size: 16,
-          color: selected ? Colors.white : WFColors.textSecondary,
+          color: selected ? Colors.white : WFColors.textSecondaryColor(context),
         ),
         selected: selected,
         selectedColor: WFColors.primary,
         labelStyle: TextStyle(
           fontSize: 13,
-          color: selected ? Colors.white : WFColors.textPrimary,
+          color: selected ? Colors.white : WFColors.textPrimaryColor(context),
           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
         ),
-        backgroundColor: WFColors.bgCard,
+        backgroundColor: WFColors.bgCardColor(context),
         side: BorderSide(
           color: selected
               ? WFColors.primary
-              : WFColors.textLight.withValues(alpha: 0.3),
+              : WFColors.textLightColor(context).withValues(alpha: 0.3),
         ),
         onSelected: (_) {
           setState(() => _selectedSceneIndex = index);
@@ -461,7 +461,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
             fontSize: 18,
             color: _isDarkBg
                 ? Colors.white.withValues(alpha: 0.4)
-                : WFColors.textSecondary.withValues(alpha: 0.4),
+                : WFColors.textSecondaryColor(context).withValues(alpha: 0.4),
           ),
         ),
       );
@@ -491,7 +491,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
             decoration: BoxDecoration(
               color: _isDarkBg
                   ? Colors.white.withValues(alpha: 0.12)
-                  : WFColors.textPrimary.withValues(alpha: 0.06),
+                  : WFColors.textPrimaryColor(context).withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -501,7 +501,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
                 fontWeight: FontWeight.w600,
                 color: _isDarkBg
                     ? Colors.white.withValues(alpha: 0.6)
-                    : WFColors.textSecondary,
+                    : WFColors.textSecondaryColor(context),
               ),
             ),
           ),
@@ -620,12 +620,12 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
         decoration: BoxDecoration(
           color: _isDarkBg
               ? Colors.white.withValues(alpha: 0.08)
-              : WFColors.textLight.withValues(alpha: 0.15),
+              : WFColors.textLightColor(context).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
             color: _isDarkBg
                 ? Colors.white.withValues(alpha: 0.15)
-                : WFColors.textLight.withValues(alpha: 0.3),
+                : WFColors.textLightColor(context).withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -636,7 +636,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
             fontSize: fontSize * 0.6,
             color: _isDarkBg
                 ? Colors.white.withValues(alpha: 0.25)
-                : WFColors.textLight.withValues(alpha: 0.5),
+                : WFColors.textLightColor(context).withValues(alpha: 0.5),
           ),
         ),
       );
@@ -660,7 +660,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -704,10 +704,10 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
               children: [
                 TextButton.icon(
                   onPressed: _resetZoom,
-                  icon: Icon(Icons.zoom_out_map, size: 16, color: WFColors.textSecondary),
+                  icon: Icon(Icons.zoom_out_map, size: 16, color: WFColors.textSecondaryColor(context)),
                   label: Text(
                     '重置缩放',
-                    style: TextStyle(fontSize: 12, color: WFColors.textSecondary),
+                    style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
                   ),
                   style: TextButton.styleFrom(
                     visualDensity: VisualDensity.compact,
@@ -735,13 +735,13 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
   }) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: WFColors.textSecondary),
+        Icon(icon, size: 18, color: WFColors.textSecondaryColor(context)),
         const SizedBox(width: 6),
         Text(
           label,
           style: TextStyle(
             fontSize: 13,
-            color: WFColors.textSecondary,
+            color: WFColors.textSecondaryColor(context),
           ),
         ),
         Expanded(
@@ -760,7 +760,7 @@ class _FontPreviewEnhancedScreenState extends State<FontPreviewEnhancedScreen> {
             format(value),
             style: TextStyle(
               fontSize: 12,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,

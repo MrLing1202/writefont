@@ -60,7 +60,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -117,7 +117,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
                             '写得越多，生成的字体越完整',
                             style: TextStyle(
                               fontSize: 13,
-                              color: WFColors.textSecondary,
+                              color: WFColors.textSecondaryColor(context),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -140,7 +140,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
                       '写完后点击下方按钮拍照上传',
                       style: TextStyle(
                         fontSize: 13,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -234,7 +234,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
       style: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w600,
-        color: WFColors.textPrimary,
+        color: WFColors.textPrimaryColor(context),
       ),
     );
   }
@@ -267,7 +267,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w500,
-                color: WFColors.textPrimary,
+                color: WFColors.textPrimaryColor(context),
               ),
             ),
           ),
@@ -297,7 +297,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
   Widget _buildCharCell(StandardChar char, ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
-        color: WFColors.bgPrimary,
+        color: WFColors.bgPrimaryColor(context),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Stack(
@@ -310,7 +310,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
               '${char.index}',
               style: TextStyle(
                 fontSize: 10,
-                color: WFColors.textSecondary.withValues(alpha: 0.6),
+                color: WFColors.textSecondaryColor(context).withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -322,7 +322,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w500,
-                color: WFColors.textPrimary,
+                color: WFColors.textPrimaryColor(context),
               ),
             ),
           ),
@@ -337,7 +337,7 @@ class _CharsetGuideScreenState extends State<CharsetGuideScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 9,
-                color: WFColors.textSecondary.withValues(alpha: 0.5),
+                color: WFColors.textSecondaryColor(context).withValues(alpha: 0.5),
               ),
             ),
           ),

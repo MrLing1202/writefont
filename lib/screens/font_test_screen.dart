@@ -103,14 +103,14 @@ class _FontTestScreenState extends State<FontTestScreen> {
             Icon(
               Icons.text_fields,
               size: 80,
-              color: WFColors.textLight,
+              color: WFColors.textLightColor(context),
             ),
             const SizedBox(height: 24),
             Text(
               message,
               style: TextStyle(
                 fontSize: 18,
-                color: WFColors.textSecondary,
+                color: WFColors.textSecondaryColor(context),
               ),
               textAlign: TextAlign.center,
             ),
@@ -119,7 +119,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
               '在字表中书写字符后即可测试字体效果',
               style: TextStyle(
                 fontSize: 14,
-                color: WFColors.textLight,
+                color: WFColors.textLightColor(context),
               ),
               textAlign: TextAlign.center,
             ),
@@ -149,7 +149,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -177,7 +177,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
                 vertical: 12,
               ),
               filled: true,
-              fillColor: WFColors.bgPrimary,
+              fillColor: WFColors.bgPrimaryColor(context),
             ),
             onChanged: (_) => setState(() {}),
           ),
@@ -186,7 +186,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
             '输入文字后下方会用生成的字体轮廓渲染显示',
             style: TextStyle(
               fontSize: 12,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
         ],
@@ -198,16 +198,16 @@ class _FontTestScreenState extends State<FontTestScreen> {
   Widget _buildFontSizeSlider() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      color: WFColors.bgCard,
+      color: WFColors.bgCardColor(context),
       child: Row(
         children: [
-          Icon(Icons.format_size, size: 20, color: WFColors.textSecondary),
+          Icon(Icons.format_size, size: 20, color: WFColors.textSecondaryColor(context)),
           const SizedBox(width: 8),
           Text(
             '字号',
             style: TextStyle(
               fontSize: 13,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
           Expanded(
@@ -227,7 +227,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
               '${_fontSize.round()}pt',
               style: TextStyle(
                 fontSize: 13,
-                color: WFColors.textSecondary,
+                color: WFColors.textSecondaryColor(context),
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
@@ -247,7 +247,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
           '请输入文字',
           style: TextStyle(
             fontSize: 18,
-            color: WFColors.textLight,
+            color: WFColors.textLightColor(context),
           ),
         ),
       );
@@ -255,7 +255,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
 
     return Container(
       width: double.infinity,
-      color: WFColors.bgPrimary,
+      color: WFColors.bgPrimaryColor(context),
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -290,10 +290,10 @@ class _FontTestScreenState extends State<FontTestScreen> {
         height: _fontSize,
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
-          color: WFColors.textLight.withValues(alpha: 0.2),
+          color: WFColors.textLightColor(context).withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(4),
           border: Border.all(
-            color: WFColors.textLight.withValues(alpha: 0.4),
+            color: WFColors.textLightColor(context).withValues(alpha: 0.4),
             width: 1,
           ),
         ),
@@ -302,7 +302,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
           char,
           style: TextStyle(
             fontSize: _fontSize * 0.6,
-            color: WFColors.textLight,
+            color: WFColors.textLightColor(context),
           ),
         ),
       );
@@ -315,7 +315,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
       child: CustomPaint(
         painter: BezierGlyphPainter(
           glyph: glyph,
-          fillColor: WFColors.textPrimary,
+          fillColor: WFColors.textPrimaryColor(context),
         ),
       ),
     );

@@ -242,6 +242,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _config.resetParams();
       // 重置主题为跟随系统
       await _config.setThemeMode(AppConfigService.defaultThemeMode);
+      await ThemeConfigService.instance.setThemeMode(AppConfigService.defaultThemeMode);
       // 重置识别模式为本地
       await _recognition.setUseCloud(false);
 
@@ -532,7 +533,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       currentKey.isNotEmpty ? currentKey : '未设置',
                       style: TextStyle(
                         fontSize: 12,
-                        color: currentKey.isNotEmpty ? WFColors.primary : WFColors.textLight,
+                        color: currentKey.isNotEmpty ? WFColors.primary : WFColors.textLightColor(context),
                         fontFamily: 'monospace',
                       ),
                     ),
@@ -606,7 +607,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('拖拽调整工具栏按钮顺序', style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                Text('拖拽调整工具栏按钮顺序', style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context))),
                 const SizedBox(height: 12),
                 ReorderableListView.builder(
                   shrinkWrap: true,
@@ -629,7 +630,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       dense: true,
                       leading: Icon(item['icon'] as IconData, color: WFColors.primary),
                       title: Text(item['label'] as String, style: const TextStyle(fontSize: 14)),
-                      trailing: const Icon(Icons.drag_handle, color: WFColors.textLight),
+                      trailing: Icon(Icons.drag_handle, color: WFColors.textLightColor(context)),
                     );
                   },
                 ),
@@ -758,7 +759,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('选择长按菜单中显示的操作项', style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                  Text('选择长按菜单中显示的操作项', style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context))),
                   const SizedBox(height: 12),
                   ...allItems.entries.map((entry) {
                     final isSelected = _quickMenuItems.contains(entry.key);
@@ -1006,7 +1007,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (changelog.isNotEmpty) Text(changelog, maxLines: 2, overflow: TextOverflow.ellipsis),
-                            Text(timestamp, style: const TextStyle(fontSize: 11, color: WFColors.textSecondary)),
+                            Text(timestamp, style: TextStyle(fontSize: 11, color: WFColors.textSecondaryColor(context))),
                           ],
                         ),
                       ),
@@ -1120,9 +1121,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: InputDecoration(
         hintText: '搜索设置项...',
         hintStyle: TextStyle(
-          color: WFColors.textSecondary,
+          color: WFColors.textSecondaryColor(context),
         ),
-        prefixIcon: Icon(Icons.search, color: WFColors.textSecondary),
+        prefixIcon: Icon(Icons.search, color: WFColors.textSecondaryColor(context)),
         suffixIcon: _searchQuery.isNotEmpty
             ? IconButton(
                 icon: const Icon(Icons.clear),
@@ -1133,7 +1134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               )
             : null,
         filled: true,
-        fillColor: WFColors.textLight.withValues(alpha: 0.15),
+        fillColor: WFColors.textLightColor(context).withValues(alpha: 0.15),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -1286,7 +1287,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListTile(
       leading: Icon(
         icon,
-        color: isActive ? WFColors.primary : WFColors.textLight,
+        color: isActive ? WFColors.primary : WFColors.textLightColor(context),
       ),
       title: Text(title),
       trailing: Radio<String>(
@@ -1337,7 +1338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListTile(
       leading: Icon(
         icon,
-        color: isActive ? WFColors.primary : WFColors.textLight,
+        color: isActive ? WFColors.primary : WFColors.textLightColor(context),
       ),
       title: Text(title),
       trailing: Radio<String>(
@@ -1374,7 +1375,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('使用设备端 OCR 识别文字，无需网络'),
             secondary: Icon(
               Icons.phone_android,
-              color: _useCloud ? WFColors.textLight : WFColors.primary,
+              color: _useCloud ? WFColors.textLightColor(context) : WFColors.primary,
             ),
             activeColor: WFColors.primary,
           ),
@@ -1387,7 +1388,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('使用云端 OCR 服务，需要网络连接'),
             secondary: Icon(
               Icons.cloud_outlined,
-              color: _useCloud ? WFColors.primary : WFColors.textLight,
+              color: _useCloud ? WFColors.primary : WFColors.textLightColor(context),
             ),
             activeColor: WFColors.primary,
           ),
@@ -1494,7 +1495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label,
             style: const TextStyle(
               fontSize: 14,
-              color: WFColors.textPrimary,
+              color: WFColors.textPrimaryColor(context),
             ),
           ),
         ),
@@ -1503,7 +1504,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: WFColors.primary,
               thumbColor: WFColors.primary,
-              inactiveTrackColor: WFColors.textLight.withValues(alpha: 0.3),
+              inactiveTrackColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
             ),
             child: Slider(
               value: value,
@@ -1522,7 +1523,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: const TextStyle(
               fontSize: 12,
               fontFamily: 'monospace',
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
             textAlign: TextAlign.right,
           ),
@@ -1539,7 +1540,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         text,
         style: const TextStyle(
           fontSize: 12,
-          color: WFColors.textLight,
+          color: WFColors.textLightColor(context),
           height: 1.3,
         ),
       ),
@@ -1614,7 +1615,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? WFColors.success
                         : _syncStatus == 'pending'
                             ? WFColors.warning
-                            : WFColors.textLight,
+                            : WFColors.textLightColor(context),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1734,7 +1735,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: Icon(
               Icons.undo,
-              color: _isRollingBack ? WFColors.textLight : WFColors.warning,
+              color: _isRollingBack ? WFColors.textLightColor(context) : WFColors.warning,
             ),
             title: const Text('版本回滚'),
             subtitle: const Text('回滚到之前的版本'),
@@ -1908,7 +1909,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildDivider() {
     return Divider(
       height: 1,
-      color: WFColors.textLight.withValues(alpha: 0.3),
+      color: WFColors.textLightColor(context).withValues(alpha: 0.3),
     );
   }
 
@@ -2431,7 +2432,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       case 'community':
         return WFColors.success;
       default:
-        return WFColors.textSecondary;
+        return WFColors.textSecondaryColor(context);
     }
   }
 

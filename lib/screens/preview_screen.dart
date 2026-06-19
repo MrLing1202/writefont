@@ -241,7 +241,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 ? const Center(
                     child: Text(
                       '输入文字查看预览效果',
-                      style: TextStyle(color: WFColors.textLight, fontSize: 16),
+                      style: TextStyle(color: WFColors.textLightColor(context), fontSize: 16),
                     ),
                   )
                 : SingleChildScrollView(

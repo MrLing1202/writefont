@@ -363,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -502,7 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       label: Text(label),
       selected: isSelected,
       selectedColor: color.withValues(alpha: 0.2),
-      labelStyle: TextStyle(color: isSelected ? color : WFColors.textSecondary),
+      labelStyle: TextStyle(color: isSelected ? color : WFColors.textSecondaryColor(context)),
       onSelected: (_) {
         setSheetState(() => _personalizedTheme = id);
         setState(() => _personalizedTheme = id);
@@ -806,8 +806,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(c['author'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: WFColors.textPrimary)),
-                        Text(c['content'] as String, style: TextStyle(fontSize: 13, color: WFColors.textSecondary)),
+                        Text(c['author'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context))),
+                        Text(c['content'] as String, style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context))),
                       ]),
                     ),
                   ],
@@ -862,25 +862,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           _buildInteractionButton(
             icon: isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
             label: likeCount > 0 ? '$likeCount' : '点赞',
-            color: isLiked ? WFColors.primary : WFColors.textSecondary,
+            color: isLiked ? WFColors.primary : WFColors.textSecondaryColor(context),
             onTap: () => _toggleLike(projectId),
           ),
           _buildInteractionButton(
             icon: Icons.comment_outlined,
             label: commentCount > 0 ? '$commentCount' : '评论',
-            color: WFColors.textSecondary,
+            color: WFColors.textSecondaryColor(context),
             onTap: () => _showCommentDialog(projectId, projectName),
           ),
           _buildInteractionButton(
             icon: isFav ? Icons.star : Icons.star_border,
             label: isFav ? '已收藏' : '收藏',
-            color: isFav ? WFColors.warning : WFColors.textSecondary,
+            color: isFav ? WFColors.warning : WFColors.textSecondaryColor(context),
             onTap: () => _toggleFavorite(projectId),
           ),
           _buildInteractionButton(
             icon: Icons.share_outlined,
             label: repostCount > 0 ? '$repostCount' : '转发',
-            color: WFColors.textSecondary,
+            color: WFColors.textSecondaryColor(context),
             onTap: () => _repost(projectId),
           ),
         ],
@@ -936,13 +936,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 style: TextStyle(
                   fontSize: 16 * _fontScale,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.tune, size: 18),
-                color: WFColors.textSecondary,
+                color: WFColors.textSecondaryColor(context),
                 tooltip: '个性化设置',
                 onPressed: _showPersonalizationSettingsSheet,
               ),
@@ -974,7 +974,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 subtitle: Text(
                   rec['desc'] as String,
-                  style: TextStyle(fontSize: 12 * _fontScale, color: WFColors.textSecondary),
+                  style: TextStyle(fontSize: 12 * _fontScale, color: WFColors.textSecondaryColor(context)),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1198,7 +1198,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -1384,9 +1384,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.notifications_none, size: 48, color: WFColors.textLight),
+                          Icon(Icons.notifications_none, size: 48, color: WFColors.textLightColor(context)),
                           SizedBox(height: 12),
-                          Text('暂无通知', style: TextStyle(color: WFColors.textSecondary)),
+                          Text('暂无通知', style: TextStyle(color: WFColors.textSecondaryColor(context))),
                         ],
                       ),
                     )
@@ -1409,11 +1409,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: n.isRead
-                                  ? WFColors.textLight.withValues(alpha: 0.3)
+                                  ? WFColors.textLightColor(context).withValues(alpha: 0.3)
                                   : WFColors.primary.withValues(alpha: 0.2),
                               child: Icon(
                                 _getCategoryIcon(n.category),
-                                color: n.isRead ? WFColors.textSecondary : WFColors.primary,
+                                color: n.isRead ? WFColors.textSecondaryColor(context) : WFColors.primary,
                                 size: 20,
                               ),
                             ),
@@ -1524,7 +1524,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1532,7 +1532,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       '了解应用的核心功能 (${(progress * 100).toInt()}% 已完成)',
                       style: const TextStyle(
                         fontSize: 12,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                       ),
                     ),
                   ],
@@ -1545,12 +1545,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: CircularProgressIndicator(
                   value: progress,
                   strokeWidth: 3,
-                  backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                  backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
                   valueColor: const AlwaysStoppedAnimation<Color>(WFColors.primary),
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right, color: WFColors.textSecondary),
+              Icon(Icons.chevron_right, color: WFColors.textSecondaryColor(context)),
             ],
           ),
         ),
@@ -1779,16 +1779,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 28),
 
-                  // ── 快速操作网格 ──
-                  WFAnimations.fadeInSlide(
-                    ScaleTransition(
-                      scale: _quickActionScale,
-                      child: _buildQuickActionsGrid(context),
-                    ),
-                    delay: const Duration(milliseconds: 80),
-                  ),
-                  const SizedBox(height: 20),
-
                   // ── 功能引导入口（未完成时显示）──
                   _buildGuideEntryPoint(),
                   if (_getGuideProgress() < 1.0) const SizedBox(height: 14),
@@ -1958,7 +1948,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     '推荐先练习标准字表',
                     style: TextStyle(
                       fontSize: 13,
-                      color: WFColors.textSecondary.withValues(alpha: 0.7),
+                      color: WFColors.textSecondaryColor(context).withValues(alpha: 0.7),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1981,118 +1971,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// 构建快速操作网格（适配平板和横屏）
-  Widget _buildQuickActionsGrid(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isTablet = screenWidth >= 600;
-    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
-    
-    final actions = [
-      _QuickAction(
-        icon: Icons.camera_alt,
-        label: '自由拍照',
-        color: WFColors.accent,
-        onTap: () => HomeActions.pickImages(context),
-      ),
-      _QuickAction(
-        icon: Icons.auto_awesome,
-        label: '一键生成',
-        color: WFColors.primary,
-        onTap: () => HomeActions.quickCapture(context),
-      ),
-      _QuickAction(
-        icon: Icons.grid_on,
-        label: '标准字表',
-        color: WFColors.info,
-        onTap: () => Navigator.push(
-          context,
-          WFAnimations.slideRoute(const WritingTipsScreen()),
-        ),
-      ),
-      _QuickAction(
-        icon: Icons.folder,
-        label: '我的字体',
-        color: WFColors.success,
-        onTap: () async {
-          await HomeActions.openProjectList(context);
-          _loadProjectData();
-        },
-      ),
-    ];
-
-    // 平板/横屏使用 Wrap 布局，手机使用 Row 布局
-    final iconSize = isTablet ? 28.0 : 24.0;
-    final buttonSize = isTablet ? 56.0 : 48.0;
-
-    return Container(
-      padding: EdgeInsets.all(isTablet ? 20 : 16),
-      decoration: BoxDecoration(
-        color: WFColors.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: isTablet || isLandscape
-          ? Wrap(
-              alignment: WrapAlignment.spaceAround,
-              spacing: 16,
-              runSpacing: 16,
-              children: actions.map((action) => _buildQuickActionButton(action, iconSize: iconSize, buttonSize: buttonSize)).toList(),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: actions.map((action) => _buildQuickActionButton(action, iconSize: iconSize, buttonSize: buttonSize)).toList(),
-            ),
-    );
-  }
-
-  /// 构建快速操作按钮（支持自定义尺寸，适配不同设备）
-  Widget _buildQuickActionButton(_QuickAction action, {double iconSize = 24.0, double buttonSize = 48.0}) {
-    return Semantics(
-      label: action.label,
-      button: true,
-      child: GestureDetector(
-      onTapDown: (_) => _quickActionAnimController.forward(),
-      onTapUp: (_) {
-        _quickActionAnimController.reverse();
-        action.onTap();
-      },
-      onTapCancel: () => _quickActionAnimController.reverse(),
-      child: Column(
-        children: [
-          Container(
-            width: buttonSize,
-            height: buttonSize,
-            decoration: BoxDecoration(
-              color: action.color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              action.icon,
-              color: action.color,
-              size: iconSize,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            action.label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: WFColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    ),
-    );
-  }
-
   /// 构建使用统计卡片（含无障碍语义标注）
   Widget _buildUsageStatsCard(BuildContext context) {
     return Semantics(
@@ -2100,10 +1978,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: WFColors.textLight.withValues(alpha: 0.3),
+          color: WFColors.textLightColor(context).withValues(alpha: 0.3),
         ),
       ),
       child: Column(
@@ -2119,10 +1997,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(width: 8),
               Text(
                 '使用统计',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
             ],
@@ -2191,10 +2069,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(height: 8),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: WFColors.textPrimary,
+            color: WFColors.textPrimaryColor(context),
           ),
         ),
         const SizedBox(height: 4),
@@ -2202,7 +2080,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           label,
           style: const TextStyle(
             fontSize: 11,
-            color: WFColors.textSecondary,
+            color: WFColors.textSecondaryColor(context),
           ),
           textAlign: TextAlign.center,
         ),
@@ -2222,10 +2100,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: WFColors.bgCard,
+          color: WFColors.bgCardColor(context),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: WFColors.textLight.withValues(alpha: 0.3),
+            color: WFColors.textLightColor(context).withValues(alpha: 0.3),
           ),
         ),
         child: Column(
@@ -2240,7 +2118,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                 ),
               ],
@@ -2252,7 +2130,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               children: [
                 _buildCategoryChip('已完成', completed, Colors.green, Icons.check_circle),
                 _buildCategoryChip('进行中', inProgress, WFColors.primary, Icons.edit_note),
-                _buildCategoryChip('未开始', empty, WFColors.textSecondary, Icons.inbox_outlined),
+                _buildCategoryChip('未开始', empty, WFColors.textSecondaryColor(context), Icons.inbox_outlined),
                 _buildCategoryChip('最近活跃', recent, WFColors.accent, Icons.access_time),
               ],
             ),
@@ -2308,9 +2186,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: WFColors.textLight.withValues(alpha: 0.3)),
+        border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2321,7 +2199,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(width: 8),
               const Text(
                 '项目进度概览',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
             ],
           ),
@@ -2350,7 +2228,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(width: 16),
               _buildLegendItem('进行中', WFColors.primary),
               const SizedBox(width: 16),
-              _buildLegendItem('未开始', WFColors.textLight),
+              _buildLegendItem('未开始', WFColors.textLightColor(context)),
             ],
           ),
         ],
@@ -2374,7 +2252,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         const SizedBox(width: 4),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: WFColors.textSecondary),
+          style: TextStyle(fontSize: 11, color: WFColors.textSecondaryColor(context)),
         ),
       ],
     );
@@ -2391,9 +2269,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: WFColors.textLight.withValues(alpha: 0.3)),
+        border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2404,7 +2282,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(width: 8),
               const Text(
                 '字符使用统计',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
             ],
           ),
@@ -2424,7 +2302,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 8),
           Text(
             '总字符数: $_totalCharCount',
-            style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
           ),
         ],
       ),
@@ -2438,9 +2316,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: WFColors.textLight.withValues(alpha: 0.3)),
+        border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2451,7 +2329,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(width: 8),
               const Text(
                 '创作时间线',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
             ],
           ),
@@ -2491,12 +2369,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       children: [
                         Text(
                           project.name,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: WFColors.textPrimary),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: WFColors.textPrimaryColor(context)),
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           timeLabel,
-                          style: const TextStyle(fontSize: 11, color: WFColors.textSecondary),
+                          style: TextStyle(fontSize: 11, color: WFColors.textSecondaryColor(context)),
                         ),
                       ],
                     ),
@@ -2535,9 +2413,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: WFColors.bgCard,
+        color: WFColors.bgCardColor(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: WFColors.textLight.withValues(alpha: 0.3)),
+        border: Border.all(color: WFColors.textLightColor(context).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2548,7 +2426,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(width: 8),
               const Text(
                 '创作趋势',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimary),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: WFColors.textPrimaryColor(context)),
               ),
             ],
           ),
@@ -2568,7 +2446,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(height: 8),
           Text(
             '最近7天项目创建趋势',
-            style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
           ),
         ],
       ),
@@ -2609,7 +2487,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           margin: const EdgeInsets.all(32),
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: WFColors.bgCard,
+            color: WFColors.bgCardColor(context),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -2623,19 +2501,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               const SizedBox(height: 16),
               Text(
                 step['title'] as String,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
                 step['desc'] as String,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -2647,7 +2525,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     onPressed: _completeOnboarding,
                     child: Text(
                       '跳过',
-                      style: const TextStyle(color: WFColors.textSecondary),
+                      style: TextStyle(color: WFColors.textSecondaryColor(context)),
                     ),
                   ),
                   Row(
@@ -2661,7 +2539,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           shape: BoxShape.circle,
                           color: index == _onboardingStep
                               ? WFColors.primary
-                              : WFColors.textLight,
+                              : WFColors.textLightColor(context),
                         ),
                       ),
                     ),
@@ -2705,7 +2583,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             margin: const EdgeInsets.all(32),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: WFColors.bgCard,
+              color: WFColors.bgCardColor(context),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
@@ -2723,7 +2601,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: progress,
-                    backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                    backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.3),
                     valueColor: const AlwaysStoppedAnimation<Color>(WFColors.primary),
                     minHeight: 4,
                   ),
@@ -2747,9 +2625,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 // 步骤计数
                 Text(
                   '${_featureGuideStep + 1} / ${steps.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -2757,10 +2635,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 // 功能标题
                 Text(
                   step['title'] as String,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    color: WFColors.textPrimary,
+                    color: WFColors.textPrimaryColor(context),
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -2768,9 +2646,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 // 功能描述
                 Text(
                   step['desc'] as String,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
-                    color: WFColors.textSecondary,
+                    color: WFColors.textSecondaryColor(context),
                     height: 1.5,
                   ),
                   textAlign: TextAlign.center,
@@ -2814,7 +2692,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ? WFColors.primary
                             : i < _featureGuideStep
                                 ? WFColors.primary.withValues(alpha: 0.4)
-                                : WFColors.textLight,
+                                : WFColors.textLightColor(context),
                       ),
                     ),
                   ),
@@ -2826,7 +2704,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   children: [
                     TextButton(
                       onPressed: () => setState(() => _showFeatureGuide = false),
-                      child: const Text('稍后再看', style: TextStyle(color: WFColors.textSecondary)),
+                      child: Text('稍后再看', style: TextStyle(color: WFColors.textSecondaryColor(context))),
                     ),
                     Row(
                       children: [
@@ -2878,7 +2756,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: WFColors.bgCard,
+            color: WFColors.bgCardColor(context),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: WFColors.primary.withValues(alpha: 0.3)),
           ),
@@ -2895,7 +2773,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                   ),
@@ -2918,7 +2796,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     Expanded(
                       child: Text(
                         tip,
-                        style: const TextStyle(fontSize: 13, color: WFColors.textSecondary, height: 1.4),
+                        style: TextStyle(fontSize: 13, color: WFColors.textSecondaryColor(context), height: 1.4),
                       ),
                     ),
                   ],

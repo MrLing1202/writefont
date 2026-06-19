@@ -3512,7 +3512,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           type: BottomNavigationBarType.fixed,
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           selectedItemColor: Theme.of(context).primaryColor,
-          unselectedItemColor: WFColors.textSecondary,
+          unselectedItemColor: WFColors.textSecondaryColor(context),
           selectedFontSize: 12,
           unselectedFontSize: 10,
           items: [
@@ -4882,7 +4882,6 @@ class WriteFontApp extends StatefulWidget {
 }
 
 class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver {
-  String _themeModeStr = AppConfigService.defaultThemeMode;
   bool _onboardingSeen = false;
   bool _onboardingChecked = false;
   bool _useBottomNav = true; // 是否使用底部导航栏
@@ -4916,7 +4915,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadThemeMode();
+
     _checkOnboarding();
     _loadNavigationPreference();
     _loadAccessibilitySettings();
@@ -5015,13 +5014,6 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     }
   }
 
-  /// 加载主题模式设置
-  Future<void> _loadThemeMode() async {
-    final themeMode = await AppConfigService.instance.getThemeMode();
-    if (mounted) {
-      setState(() => _themeModeStr = themeMode);
-    }
-  }
 
   /// 切换高对比度模式
   void _toggleHighContrast() {
@@ -5438,8 +5430,8 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       homeWidget = const OnboardingScreen();
     } else {
       homeWidget = _useBottomNav 
-        ? MainNavigationPage(onThemeChanged: () => _loadThemeMode())
-        : HomeScreen(onThemeChanged: () => _loadThemeMode());
+        ? MainNavigationPage(onThemeChanged: () => setState(() {}))
+        : HomeScreen(onThemeChanged: () => setState(() {}));
     }
 
     return ListenableBuilder(
@@ -5515,7 +5507,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
           case '/my-fonts':
             return WFAnimations.slideRoute(const ProjectListScreen());
           case '/settings':
-            return WFAnimations.slideRoute(SettingsScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.slideRoute(SettingsScreen(onThemeChanged: () => setState(() {})));
           case '/ai-font-generator':
             return WFAnimations.slideUpRoute(const AiFontGeneratorScreen());
           case '/auto-generate':
@@ -5523,24 +5515,24 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             if (imageBytes != null) {
               return WFAnimations.slideUpRoute(AutoGenerateScreen(imageBytes: imageBytes));
             }
-            return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => setState(() {})));
           case '/capture':
             final charset = (settings.arguments as Map<String, dynamic>?)?['charset'] as List<String>?;
             return WFAnimations.slideUpRoute(CaptureScreen(charset: charset));
           case '/processing':
             final args = settings.arguments as Map<String, dynamic>?;
-            if (args == null) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            if (args == null) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => setState(() {})));
             final images = args['images'] as List<Uint8List>?;
-            if (images == null || images.isEmpty) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            if (images == null || images.isEmpty) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => setState(() {})));
             final charset = args['charset'] as List<String>?;
             return WFAnimations.slideUpRoute(ProcessingScreen(sourceImages: images, charset: charset));
           case '/preview':
             final args = settings.arguments as Map<String, dynamic>?;
             final project = args?['project'] as FontProject?;
-            if (project == null) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            if (project == null) return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => setState(() {})));
             return WFAnimations.scaleFadeRoute(PreviewScreen(project: project));
           default:
-            return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => _loadThemeMode()));
+            return WFAnimations.fadeRoute(HomeScreen(onThemeChanged: () => setState(() {})));
         }
       },
     ),

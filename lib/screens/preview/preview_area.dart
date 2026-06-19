@@ -36,7 +36,7 @@ class PreviewArea extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: WFColors.textSecondary),
+            style: TextStyle(fontSize: 12, color: WFColors.textSecondaryColor(context)),
           ),
           const SizedBox(height: 8),
           _buildGlyphPreviewText(previewText, fontSize),
@@ -56,14 +56,14 @@ class PreviewArea extends StatelessWidget {
           child: GlyphWidget(
             contours: glyph.contours,
             size: fontSize,
-            color: WFColors.textPrimary,
+            color: WFColors.textPrimaryColor(context),
           ),
           alignment: PlaceholderAlignment.middle,
         ));
       } else {
         spans.add(TextSpan(
           text: char,
-          style: TextStyle(fontSize: fontSize, color: WFColors.textPrimary),
+          style: TextStyle(fontSize: fontSize, color: WFColors.textPrimaryColor(context)),
         ));
       }
     }

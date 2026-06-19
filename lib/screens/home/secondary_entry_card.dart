@@ -134,7 +134,7 @@ class _SecondaryListTile extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: WFColors.textPrimary,
+                      color: WFColors.textPrimaryColor(context),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -142,7 +142,7 @@ class _SecondaryListTile extends StatelessWidget {
                     subtitle,
                     style: const TextStyle(
                       fontSize: 13,
-                      color: WFColors.textSecondary,
+                      color: WFColors.textSecondaryColor(context),
                     ),
                   ),
                 ],
@@ -155,7 +155,7 @@ class _SecondaryListTile extends StatelessWidget {
             const Icon(
               Icons.chevron_right,
               size: 20,
-              color: WFColors.textLight,
+              color: WFColors.textLightColor(context),
             ),
           ],
         ),

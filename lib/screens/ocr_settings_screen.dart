@@ -164,7 +164,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: WFColors.textPrimary,
+                                color: WFColors.textPrimaryColor(context),
                               ),
                             ),
                           ],
@@ -174,7 +174,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           '使用本地离线识别中文手写字符，无需网络，完全免费。',
                           style: TextStyle(
                             fontSize: 14,
-                            color: WFColors.textSecondary,
+                            color: WFColors.textSecondaryColor(context),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -193,7 +193,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                                   '当前为默认模式，安装即可使用',
                                   style: TextStyle(
                                     fontSize: 13,
-                                    color: WFColors.textSecondary,
+                                    color: WFColors.textSecondaryColor(context),
                                   ),
                                 ),
                               ),
@@ -221,7 +221,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: WFColors.textPrimary,
+                                color: WFColors.textPrimaryColor(context),
                               ),
                             ),
                           ],
@@ -231,7 +231,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           'DeepSeek 开源 3B 视觉 OCR 模型，通过硅基流动免费 API 调用，仅需填写 API Key。',
                           style: TextStyle(
                             fontSize: 14,
-                            color: WFColors.textSecondary,
+                            color: WFColors.textSecondaryColor(context),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -365,7 +365,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: WFColors.textSecondary,
+                            color: WFColors.textSecondaryColor(context),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -377,7 +377,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                           '也可替换为其他兼容 OpenAI 格式的云端 API。',
                           style: TextStyle(
                             fontSize: 13,
-                            color: WFColors.textSecondary,
+                            color: WFColors.textSecondaryColor(context),
                           ),
                         ),
                       ],

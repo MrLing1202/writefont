@@ -247,7 +247,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: WFColors.textPrimary,
+                          color: WFColors.textPrimaryColor(context),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -255,7 +255,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                         '请稍候，正在处理 ${_selectedProject?.glyphs.length ?? 0} 个字符',
                         style: TextStyle(
                           fontSize: 13,
-                          color: WFColors.textSecondary,
+                          color: WFColors.textSecondaryColor(context),
                         ),
                       ),
                     ],
@@ -300,7 +300,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -310,7 +310,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                         fontSize: 13,
                         color: _ttfFileName != null
                             ? WFColors.success
-                            : WFColors.textSecondary,
+                            : WFColors.textSecondaryColor(context),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -367,7 +367,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     SizedBox(height: 2),
@@ -375,7 +375,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                       '从参考字体中提取的风格参数',
                       style: TextStyle(
                         fontSize: 13,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                       ),
                     ),
                   ],
@@ -467,7 +467,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
             label,
             style: const TextStyle(
               fontSize: 12,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
         ],
@@ -507,7 +507,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: WFColors.textPrimary,
+                        color: WFColors.textPrimaryColor(context),
                       ),
                     ),
                     SizedBox(height: 2),
@@ -515,7 +515,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                       '选择项目并调整迁移参数',
                       style: TextStyle(
                         fontSize: 13,
-                        color: WFColors.textSecondary,
+                        color: WFColors.textSecondaryColor(context),
                       ),
                     ),
                   ],
@@ -531,7 +531,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: WFColors.textPrimary,
+              color: WFColors.textPrimaryColor(context),
             ),
           ),
           const SizedBox(height: 8),
@@ -547,7 +547,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: WFColors.textPrimary,
+                  color: WFColors.textPrimaryColor(context),
                 ),
               ),
               Container(
@@ -595,14 +595,14 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                 '轻微调整',
                 style: TextStyle(
                   fontSize: 12,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
               Text(
                 '强烈迁移',
                 style: TextStyle(
                   fontSize: 12,
-                  color: WFColors.textSecondary,
+                  color: WFColors.textSecondaryColor(context),
                 ),
               ),
             ],
@@ -618,7 +618,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: WFColors.textLight),
+          border: Border.all(color: WFColors.textLightColor(context)),
           borderRadius: BorderRadius.circular(8),
         ),
         child: const Center(
@@ -635,18 +635,18 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
         decoration: BoxDecoration(
-          border: Border.all(color: WFColors.textLight),
+          border: Border.all(color: WFColors.textLightColor(context)),
           borderRadius: BorderRadius.circular(8),
         ),
         child: const Row(
           children: [
-            Icon(Icons.info_outline, size: 18, color: WFColors.textSecondary),
+            Icon(Icons.info_outline, size: 18, color: WFColors.textSecondaryColor(context)),
             SizedBox(width: 8),
             Text(
               '暂无项目，请先创建字体项目',
               style: TextStyle(
                 fontSize: 14,
-                color: WFColors.textSecondary,
+                color: WFColors.textSecondaryColor(context),
               ),
             ),
           ],
@@ -656,7 +656,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: WFColors.textLight),
+        border: Border.all(color: WFColors.textLightColor(context)),
         borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -668,7 +668,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
             '请选择要迁移的项目',
             style: TextStyle(
               fontSize: 14,
-              color: WFColors.textSecondary,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
           items: _projects.map((project) {
@@ -700,7 +700,7 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
                     '$glyphCount 字',
                     style: const TextStyle(
                       fontSize: 12,
-                      color: WFColors.textSecondary,
+                      color: WFColors.textSecondaryColor(context),
                     ),
                   ),
                 ],
@@ -734,12 +734,12 @@ class _StyleTransferScreenState extends State<StyleTransferScreen> {
             icon: Icon(
               Icons.preview,
               size: 18,
-              color: canTransfer ? WFColors.info : WFColors.textLight,
+              color: canTransfer ? WFColors.info : WFColors.textLightColor(context),
             ),
             label: Text(
               '预览效果',
               style: TextStyle(
-                color: canTransfer ? WFColors.info : WFColors.textLight,
+                color: canTransfer ? WFColors.info : WFColors.textLightColor(context),
               ),
             ),
           ),
