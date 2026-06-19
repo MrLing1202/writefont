@@ -140,9 +140,9 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     final confirmed = await WFDialog.confirm(
       context,
       title: '恢复版本',
-      content: '确定要恢复项目"${entry.projectName}"到此版本吗？当前数据将被覆盖。',
+      message: '确定要恢复项目"${entry.projectName}"到此版本吗？当前数据将被覆盖。',
       confirmText: '恢复',
-      isDangerous: true,
+      isDestructive: true,
     );
 
     if (confirmed != true) return;
