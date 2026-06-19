@@ -7,6 +7,7 @@ import '../models/project.dart';
 import '../services/storage_service.dart';
 import 'preview_screen.dart';
 import '../theme/app_theme.dart';
+import 'batch_processing_screen.dart';
 import 'project_list/sort_mode.dart';
 import 'project_list/project_list_widgets.dart';
 
@@ -498,6 +499,18 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       appBar: WFAppBar(
         title: '我的字体',
         actions: [
+          // 批量处理按钮
+          if (_projects.isNotEmpty && !_isMultiSelectMode)
+            IconButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  WFAnimations.slideRoute(const BatchProcessingScreen()),
+                ).then((_) => _loadProjects());
+              },
+              icon: const Icon(Icons.dynamic_feed_outlined),
+              tooltip: '批量处理',
+            ),
           // 批量删除按钮
           if (_projects.isNotEmpty)
             IconButton(
