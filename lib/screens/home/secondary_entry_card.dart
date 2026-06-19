@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
-/// 辅助功能入口卡片（我的字体 / 字符总览 / 字体预览）
+/// 辅助功能入口卡片（我的字体 / 字符总览 / 字体预览 / 风格迁移）
 class SecondaryEntryCard extends StatelessWidget {
   final int savedProjectCount;
   final VoidCallback onMyFontsTap;
   final VoidCallback onCharGridTap;
   final VoidCallback onFontPreviewTap;
+  final VoidCallback onStyleTransferTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -14,6 +15,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onMyFontsTap,
     required this.onCharGridTap,
     required this.onFontPreviewTap,
+    required this.onStyleTransferTap,
   });
 
   @override
@@ -62,6 +64,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字体预览',
             subtitle: '输入文字查看手迹效果',
             onTap: onFontPreviewTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.auto_fix_high,
+            iconColor: WFColors.warning,
+            title: '风格迁移',
+            subtitle: 'AI 智能字体风格转换',
+            onTap: onStyleTransferTap,
           ),
         ],
       ),

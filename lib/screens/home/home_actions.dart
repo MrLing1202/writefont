@@ -8,6 +8,7 @@ import '../capture_screen.dart';
 import '../character_grid_screen.dart';
 import '../processing_screen.dart';
 import '../project_list_screen.dart';
+import '../style_transfer_screen.dart';
 
 /// 首页业务逻辑辅助类
 class HomeActions {
@@ -141,6 +142,14 @@ class HomeActions {
     await Navigator.push(
       context,
       WFAnimations.slideRoute(const ProjectListScreen()),
+    );
+  }
+
+  /// 打开风格迁移页面
+  static void openStyleTransfer(BuildContext context) {
+    Navigator.push(
+      context,
+      WFAnimations.slideRoute(const StyleTransferScreen()),
     );
   }
 }
