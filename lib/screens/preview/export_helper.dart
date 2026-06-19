@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/project.dart';
 import '../../services/storage_service.dart';
 import 'export_dialogs.dart';
+import '../font_metadata_screen.dart';
 
 /// 导出 TTF 字体（带元数据）
 Future<void> exportFontWithMetadata(
