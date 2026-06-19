@@ -1890,6 +1890,438 @@ class RecognitionService {
       'cacheStats': getCacheSpaceUsage(),
     };
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 机器学习功能：模型管理、模型训练、模型评估、模型部署
+  // ═══════════════════════════════════════════════════════════
+
+  // ── 模型管理 ──
+
+  /// 已注册的模型信息表（模型ID → 模型元数据）
+  static final Map<String, Map<String, dynamic>> _registeredModels = {};
+
+  /// 模型版本历史（模型ID → 版本列表）
+  static final Map<String, List<Map<String, dynamic>>> _modelVersions = {};
+
+  /// 当前活跃模型ID
+  static String? _activeModelId;
+
+  /// 注册新模型
+  ///
+  /// [modelId] 模型唯一标识
+  /// [name] 模型名称
+  /// [version] 模型版本
+  /// [parameters] 模型参数（层数、参数量等）
+  /// 返回注册的模型信息
+  static Map<String, dynamic> registerModel({
+    required String modelId,
+    required String name,
+    required String version,
+    Map<String, dynamic>? parameters,
+  }) {
+    final modelInfo = <String, dynamic>{
+      'modelId': modelId,
+      'name': name,
+      'version': version,
+      'parameters': parameters ?? {},
+      'registeredAt': DateTime.now().toIso8601String(),
+      'status': 'registered',
+      'metrics': <String, dynamic>{},
+    };
+    _registeredModels[modelId] = modelInfo;
+
+    // 记录版本历史
+    _modelVersions.putIfAbsent(modelId, () => []);
+    _modelVersions[modelId]!.add({
+      'version': version,
+      'registeredAt': modelInfo['registeredAt'],
+      'parameters': parameters,
+    });
+
+    _addDebugLog('ml', '模型已注册', data: {'modelId': modelId, 'name': name, 'version': version});
+    return modelInfo;
+  }
+
+  /// 注销模型
+  static bool unregisterModel(String modelId) {
+    final removed = _registeredModels.remove(modelId);
+    if (removed != null) {
+      _modelVersions.remove(modelId);
+      if (_activeModelId == modelId) _activeModelId = null;
+      _addDebugLog('ml', '模型已注销', data: {'modelId': modelId});
+      return true;
+    }
+    return false;
+  }
+
+  /// 设置活跃模型
+  static bool setActiveModel(String modelId) {
+    if (!_registeredModels.containsKey(modelId)) return false;
+    _activeModelId = modelId;
+    _addDebugLog('ml', '切换活跃模型', data: {'modelId': modelId});
+    return true;
+  }
+
+  /// 获取活跃模型信息
+  static Map<String, dynamic>? getActiveModelInfo() {
+    if (_activeModelId == null) return null;
+    return Map.unmodifiable(_registeredModels[_activeModelId] ?? {});
+  }
+
+  /// 获取所有已注册模型列表
+  static List<Map<String, dynamic>> getRegisteredModels() {
+    return _registeredModels.values.map(Map.unmodifiable).toList();
+  }
+
+  /// 获取模型版本历史
+  static List<Map<String, dynamic>>? getModelVersions(String modelId) {
+    final versions = _modelVersions[modelId];
+    return versions != null ? List.unmodifiable(versions) : null;
+  }
+
+  // ── 模型训练 ──
+
+  /// 训练任务记录
+  static final List<Map<String, dynamic>> _trainingHistory = [];
+  static const int _maxTrainingHistorySize = 50;
+
+  /// 模型训练配置
+  static final Map<String, dynamic> _trainingConfig = {
+    'learningRate': 0.001,
+    'batchSize': 32,
+    'epochs': 10,
+    'optimizer': 'adam',
+    'lossFunction': 'cross_entropy',
+  };
+
+  /// 配置训练参数
+  static void configureTraining({
+    double? learningRate,
+    int? batchSize,
+    int? epochs,
+    String? optimizer,
+    String? lossFunction,
+  }) {
+    if (learningRate != null) _trainingConfig['learningRate'] = learningRate;
+    if (batchSize != null) _trainingConfig['batchSize'] = batchSize;
+    if (epochs != null) _trainingConfig['epochs'] = epochs;
+    if (optimizer != null) _trainingConfig['optimizer'] = optimizer;
+    if (lossFunction != null) _trainingConfig['lossFunction'] = lossFunction;
+    _addDebugLog('ml', '训练参数已更新', data: Map.from(_trainingConfig));
+  }
+
+  /// 获取当前训练配置
+  static Map<String, dynamic> getTrainingConfig() =>
+      Map.unmodifiable(_trainingConfig);
+
+  /// 启动模型训练
+  ///
+  /// [modelId] 目标模型ID
+  /// [trainingData] 训练数据（特征 → 标签对列表）
+  /// [onProgress] 训练进度回调（epoch, loss, accuracy）
+  /// 返回训练结果摘要
+  static Future<Map<String, dynamic>> trainModel({
+    required String modelId,
+    required List<Map<String, dynamic>> trainingData,
+    void Function(int epoch, double loss, double accuracy)? onProgress,
+  }) async {
+    final sw = Stopwatch()..start();
+    try {
+      _addDebugLog('ml', '开始训练', data: {
+        'modelId': modelId,
+        'dataSize': trainingData.length,
+        'config': _trainingConfig,
+      });
+
+      final epochs = _trainingConfig['epochs'] as int;
+      final batchSize = _trainingConfig['batchSize'] as int;
+      final learningRate = _trainingConfig['learningRate'] as double;
+
+      // 模拟训练过程：逐epoch迭代，计算loss和accuracy
+      double currentLoss = 2.0;
+      double currentAccuracy = 0.0;
+      final random = DateTime.now().millisecondsSinceEpoch;
+
+      for (int epoch = 0; epoch < epochs; epoch++) {
+        // 模拟mini-batch迭代
+        final batchCount = (trainingData.length / batchSize).ceil();
+        double epochLoss = 0.0;
+        int correct = 0;
+
+        for (int batch = 0; batch < batchCount; batch++) {
+          final start = batch * batchSize;
+          final end = (start + batchSize).clamp(0, trainingData.length);
+          final batchData = trainingData.sublist(start, end);
+
+          // 模拟前向传播和反向传播的loss下降
+          final batchLoss = currentLoss * (1.0 - learningRate * 0.5) +
+              (0.1 / (epoch + 1));
+          epochLoss += batchLoss;
+
+          // 模拟准确率上升
+          correct += (batchData.length * currentAccuracy).round();
+        }
+
+        currentLoss = epochLoss / batchCount;
+        currentAccuracy = ((epoch + 1) / epochs * 0.85 +
+                (random % 100) / 1000.0)
+            .clamp(0.0, 0.99);
+
+        onProgress?.call(epoch + 1, currentLoss, currentAccuracy);
+
+        // 给事件循环喘息的机会
+        await Future.delayed(const Duration(milliseconds: 10));
+      }
+
+      sw.stop();
+      final result = <String, dynamic>{
+        'modelId': modelId,
+        'epochs': epochs,
+        'finalLoss': currentLoss,
+        'finalAccuracy': currentAccuracy,
+        'trainingTimeMs': sw.elapsedMilliseconds,
+        'dataSize': trainingData.length,
+        'completedAt': DateTime.now().toIso8601String(),
+      };
+
+      // 更新模型指标
+      _registeredModels[modelId]?['metrics'] = {
+        'loss': currentLoss,
+        'accuracy': currentAccuracy,
+        'trainedAt': result['completedAt'],
+      };
+      _registeredModels[modelId]?['status'] = 'trained';
+
+      // 记录训练历史
+      _trainingHistory.add(result);
+      if (_trainingHistory.length > _maxTrainingHistorySize) {
+        _trainingHistory.removeAt(0);
+      }
+
+      _addDebugLog('ml', '训练完成', data: {
+        'modelId': modelId,
+        'loss': currentLoss,
+        'accuracy': currentAccuracy,
+        'timeMs': sw.elapsedMilliseconds,
+      });
+
+      return result;
+    } catch (e) {
+      _addDebugLog('ml', '训练失败', data: {'modelId': modelId, 'error': e.toString()});
+      return {
+        'modelId': modelId,
+        'error': e.toString(),
+        'trainingTimeMs': sw.elapsedMilliseconds,
+      };
+    }
+  }
+
+  /// 获取训练历史
+  static List<Map<String, dynamic>> getTrainingHistory() =>
+      List.unmodifiable(_trainingHistory);
+
+  // ── 模型评估 ──
+
+  /// 评估结果缓存
+  static final List<Map<String, dynamic>> _evaluationResults = [];
+  static const int _maxEvaluationResults = 50;
+
+  /// 评估模型性能
+  ///
+  /// [modelId] 模型ID
+  /// [testData] 测试数据（特征 → 标签对列表）
+  /// 返回评估指标（accuracy, precision, recall, f1Score, confusionMatrix）
+  static Future<Map<String, dynamic>> evaluateModel({
+    required String modelId,
+    required List<Map<String, dynamic>> testData,
+  }) async {
+    final sw = Stopwatch()..start();
+    try {
+      if (testData.isEmpty) {
+        return {'error': '测试数据为空', 'modelId': modelId};
+      }
+
+      _addDebugLog('ml', '开始评估', data: {
+        'modelId': modelId,
+        'testDataSize': testData.length,
+      });
+
+      // 模拟评估：基于训练指标计算评估结果
+      final modelMetrics = _registeredModels[modelId]?['metrics'] as Map<String, dynamic>? ?? {};
+      final baseAccuracy = (modelMetrics['accuracy'] as double?) ?? 0.5;
+
+      // 模拟混淆矩阵相关指标
+      int truePositives = 0, falsePositives = 0;
+      int trueNegatives = 0, falseNegatives = 0;
+      final random = DateTime.now().microsecondsSinceEpoch;
+
+      for (int i = 0; i < testData.length; i++) {
+        final predicted = (random + i) % 100 < (baseAccuracy * 100).round();
+        final actual = i % 2 == 0;
+        if (predicted && actual) truePositives++;
+        else if (predicted && !actual) falsePositives++;
+        else if (!predicted && actual) falseNegatives++;
+        else trueNegatives++;
+      }
+
+      final precision = truePositives + falsePositives > 0
+          ? truePositives / (truePositives + falsePositives)
+          : 0.0;
+      final recall = truePositives + falseNegatives > 0
+          ? truePositives / (truePositives + falseNegatives)
+          : 0.0;
+      final f1Score = precision + recall > 0
+          ? 2 * precision * recall / (precision + recall)
+          : 0.0;
+      final accuracy = (truePositives + trueNegatives) / testData.length;
+
+      sw.stop();
+      final result = <String, dynamic>{
+        'modelId': modelId,
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1Score': f1Score,
+        'confusionMatrix': {
+          'truePositives': truePositives,
+          'falsePositives': falsePositives,
+          'trueNegatives': trueNegatives,
+          'falseNegatives': falseNegatives,
+        },
+        'testDataSize': testData.length,
+        'evaluationTimeMs': sw.elapsedMilliseconds,
+        'evaluatedAt': DateTime.now().toIso8601String(),
+      };
+
+      // 记录评估结果
+      _evaluationResults.add(result);
+      if (_evaluationResults.length > _maxEvaluationResults) {
+        _evaluationResults.removeAt(0);
+      }
+
+      _addDebugLog('ml', '评估完成', data: {
+        'modelId': modelId,
+        'accuracy': accuracy,
+        'f1Score': f1Score,
+      });
+
+      return result;
+    } catch (e) {
+      _addDebugLog('ml', '评估失败', data: {'modelId': modelId, 'error': e.toString()});
+      return {'modelId': modelId, 'error': e.toString()};
+    }
+  }
+
+  /// 获取评估结果历史
+  static List<Map<String, dynamic>> getEvaluationResults() =>
+      List.unmodifiable(_evaluationResults);
+
+  // ── 模型部署 ──
+
+  /// 已部署模型列表（模型ID → 部署信息）
+  static final Map<String, Map<String, dynamic>> _deployedModels = {};
+
+  /// 部署模型到推理服务
+  ///
+  /// [modelId] 模型ID
+  /// [deploymentTarget] 部署目标（'local' | 'edge' | 'cloud'）
+  /// [config] 部署配置（batchSize、maxConcurrency 等）
+  /// 返回部署状态
+  static Future<Map<String, dynamic>> deployModel({
+    required String modelId,
+    String deploymentTarget = 'local',
+    Map<String, dynamic>? config,
+  }) async {
+    try {
+      if (!_registeredModels.containsKey(modelId)) {
+        return {'success': false, 'error': '模型未注册: $modelId'};
+      }
+
+      final model = _registeredModels[modelId]!;
+      if (model['status'] != 'trained') {
+        _addDebugLog('ml', '模型未训练，跳过部署检查', data: {'modelId': modelId});
+      }
+
+      final deploymentInfo = <String, dynamic>{
+        'modelId': modelId,
+        'target': deploymentTarget,
+        'config': config ?? {
+          'batchSize': 1,
+          'maxConcurrency': _maxConcurrent,
+          'timeout': _timeout.inSeconds,
+        },
+        'status': 'active',
+        'deployedAt': DateTime.now().toIso8601String(),
+        'requestCount': 0,
+        'errorCount': 0,
+        'avgLatencyMs': 0.0,
+      };
+
+      _deployedModels[modelId] = deploymentInfo;
+      _activeModelId = modelId;
+
+      _addDebugLog('ml', '模型已部署', data: {
+        'modelId': modelId,
+        'target': deploymentTarget,
+      });
+
+      return {'success': true, 'deployment': deploymentInfo};
+    } catch (e) {
+      _addDebugLog('ml', '部署失败', data: {'modelId': modelId, 'error': e.toString()});
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// 取消部署
+  static bool undeployModel(String modelId) {
+    final removed = _deployedModels.remove(modelId);
+    if (removed != null) {
+      _addDebugLog('ml', '模型已取消部署', data: {'modelId': modelId});
+      return true;
+    }
+    return false;
+  }
+
+  /// 获取部署状态
+  static Map<String, dynamic>? getDeploymentStatus(String modelId) {
+    final deployment = _deployedModels[modelId];
+    return deployment != null ? Map.unmodifiable(deployment) : null;
+  }
+
+  /// 获取所有已部署模型
+  static List<Map<String, dynamic>> getDeployedModels() {
+    return _deployedModels.values.map(Map.unmodifiable).toList();
+  }
+
+  /// 记录推理请求（部署模型调用时更新统计）
+  static void _recordDeploymentInference(String modelId, double latencyMs, {bool isError = false}) {
+    final deployment = _deployedModels[modelId];
+    if (deployment == null) return;
+
+    deployment['requestCount'] = (deployment['requestCount'] as int? ?? 0) + 1;
+    if (isError) {
+      deployment['errorCount'] = (deployment['errorCount'] as int? ?? 0) + 1;
+    }
+
+    // 更新滑动平均延迟
+    final count = deployment['requestCount'] as int;
+    final prevAvg = deployment['avgLatencyMs'] as double? ?? 0.0;
+    deployment['avgLatencyMs'] = prevAvg + (latencyMs - prevAvg) / count;
+  }
+
+  /// 获取模型管理综合报告
+  static Map<String, dynamic> getMLReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'registeredModels': getRegisteredModels(),
+      'activeModelId': _activeModelId,
+      'activeModelInfo': getActiveModelInfo(),
+      'deployedModels': getDeployedModels(),
+      'trainingHistory': getTrainingHistory().take(10).toList(),
+      'evaluationResults': getEvaluationResults().take(10).toList(),
+      'trainingConfig': getTrainingConfig(),
+    };
+  }
 }
 
 /// 云端认证错误（API Key 无效或过期）

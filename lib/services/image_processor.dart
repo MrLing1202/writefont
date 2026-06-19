@@ -2002,6 +2002,424 @@ class ImageProcessor {
     };
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 深度学习功能：神经网络、卷积层、池化层、全连接层
+  // ═══════════════════════════════════════════════════════════
+
+  // ── 神经网络层类型定义 ──
+
+  /// 层类型枚举
+  static const String layerTypeConv = 'conv';
+  static const String layerTypePool = 'pool';
+  static const String layerTypeFC = 'fc';
+  static const String layerTypeReLU = 'relu';
+  static const String layerTypeSoftmax = 'softmax';
+  static const String layerTypeBatchNorm = 'batch_norm';
+  static const String layerTypeDropout = 'dropout';
+
+  /// 已构建的网络层序列
+  static final List<Map<String, dynamic>> _networkLayers = [];
+
+  /// 网络训练状态
+  static final Map<String, dynamic> _networkState = {
+    'isCompiled': false,
+    'totalParameters': 0,
+    'layerCount': 0,
+  };
+
+  /// 添加卷积层
+  ///
+  /// [filters] 输出通道数（卷积核数量）
+  /// [kernelSize] 卷积核大小（正方形，如 3 表示 3×3）
+  /// [stride] 步长
+  /// [padding] 填充方式（'same' | 'valid'）
+  /// [activation] 激活函数（'relu' | 'sigmoid' | 'tanh' | 'none'）
+  static void addConvLayer({
+    required int filters,
+    int kernelSize = 3,
+    int stride = 1,
+    String padding = 'same',
+    String activation = 'relu',
+  }) {
+    // 参数校验
+    assert(filters > 0, 'filters 必须大于 0');
+    assert(kernelSize > 0, 'kernelSize 必须大于 0');
+    assert(stride > 0, 'stride 必须大于 0');
+
+    final layer = <String, dynamic>{
+      'type': layerTypeConv,
+      'filters': filters,
+      'kernelSize': kernelSize,
+      'stride': stride,
+      'padding': padding,
+      'activation': activation,
+      'params': filters * kernelSize * kernelSize + filters, // weights + bias
+    };
+    _networkLayers.add(layer);
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加卷积层: ${filters}个${kernelSize}x${kernelSize}核, stride=$stride, padding=$padding');
+  }
+
+  /// 添加池化层
+  ///
+  /// [poolSize] 池化窗口大小
+  /// [stride] 步长（默认等于 poolSize）
+  /// [type] 池化类型（'max' | 'avg'）
+  static void addPoolingLayer({
+    int poolSize = 2,
+    int? stride,
+    String type = 'max',
+  }) {
+    assert(poolSize > 0, 'poolSize 必须大于 0');
+
+    final layer = <String, dynamic>{
+      'type': layerTypePool,
+      'poolSize': poolSize,
+      'stride': stride ?? poolSize,
+      'poolType': type,
+      'params': 0, // 池化层无参数
+    };
+    _networkLayers.add(layer);
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加池化层: ${type}Pool ${poolSize}x$poolSize, stride=${stride ?? poolSize}');
+  }
+
+  /// 添加全连接层
+  ///
+  /// [units] 输出维度
+  /// [activation] 激活函数（'relu' | 'sigmoid' | 'tanh' | 'softmax' | 'none'）
+  static void addFCLayer({
+    required int units,
+    String activation = 'relu',
+  }) {
+    assert(units > 0, 'units 必须大于 0');
+
+    final layer = <String, dynamic>{
+      'type': layerTypeFC,
+      'units': units,
+      'activation': activation,
+      'params': units, // 简化参数计数（实际需乘以输入维度）
+    };
+    _networkLayers.add(layer);
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加全连接层: units=$units, activation=$activation');
+  }
+
+  /// 添加 BatchNormalization 层
+  static void addBatchNormLayer({double momentum = 0.99, double epsilon = 1e-5}) {
+    _networkLayers.add(<String, dynamic>{
+      'type': layerTypeBatchNorm,
+      'momentum': momentum,
+      'epsilon': epsilon,
+      'params': 0, // gamma + beta，简化计数
+    });
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加 BatchNorm 层');
+  }
+
+  /// 添加 Dropout 层
+  static void addDropoutLayer({double rate = 0.5}) {
+    assert(rate >= 0 && rate < 1, 'dropout rate 必须在 [0, 1) 范围内');
+    _networkLayers.add(<String, dynamic>{
+      'type': layerTypeDropout,
+      'rate': rate,
+      'params': 0,
+    });
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加 Dropout 层: rate=$rate');
+  }
+
+  /// 添加 ReLU 激活层
+  static void addReLULayer() {
+    _networkLayers.add(<String, dynamic>{
+      'type': layerTypeReLU,
+      'params': 0,
+    });
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加 ReLU 层');
+  }
+
+  /// 添加 Softmax 输出层
+  static void addSoftmaxLayer() {
+    _networkLayers.add(<String, dynamic>{
+      'type': layerTypeSoftmax,
+      'params': 0,
+    });
+    _updateNetworkState();
+    debugPrint('[ImageProcessor] 添加 Softmax 层');
+  }
+
+  /// 更新网络状态
+  static void _updateNetworkState() {
+    int totalParams = 0;
+    for (final layer in _networkLayers) {
+      totalParams += (layer['params'] as int? ?? 0);
+    }
+    _networkState['totalParameters'] = totalParams;
+    _networkState['layerCount'] = _networkLayers.length;
+    _networkState['isCompiled'] = false; // 层变更后需重新编译
+  }
+
+  /// 清空网络层
+  static void clearNetwork() {
+    _networkLayers.clear();
+    _networkState['isCompiled'] = false;
+    _networkState['totalParameters'] = 0;
+    _networkState['layerCount'] = 0;
+    debugPrint('[ImageProcessor] 网络已清空');
+  }
+
+  /// 获取网络结构描述
+  static List<Map<String, dynamic>> getNetworkArchitecture() =>
+      List.unmodifiable(_networkLayers);
+
+  /// 获取网络状态
+  static Map<String, dynamic> getNetworkState() =>
+      Map.unmodifiable(_networkState);
+
+  /// ── 卷积运算 ──
+
+  /// 对灰度图像执行 2D 卷积运算
+  ///
+  /// [input] 输入图像（单通道灰度图）
+  /// [kernel] 卷积核（2D 数组）
+  /// [stride] 步长
+  /// [padding] 填充方式
+  /// 返回卷积后的特征图
+  static List<List<double>> conv2d({
+    required List<List<double>> input,
+    required List<List<double>> kernel,
+    int stride = 1,
+    String padding = 'same',
+  }) {
+    final inputH = input.length;
+    final inputW = input[0].length;
+    final kernelH = kernel.length;
+    final kernelW = kernel[0].length;
+
+    // 计算输出尺寸
+    int outputH, outputW;
+    int padH = 0, padW = 0;
+
+    if (padding == 'same') {
+      padH = (kernelH - 1) ~/ 2;
+      padW = (kernelW - 1) ~/ 2;
+      outputH = (inputH / stride).ceil();
+      outputW = (inputW / stride).ceil();
+    } else {
+      outputH = ((inputH - kernelH) / stride + 1).ceil().clamp(1, inputH);
+      outputW = ((inputW - kernelW) / stride + 1).ceil().clamp(1, inputW);
+    }
+
+    // 初始化输出
+    final output = List.generate(outputH, (_) => List.filled(outputW, 0.0));
+
+    // 执行卷积
+    for (int oh = 0; oh < outputH; oh++) {
+      for (int ow = 0; ow < outputW; ow++) {
+        double sum = 0.0;
+        for (int kh = 0; kh < kernelH; kh++) {
+          for (int kw = 0; kw < kernelW; kw++) {
+            final ih = oh * stride + kh - padH;
+            final iw = ow * stride + kw - padW;
+            if (ih >= 0 && ih < inputH && iw >= 0 && iw < inputW) {
+              sum += input[ih][iw] * kernel[kh][kw];
+            }
+          }
+        }
+        output[oh][ow] = sum;
+      }
+    }
+
+    return output;
+  }
+
+  /// 常用卷积核生成器
+  static List<List<double>> generateKernel(String type, {int size = 3}) {
+    switch (type) {
+      case 'sobel_x':
+        return [
+          [-1, 0, 1],
+          [-2, 0, 2],
+          [-1, 0, 1],
+        ].map((r) => r.map((e) => e.toDouble()).toList()).toList();
+      case 'sobel_y':
+        return [
+          [-1, -2, -1],
+          [0, 0, 0],
+          [1, 2, 1],
+        ].map((r) => r.map((e) => e.toDouble()).toList()).toList();
+      case 'laplacian':
+        return [
+          [0, -1, 0],
+          [-1, 4, -1],
+          [0, -1, 0],
+        ].map((r) => r.map((e) => e.toDouble()).toList()).toList();
+      case 'gaussian':
+        return [
+          [1, 2, 1],
+          [2, 4, 2],
+          [1, 2, 1],
+        ].map((r) => r.map((e) => e / 16.0).toList()).toList();
+      case 'sharpen':
+        return [
+          [0, -1, 0],
+          [-1, 5, -1],
+          [0, -1, 0],
+        ].map((r) => r.map((e) => e.toDouble()).toList()).toList();
+      case 'emboss':
+        return [
+          [-2, -1, 0],
+          [-1, 1, 1],
+          [0, 1, 2],
+        ].map((r) => r.map((e) => e.toDouble()).toList()).toList();
+      default:
+        // 默认使用高斯核
+        return generateKernel('gaussian', size: size);
+    }
+  }
+
+  /// ── 池化运算 ──
+
+  /// 对特征图执行 2D 池化运算
+  ///
+  /// [input] 输入特征图
+  /// [poolSize] 池化窗口大小
+  /// [stride] 步长
+  /// [type] 池化类型（'max' | 'avg'）
+  /// 返回池化后的特征图
+  static List<List<double>> pool2d({
+    required List<List<double>> input,
+    int poolSize = 2,
+    int? stride,
+    String type = 'max',
+  }) {
+    final effectiveStride = stride ?? poolSize;
+    final inputH = input.length;
+    final inputW = input[0].length;
+    final outputH = ((inputH - poolSize) / effectiveStride + 1).ceil().clamp(1, inputH);
+    final outputW = ((inputW - poolSize) / effectiveStride + 1).ceil().clamp(1, inputW);
+
+    final output = List.generate(outputH, (_) => List.filled(outputW, 0.0));
+
+    for (int oh = 0; oh < outputH; oh++) {
+      for (int ow = 0; ow < outputW; ow++) {
+        double value = type == 'max' ? double.negativeInfinity : 0.0;
+        int count = 0;
+
+        for (int ph = 0; ph < poolSize; ph++) {
+          for (int pw = 0; pw < poolSize; pw++) {
+            final ih = oh * effectiveStride + ph;
+            final iw = ow * effectiveStride + pw;
+            if (ih < inputH && iw < inputW) {
+              if (type == 'max') {
+                if (input[ih][iw] > value) value = input[ih][iw];
+              } else {
+                value += input[ih][iw];
+              }
+              count++;
+            }
+          }
+        }
+
+        output[oh][ow] = type == 'max' ? value : (count > 0 ? value / count : 0.0);
+      }
+    }
+
+    return output;
+  }
+
+  /// ── 全连接层运算 ──
+
+  /// 全连接层前向传播
+  ///
+  /// [input] 输入向量（展平的特征）
+  /// [weights] 权重矩阵 [outputSize × inputSize]
+  /// [bias] 偏置向量 [outputSize]
+  /// 返回输出向量
+  static List<double> fullyConnected({
+    required List<double> input,
+    required List<List<double>> weights,
+    required List<double> bias,
+  }) {
+    final outputSize = weights.length;
+    final output = List.filled(outputSize, 0.0);
+
+    for (int i = 0; i < outputSize; i++) {
+      double sum = bias[i];
+      for (int j = 0; j < input.length && j < weights[i].length; j++) {
+        sum += input[j] * weights[i][j];
+      }
+      output[i] = sum;
+    }
+
+    return output;
+  }
+
+  /// 激活函数
+  ///
+  /// [input] 输入向量
+  /// [type] 激活函数类型（'relu' | 'sigmoid' | 'tanh' | 'softmax' | 'leaky_relu'）
+  static List<double> activate(List<double> input, {String type = 'relu'}) {
+    switch (type) {
+      case 'relu':
+        return input.map((v) => v > 0 ? v : 0.0).toList();
+      case 'leaky_relu':
+        return input.map((v) => v > 0 ? v : 0.01 * v).toList();
+      case 'sigmoid':
+        return input.map((v) => 1.0 / (1.0 + exp(-v))).toList();
+      case 'tanh':
+        return input.map((v) => (exp(v) - exp(-v)) / (exp(v) + exp(-v))).toList();
+      case 'softmax':
+        final maxVal = input.reduce((a, b) => a > b ? a : b);
+        final exps = input.map((v) => exp(v - maxVal)).toList();
+        final sum = exps.reduce((a, b) => a + b);
+        return exps.map((v) => v / sum).toList();
+      default:
+        return input;
+    }
+  }
+
+  /// 展平 2D 特征图为 1D 向量
+  static List<double> flatten(List<List<double>> featureMap) {
+    final result = <double>[];
+    for (final row in featureMap) {
+      result.addAll(row);
+    }
+    return result;
+  }
+
+  /// 将图片转为特征矩阵（归一化到 0.0~1.0）
+  static List<List<double>> imageToFeatureMatrix(img.Image image, {bool grayscale = true}) {
+    final matrix = List.generate(
+      image.height,
+      (y) => List.generate(
+        image.width,
+        (x) {
+          final pixel = image.getPixel(x, y);
+          if (grayscale) {
+            return (0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b) / 255.0;
+          }
+          return pixel.r / 255.0;
+        },
+      ),
+    );
+    return matrix;
+  }
+
+  /// 获取深度学习功能报告
+  static Map<String, dynamic> getDeepLearningReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'networkState': getNetworkState(),
+      'architecture': getNetworkArchitecture().map((l) => {
+        'type': l['type'],
+        'params': l['params'],
+      }).toList(),
+      'availableKernels': ['sobel_x', 'sobel_y', 'laplacian', 'gaussian', 'sharpen', 'emboss'],
+      'activationFunctions': ['relu', 'leaky_relu', 'sigmoid', 'tanh', 'softmax'],
+    };
+  }
 }
 
 class Point {
