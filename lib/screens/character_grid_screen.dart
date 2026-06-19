@@ -234,7 +234,14 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
   Future<void> _saveProject() async {
     try {
       await StorageService.saveProject(_project);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('保存项目失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('保存失败，请重试')),
+        );
+      }
+    }
   }
 
   /// 计算统计数据
@@ -257,12 +264,12 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
 
     return Scaffold(
       appBar: _isSelectionMode
-          ? AppBar(
+          ? WFAppBar(
               leading: IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: _toggleSelectionMode,
               ),
-              title: Text('已选 ${_selectedChars.length} 个'),
+              title: '已选 ${_selectedChars.length} 个',
               actions: [
                 IconButton(
                   icon: const Icon(Icons.delete_outline),

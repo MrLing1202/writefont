@@ -160,7 +160,9 @@ class StorageService {
       if (await dir.exists()) {
         await dir.delete(recursive: true);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('清理临时文件失败: $e');
+    }
   }
 
   // ============================================================
@@ -242,7 +244,9 @@ class StorageService {
     for (int i = 0; i < toDelete; i++) {
       try {
         await files[i].delete();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('删除旧备份失败: $e');
+      }
     }
   }
 

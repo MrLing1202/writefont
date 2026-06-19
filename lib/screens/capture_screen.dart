@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../theme/app_theme.dart';
 import 'package:image/image.dart' as img;
 
 /// 图片质量检测结果
@@ -290,8 +291,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     final totalChars = charset?.length ?? 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('拍照 / 选图'),
+      appBar: WFAppBar(
+        title: '拍照 / 选图',
         actions: [
           // 网格引导切换
           if (charset != null && charset.isNotEmpty)
@@ -533,6 +534,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     width: 120,
                     height: 120,
                     fit: BoxFit.cover,
+                    cacheWidth: 200,
+                    cacheHeight: 200,
                   ),
                 ),
                 // 删除按钮
@@ -776,6 +779,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
                 width: 56,
                 height: 56,
                 fit: BoxFit.cover,
+                cacheWidth: 200,
+                cacheHeight: 200,
               ),
             ),
             title: Text('图片 ${index + 1}'),
@@ -824,8 +829,8 @@ class _ImagePreviewScreen extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('图片预览'),
+      appBar: const WFAppBar(
+        title: '图片预览',
       ),
       body: Column(
         children: [
@@ -841,6 +846,8 @@ class _ImagePreviewScreen extends StatelessWidget {
                 child: Image.file(
                   File(imagePath),
                   fit: BoxFit.contain,
+                  cacheWidth: 800,
+                  cacheHeight: 800,
                 ),
               ),
             ),

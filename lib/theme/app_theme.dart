@@ -29,6 +29,10 @@ class WFColors {
   static const textPrimary = Color(0xFF2C3E50);
   static const textSecondary = Color(0xFF7F8C8D);
   static const textLight = Color(0xFFBDC3C7);
+
+  // ── 深色模式扩展 ──
+  static const Color darkPrimary = Color(0xFF7FB3D8);
+  static const Color darkSurface = Color(0xFF16213E);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -274,12 +278,14 @@ class WFSecondaryButton extends StatelessWidget {
 /// 统一的 AppBar — 标题居中，统一高度，白色背景
 class WFAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
+  final Widget? titleWidget;
   final List<Widget>? actions;
   final Widget? leading;
 
   const WFAppBar({
     super.key,
-    required this.title,
+    this.title = '',
+    this.titleWidget,
     this.actions,
     this.leading,
   });
@@ -290,7 +296,7 @@ class WFAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: Text(
+      title: titleWidget ?? Text(
         title,
         style: const TextStyle(
           fontSize: 18,

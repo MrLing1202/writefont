@@ -7,6 +7,7 @@ import '../services/image_processor.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
 import '../services/app_config_service.dart';
+import '../theme/app_theme.dart';
 
 /// 字符识别状态
 enum CellStatus { pending, recognizing, recognized, failed }
@@ -406,8 +407,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.charset != null ? '标准字表匹配' : '调节参数'),
+      appBar: WFAppBar(
+        title: widget.charset != null ? '标准字表匹配' : '调节参数',
         actions: [
           TextButton.icon(
             onPressed: () {

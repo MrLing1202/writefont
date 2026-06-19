@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
 import '../services/app_config_service.dart';
 import 'character_edit_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 一键生成页面
 /// 拍照后自动完成：分割字符 → AI 识别 → 确认字符 → 生成字体 → 跳转预览
@@ -368,7 +369,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                   border: Border.all(color: colorScheme.outlineVariant),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: Image.memory(_cells[index], fit: BoxFit.contain),
+                child: Image.memory(_cells[index], fit: BoxFit.contain, cacheWidth: 200, cacheHeight: 200),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -520,9 +521,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isConfirming ? '确认字符' : '一键生成'),
-        centerTitle: true,
+      appBar: WFAppBar(
+        title: _isConfirming ? '确认字符' : '一键生成',
       ),
       body: _hasError
           ? _buildErrorView(colorScheme)
@@ -555,6 +555,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
               child: Image.memory(
                 widget.imageBytes,
                 fit: BoxFit.cover,
+                cacheWidth: 800,
+                cacheHeight: 800,
               ),
             ),
             const SizedBox(height: 40),
@@ -788,6 +790,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                 _cells[index],
                 fit: BoxFit.contain,
                 gaplessPlayback: true,
+                cacheWidth: 200,
+                cacheHeight: 200,
               ),
             ),
 

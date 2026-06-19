@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../data/standard_charset.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 
 /// 画笔工具模式
 enum DrawTool {
@@ -576,13 +577,13 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
       child: Scaffold(
         backgroundColor: colorScheme.surface,
         // 顶部信息栏
-        appBar: AppBar(
+        appBar: WFAppBar(
           leading: IconButton(
             icon: const Icon(Icons.close),
             onPressed: _onClosePressed,
             tooltip: '取消',
           ),
-          title: Row(
+          titleWidget: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               // 字符预览
@@ -804,6 +805,8 @@ class _CharacterEditDialogState extends State<CharacterEditDialog> {
                                   child: Image.memory(
                                     _sourceImage!,
                                     fit: BoxFit.contain,
+                                    cacheWidth: 800,
+                                    cacheHeight: 800,
                                   ),
                                 ),
                               ),

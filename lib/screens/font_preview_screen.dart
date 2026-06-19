@@ -8,6 +8,7 @@ import '../models/project.dart';
 import '../services/storage_service.dart';
 import '../widgets/bezier_glyph_painter.dart';
 import 'font_test_screen.dart';
+import '../theme/app_theme.dart';
 
 /// 字体实时预览页面
 /// 用户输入文字后，使用已编辑的 GlyphData 轮廓实时渲染预览
@@ -183,9 +184,8 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
     return Scaffold(
       appBar: _isFullscreen
           ? null
-          : AppBar(
-              title: const Text('字体预览'),
-              centerTitle: true,
+          : WFAppBar(
+              title: '字体预览',
               actions: [
                 IconButton(
                   icon: const Icon(Icons.text_fields),
