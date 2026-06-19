@@ -1619,39 +1619,64 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// 长按操作 — 显示快捷菜单
-  void _handleLongPress() {
+  /// 长按操作 — 显示快捷菜单（从设置读取用户自定义项）
+  Future<void> _handleLongPress() async {
     HapticFeedback.heavyImpact();
+
+    // 读取用户自定义菜单项
+    List<String> menuItems = ['capture', 'fonts', 'refresh']; // 默认值
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final menuJson = prefs.getString('custom_menu');
+      if (menuJson != null) {
+        menuItems = (jsonDecode(menuJson) as List).map((e) => e as String).toList();
+      }
+    } catch (_) {}
+
+    // 菜单项定义
+    final allItems = <String, Map<String, dynamic>>{
+      'capture': {'label': '快速拍照', 'icon': Icons.camera_alt},
+      'fonts': {'label': '我的字体', 'icon': Icons.folder},
+      'refresh': {'label': '刷新数据', 'icon': Icons.refresh},
+      'ai': {'label': 'AI 生成', 'icon': Icons.auto_awesome_outlined},
+      'settings': {'label': '打开设置', 'icon': Icons.settings},
+    };
+
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('快速拍照'),
-              onTap: () {
-                Navigator.pop(ctx);
-                HomeActions.quickCapture(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder),
-              title: const Text('我的字体'),
-              onTap: () {
-                Navigator.pop(ctx);
-                HomeActions.openProjectList(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.refresh),
-              title: const Text('刷新数据'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _onRefresh();
-              },
-            ),
+            for (final key in menuItems)
+              if (allItems.containsKey(key))
+                ListTile(
+                  leading: Icon(allItems[key]!['icon'] as IconData),
+                  title: Text(allItems[key]!['label'] as String),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    switch (key) {
+                      case 'capture':
+                        HomeActions.quickCapture(context);
+                        break;
+                      case 'fonts':
+                        HomeActions.openProjectList(context);
+                        break;
+                      case 'refresh':
+                        _onRefresh();
+                        break;
+                      case 'ai':
+                        Navigator.of(context).pushNamed('/ai-font-generator');
+                        break;
+                      case 'settings':
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => SettingsScreen(onThemeChanged: () => setState(() {}))),
+                        );
+                        break;
+                    }
+                  },
+                ),
           ],
         ),
       ),
