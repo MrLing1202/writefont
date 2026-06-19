@@ -1813,12 +1813,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                   // ── 主要功能入口 ──
                   WFAnimations.fadeInSlide(
-                    const WFActionCard(
+                    WFActionCard(
                       icon: Icons.auto_awesome,
                       title: '一键生成',
                       subtitle: '拍照即生成，全自动无需手动操作',
                       color: WFColors.primary,
-                      onTap: HomeActions.quickCapture,
+                      onTap: () => HomeActions.quickCapture(context),
                     ),
                     delay: const Duration(milliseconds: 160),
                   ),
@@ -1842,12 +1842,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 14),
 
                   WFAnimations.fadeInSlide(
-                    const WFActionCard(
+                    WFActionCard(
                       icon: Icons.bolt,
                       title: '快速体验',
                       subtitle: '只需写10个字，快速体验造字',
                       color: WFColors.warning,
-                      onTap: HomeActions.startQuickMode,
+                      onTap: () => HomeActions.startQuickMode(context),
                     ),
                     delay: const Duration(milliseconds: 320),
                   ),
@@ -2067,7 +2067,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: actions.map((action) => _buildQuickActionButton(action, iconSize: iconSize, buttonSize: buttonSize)).toList(),
             ),
-      ),
     );
   }
 

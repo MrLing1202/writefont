@@ -1970,7 +1970,7 @@ class RecognitionService {
 
   /// 获取所有已注册模型列表
   static List<Map<String, dynamic>> getRegisteredModels() {
-    return _registeredModels.values.map(Map.unmodifiable).toList();
+    return _registeredModels.values.map((m) => Map<String, dynamic>.unmodifiable(m)).toList();
   }
 
   /// 获取模型版本历史
@@ -2290,7 +2290,7 @@ class RecognitionService {
 
   /// 获取所有已部署模型
   static List<Map<String, dynamic>> getDeployedModels() {
-    return _deployedModels.values.map(Map.unmodifiable).toList();
+    return _deployedModels.values.map((m) => Map<String, dynamic>.unmodifiable(m)).toList();
   }
 
   /// 记录推理请求（部署模型调用时更新统计）
@@ -2454,10 +2454,10 @@ class RecognitionService {
 
       // 尝试调用云端 API 生成更高质量的文本
       try {
-        final useCloud = await getUseCloud();
+        final useCloud = await instance.getUseCloud();
         if (useCloud) {
-          final cloudUrl = await getCloudUrl();
-          final cloudKey = await getCloudKey();
+          final cloudUrl = await instance.getCloudUrl();
+          final cloudKey = await instance.getCloudKey();
           if (cloudKey != null && cloudKey.isNotEmpty) {
             final response = await http.post(
               Uri.parse(cloudUrl),
@@ -2466,7 +2466,7 @@ class RecognitionService {
                 'Authorization': 'Bearer $cloudKey',
               },
               body: jsonEncode({
-                'model': await getModel(),
+                'model': await instance.getModel(),
                 'messages': [
                   {'role': 'system', 'content': '你是一个文本生成助手，请根据用户的提示生成文本。风格：$style，最大长度：$maxLength 字符。'},
                   {'role': 'user', 'content': prompt},
@@ -2515,8 +2515,8 @@ class RecognitionService {
 
       // 尝试调用云端翻译 API
       try {
-        final cloudUrl = await getCloudUrl();
-        final cloudKey = await getCloudKey();
+        final cloudUrl = await instance.getCloudUrl();
+        final cloudKey = await instance.getCloudKey();
         if (cloudKey != null && cloudKey.isNotEmpty) {
           final response = await http.post(
             Uri.parse(cloudUrl),
@@ -2525,7 +2525,7 @@ class RecognitionService {
               'Authorization': 'Bearer $cloudKey',
             },
             body: jsonEncode({
-              'model': await getModel(),
+              'model': await instance.getModel(),
               'messages': [
                 {'role': 'system', 'content': '你是一个翻译助手，请将用户输入的文本翻译为${_getLanguageName(targetLang)}。只输出翻译结果，不要添加任何解释。'},
                 {'role': 'user', 'content': text},
@@ -2580,8 +2580,8 @@ class RecognitionService {
 
       // 尝试调用云端摘要 API
       try {
-        final cloudUrl = await getCloudUrl();
-        final cloudKey = await getCloudKey();
+        final cloudUrl = await instance.getCloudUrl();
+        final cloudKey = await instance.getCloudKey();
         if (cloudKey != null && cloudKey.isNotEmpty) {
           final response = await http.post(
             Uri.parse(cloudUrl),
@@ -2590,7 +2590,7 @@ class RecognitionService {
               'Authorization': 'Bearer $cloudKey',
             },
             body: jsonEncode({
-              'model': await getModel(),
+              'model': await instance.getModel(),
               'messages': [
                 {'role': 'system', 'content': '你是一个文本摘要助手，请将用户输入的文本压缩为不超过$maxSentences句话的摘要。只输出摘要内容。'},
                 {'role': 'user', 'content': text},
