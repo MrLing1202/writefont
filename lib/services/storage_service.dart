@@ -323,6 +323,8 @@ class StorageService {
         ContourPoint(100, 100, onCurve: true),
       ];
       glyphs[ch] = GlyphData(
+        character: ch,
+        unicode: ch.codeUnitAt(0),
         contours: [Contour(contourPoints)],
         advanceWidth: 1000,
       );
@@ -663,7 +665,7 @@ class StorageService {
       // 第一次：全零覆写
       await file.writeAsBytes(Uint8List(length));
       // 第二次：全 0xFF 覆写
-      await file.writeAsBytes(Uint8List(length, 0xFF));
+      await file.writeAsBytes(Uint8List(length)..fillRange(0, length, 0xFF));
       // 第三次：随机数据覆写
       final random = Uint8List.fromList(
         List.generate(length, (i) => (i * 0x5A + 0xA5) & 0xFF),
