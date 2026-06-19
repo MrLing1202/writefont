@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/app_config_service.dart';
 import '../services/recognition_service.dart';
@@ -111,6 +116,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _strokeWidth = AppConfigService.defaultStrokeWidth;
       });
       WFSnackBar.show(context, '参数已重置为默认值');
+    }
+  }
+
+  /// 导出设置
+  Future<void> _exportSettings() async {
+    try {
+      final settings = {
+        'threshold': _threshold,
+        'contrast': _contrast,
+        'smoothness': _smoothness,
+        'strokeWidth': _strokeWidth,
+        'themeMode': _themeMode,
+        'useCloud': _useCloud,
+        'exportedAt': DateTime.now().toIso8601String(),
+        'version': '1.1.7',
+      };
+      final jsonString = const JsonEncoder.withIndent('  ').convert(settings);
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/writefont_settings.json');
+      await file.writeAsString(jsonString);
+
+      if (mounted) {
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          subject: 'WriteFont 设置备份',
+          text: 'WriteFont 设置文件',
+        );
+        WFSnackBar.show(context, '设置已导出');
+      }
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '导出失败: $e');
+      }
+    }
+  }
+
+  /// 导入设置
+  Future<void> _importSettings() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: '选择 WriteFont 设置文件',
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final filePath = result.files.single.path;
+      if (filePath == null) return;
+
+      final file = File(filePath);
+      final jsonString = await file.readAsString();
+      final settings = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      // 校验
+      if (!settings.containsKey('version')) {
+        if (mounted) WFSnackBar.error(context, '无效的设置文件');
+        return;
+      }
+
+      // 应用设置
+      if (settings.containsKey('threshold')) {
+        await _config.setThreshold((settings['threshold'] as num).toDouble());
+      }
+      if (settings.containsKey('contrast')) {
+        await _config.setContrast((settings['contrast'] as num).toDouble());
+      }
+      if (settings.containsKey('smoothness')) {
+        await _config.setSmoothness((settings['smoothness'] as num).toDouble());
+      }
+      if (settings.containsKey('strokeWidth')) {
+        await _config.setStrokeWidth((settings['strokeWidth'] as num).toDouble());
+      }
+      if (settings.containsKey('themeMode')) {
+        await _config.setThemeMode(settings['themeMode'] as String);
+        widget.onThemeChanged?.call();
+      }
+      if (settings.containsKey('useCloud')) {
+        await _recognition.setUseCloud(settings['useCloud'] as bool);
+      }
+
+      // 重新加载 UI
+      await _loadSettings();
+
+      if (mounted) {
+        WFSnackBar.show(context, '设置已导入');
+      }
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '导入失败: $e');
+      }
     }
   }
 
@@ -362,6 +458,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onThresholdChanged,
             onChangeEnd: _onThresholdChangeEnd,
           ),
+          _buildParamHint('控制二值化分割点，值越大笔画越粗'),
           const SizedBox(height: 8),
           _buildSliderRow(
             label: '对比度',
@@ -372,6 +469,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onContrastChanged,
             onChangeEnd: _onContrastChangeEnd,
           ),
+          _buildParamHint('增强手写图片对比度，照片较淡时增大此值'),
           const SizedBox(height: 8),
           _buildSliderRow(
             label: '平滑度',
@@ -382,6 +480,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onSmoothnessChanged,
             onChangeEnd: _onSmoothnessChangeEnd,
           ),
+          _buildParamHint('控制轮廓平滑程度，值越大笔画越圆润'),
           const SizedBox(height: 8),
           _buildSliderRow(
             label: '笔画宽度',
@@ -392,6 +491,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onStrokeWidthChanged,
             onChangeEnd: _onStrokeWidthChangeEnd,
           ),
+          _buildParamHint('输出字体的基础笔画粗细'),
           const SizedBox(height: 12),
           // 重置按钮
           Align(
@@ -462,6 +562,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// 参数说明行
+  Widget _buildParamHint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 72, top: 2, bottom: 6),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          color: WFColors.textLight,
+          height: 1.3,
+        ),
+      ),
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════
   // 存储管理
   // ═══════════════════════════════════════════════════════════
@@ -469,18 +584,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildStorageCard() {
     return WFCard(
       padding: EdgeInsets.zero,
-      child: ListTile(
-        leading: const Icon(Icons.delete_sweep, color: WFColors.error),
-        title: const Text('清除临时文件'),
-        subtitle: const Text('清除识别和处理过程中产生的临时图片'),
-        trailing: _isClearing
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.chevron_right),
-        onTap: _isClearing ? null : _clearCache,
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.upload_file, color: WFColors.primary),
+            title: const Text('导出设置'),
+            subtitle: const Text('将当前设置导出为 JSON 文件'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _exportSettings,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.download, color: WFColors.accent),
+            title: const Text('导入设置'),
+            subtitle: const Text('从 JSON 文件恢复设置'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _importSettings,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.delete_sweep, color: WFColors.error),
+            title: const Text('清除临时文件'),
+            subtitle: const Text('清除识别和处理过程中产生的临时图片'),
+            trailing: _isClearing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isClearing ? null : _clearCache,
+          ),
+        ],
       ),
     );
   }

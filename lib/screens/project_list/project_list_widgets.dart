@@ -151,6 +151,9 @@ mixin ProjectListWidgets {
     required Future<void> Function(FontProject) onDirectDelete,
     required String searchQuery,
     required BuildContext context,
+    bool isMultiSelectMode = false,
+    Set<String>? selectedProjectIds,
+    void Function(String)? onToggleSelection,
   }) {
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -159,6 +162,18 @@ mixin ProjectListWidgets {
         itemCount: projects.length,
         itemBuilder: (ctx, index) {
           final project = projects[index];
+          // 多选模式下显示选中卡片
+          if (isMultiSelectMode) {
+            final isSelected = selectedProjectIds?.contains(project.id) ?? false;
+            return _buildSelectableCard(
+              project: project,
+              colorScheme: colorScheme,
+              isSelected: isSelected,
+              onToggle: () => onToggleSelection?.call(project.id),
+              onOpen: onOpen,
+              context: context,
+            );
+          }
           return buildDismissibleCard(
             project: project,
             colorScheme: colorScheme,
@@ -232,7 +247,46 @@ mixin ProjectListWidgets {
         return await WFDialog.show<bool>(
           context,
           title: '确认删除',
-          content: Text('确定要删除「${project.name}」吗？\n该操作不可撤销。'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('确定要删除「${project.name}」吗？'),
+              const SizedBox(height: 8),
+              // 项目信息预览
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${project.glyphs.length} 个字符 · 创建于 ${formatDate(project.createdAt)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '该操作不可撤销',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.error,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -659,6 +713,91 @@ mixin ProjectListWidgets {
     }
     final progress = standardTotal > 0 ? standardEdited / standardTotal : 0.0;
     return (totalChars, editedChars, standardTotal, standardEdited, progress);
+  }
+
+  /// 多选模式下的可选卡片
+  Widget _buildSelectableCard({
+    required FontProject project,
+    required ColorScheme colorScheme,
+    required bool isSelected,
+    required VoidCallback onToggle,
+    required void Function(FontProject) onOpen,
+    required BuildContext context,
+  }) {
+    final stats = getProjectStats(project);
+    final totalChars = stats.$1;
+    final editedChars = stats.$2;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
+      child: InkWell(
+        onTap: onToggle,
+        onLongPress: () => onOpen(project),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // 选中状态
+              Icon(
+                isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              // 项目图标
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    project.glyphs.isNotEmpty ? project.glyphs.keys.first : '字',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // 项目信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      project.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$totalChars 个字符 · 已编辑 $editedChars',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// 显示项目操作底部菜单
