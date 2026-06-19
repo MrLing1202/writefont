@@ -26,12 +26,12 @@ class EditCharacterDialog extends StatefulWidget {
 }
 
 class _EditCharacterDialogState extends State<EditCharacterDialog> {
-  late TextEditingController _controller;
+  TextEditingController _controller = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.currentChar ?? '');
+    _controller.text = widget.currentChar ?? '';
   }
 
   @override

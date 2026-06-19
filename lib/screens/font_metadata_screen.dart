@@ -20,10 +20,10 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
   final _formKey = GlobalKey<FormState>();
 
   // 元数据字段控制器
-  late final TextEditingController _familyNameController;
-  late final TextEditingController _versionController;
-  late final TextEditingController _copyrightController;
-  late final TextEditingController _descriptionController;
+  final TextEditingController _familyNameController = TextEditingController();
+  final TextEditingController _versionController = TextEditingController();
+  final TextEditingController _copyrightController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
 
   // 字体子族名下拉选项
   String _subfamilyName = 'Regular';
@@ -32,10 +32,8 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
   @override
   void initState() {
     super.initState();
-    _familyNameController = TextEditingController(text: widget.project.name);
-    _versionController = TextEditingController(text: 'Version 1.0');
-    _copyrightController = TextEditingController();
-    _descriptionController = TextEditingController();
+    _familyNameController.text = widget.project.name;
+    _versionController.text = 'Version 1.0';
   }
 
   @override

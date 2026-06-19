@@ -26,7 +26,7 @@ class CharacterGridScreen extends StatefulWidget {
 }
 
 class _CharacterGridScreenState extends State<CharacterGridScreen> {
-  late FontProject _project;
+  FontProject _project = FontProject(id: '', name: '');
   FilterMode _filterMode = FilterMode.all;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
