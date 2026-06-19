@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/app_config_service.dart';
 import '../services/recognition_service.dart';
 import '../services/storage_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../theme/app_theme.dart';
+import 'cloud_sync_screen.dart';
 import 'ocr_settings_screen.dart';
 
 /// 设置页面
@@ -41,6 +43,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // 缓存状态
   bool _isClearing = false;
 
+  // 云同步状态
+  String _syncStatus = 'none'; // none | synced | pending
+
   // 外观设置
   String _themeMode = AppConfigService.defaultThemeMode;
 
@@ -64,6 +69,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeMode = await _config.getThemeMode();
     final packageInfo = await PackageInfo.fromPlatform();
 
+    // 云同步状态
+    String syncStatus = 'none';
+    try {
+      final cloudSync = CloudSyncService.instance;
+      await cloudSync.init();
+      if (cloudSync.isSignedIn()) {
+        final statusMap = await cloudSync.getSyncStatus();
+        final hasPending = statusMap.values.any((s) => s != 'synced');
+        syncStatus = hasPending ? 'pending' : 'synced';
+      }
+    } catch (_) {
+      // 同步服务不可用时静默处理
+    }
+
     if (mounted) {
       setState(() {
         _useCloud = useCloud;
@@ -74,6 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _themeMode = themeMode;
         _version = packageInfo.version;
         _buildNumber = packageInfo.buildNumber;
+        _syncStatus = syncStatus;
         _isLoading = false;
       });
     }
@@ -295,6 +315,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ═══ 存储 ═══
                 _buildSectionHeader('存储', Icons.storage),
                 _buildStorageCard(),
+                const SizedBox(height: 16),
+
+                // ═══ 云同步 ═══
+                _buildSectionHeader('云同步', Icons.cloud_sync),
+                _buildCloudSyncCard(),
                 const SizedBox(height: 16),
 
                 // ═══ 关于 ═══
@@ -614,6 +639,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   )
                 : const Icon(Icons.chevron_right),
             onTap: _isClearing ? null : _clearCache,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 云同步
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildCloudSyncCard() {
+    return WFCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.cloud_sync, color: WFColors.primary),
+            title: const Text('云同步'),
+            subtitle: const Text('多设备同步和备份'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 同步状态指示灯
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _syncStatus == 'synced'
+                        ? WFColors.success
+                        : _syncStatus == 'pending'
+                            ? WFColors.warning
+                            : WFColors.textLight,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: () async {
+              await Navigator.push(
+                context,
+                WFAnimations.slideRoute(const CloudSyncScreen()),
+              );
+              // 返回时刷新同步状态
+              _loadSettings();
+            },
           ),
         ],
       ),
