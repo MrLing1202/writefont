@@ -1769,6 +1769,239 @@ class ImageProcessor {
     };
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 混合计算优化：计算任务分配、资源调度、结果合并、性能监控
+  // ═══════════════════════════════════════════════════════════
+
+  /// 计算节点类型
+  static const String nodeLocal = 'local';       // 本地设备计算
+  static const String nodeEdge = 'edge';          // 边缘节点计算
+  static const String nodeCloud = 'cloud';        // 云端计算
+
+  /// 任务分配策略
+  static const String strategyLocalFirst = 'local_first';     // 优先本地
+  static const String strategyRoundRobin = 'round_robin';     // 轮询分配
+  static const String strategyLoadBased = 'load_based';       // 基于负载
+  static const String strategyLatencyBased = 'latency_based'; // 基于延迟
+
+  /// 当前分配策略
+  static String _taskAllocationStrategy = strategyLocalFirst;
+
+  /// 计算任务记录
+  static final List<Map<String, dynamic>> _computeTaskLog = [];
+  static const int _maxComputeTaskLogSize = 200;
+
+  /// 节点负载统计
+  static final Map<String, List<double>> _nodeLatencies = {
+    nodeLocal: [],
+    nodeEdge: [],
+    nodeCloud: [],
+  };
+  static const int _maxLatencySamples = 50;
+
+  /// 设置任务分配策略
+  static void setTaskAllocationStrategy(String strategy) {
+    _taskAllocationStrategy = strategy;
+    debugPrint('[ImageProcessor] 任务分配策略: $strategy');
+  }
+
+  /// 获取当前分配策略
+  static String get taskAllocationStrategy => _taskAllocationStrategy;
+
+  /// 选择最佳计算节点
+  ///
+  /// 根据任务类型、数据大小和当前策略选择最优计算节点
+  static String selectComputeNode({
+    required String taskType,
+    required int dataSizeBytes,
+    bool requiresLowLatency = false,
+  }) {
+    // 小任务直接本地处理
+    if (dataSizeBytes < 10240) return nodeLocal; // <10KB
+
+    switch (_taskAllocationStrategy) {
+      case strategyLocalFirst:
+        return nodeLocal;
+      case strategyRoundRobin:
+        return _roundRobinSelect();
+      case strategyLoadBased:
+        return _loadBasedSelect();
+      case strategyLatencyBased:
+        return _latencyBasedSelect();
+      default:
+        return nodeLocal;
+    }
+  }
+
+  /// 轮询选择节点
+  static String _roundRobinSelect() {
+    final nodes = [nodeLocal, nodeEdge, nodeCloud];
+    final index = _totalTasksProcessed % nodes.length;
+    return nodes[index];
+  }
+
+  /// 基于负载选择节点
+  static String _loadBasedSelect() {
+    // 选择活动任务数最少的节点
+    // 本地节点负载由 _activeTaskCount 反映
+    if (_activeTaskCount < 3) return nodeLocal;
+    return nodeEdge; // 默认回退到边缘
+  }
+
+  /// 基于延迟选择节点
+  static String _latencyBasedSelect() {
+    String bestNode = nodeLocal;
+    double bestLatency = double.infinity;
+
+    for (final entry in _nodeLatencies.entries) {
+      if (entry.value.isEmpty) continue;
+      final avgLatency = entry.value.reduce((a, b) => a + b) / entry.value.length;
+      if (avgLatency < bestLatency) {
+        bestLatency = avgLatency;
+        bestNode = entry.key;
+      }
+    }
+
+    return bestNode;
+  }
+
+  /// 记录计算任务
+  static void _recordComputeTask(String nodeType, String taskType,
+      Duration elapsed, {bool success = true, int? dataSize}) {
+    _computeTaskLog.add({
+      'nodeType': nodeType,
+      'taskType': taskType,
+      'elapsedMs': elapsed.inMicroseconds / 1000.0,
+      'success': success,
+      'dataSize': dataSize,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_computeTaskLog.length > _maxComputeTaskLogSize) {
+      _computeTaskLog.removeAt(0);
+    }
+
+    // 更新节点延迟
+    _nodeLatencies.putIfAbsent(nodeType, () => []);
+    final latencies = _nodeLatencies[nodeType]!;
+    latencies.add(elapsed.inMicroseconds / 1000.0);
+    if (latencies.length > _maxLatencySamples) {
+      latencies.removeAt(0);
+    }
+  }
+
+  /// 获取计算任务分配统计
+  static Map<String, dynamic> getTaskAllocationStats() {
+    final nodeTaskCounts = <String, int>{};
+    final nodeAvgLatencies = <String, double>{};
+    final nodeSuccessRates = <String, double>{};
+
+    for (final nodeType in [nodeLocal, nodeEdge, nodeCloud]) {
+      final tasks = _computeTaskLog.where((t) => t['nodeType'] == nodeType).toList();
+      nodeTaskCounts[nodeType] = tasks.length;
+
+      if (tasks.isNotEmpty) {
+        final latencies = tasks.map((t) => t['elapsedMs'] as double).toList();
+        nodeAvgLatencies[nodeType] = latencies.reduce((a, b) => a + b) / latencies.length;
+        final successCount = tasks.where((t) => t['success'] == true).length;
+        nodeSuccessRates[nodeType] = successCount / tasks.length;
+      } else {
+        nodeAvgLatencies[nodeType] = 0.0;
+        nodeSuccessRates[nodeType] = 1.0;
+      }
+    }
+
+    return {
+      'strategy': _taskAllocationStrategy,
+      'totalTasks': _computeTaskLog.length,
+      'nodeTaskCounts': nodeTaskCounts,
+      'nodeAvgLatencies': nodeAvgLatencies,
+      'nodeSuccessRates': nodeSuccessRates,
+    };
+  }
+
+  /// 计算结果合并
+  ///
+  /// 将来自不同计算节点的结果合并为统一输出
+  /// 适用于分布式计算场景（如多节点并行处理不同字符）
+  static List<T> mergeComputeResults<T>(
+    List<List<T>> results, {
+    bool deduplicate = false,
+  }) {
+    final merged = <T>[];
+    final seen = <String>{};
+
+    for (final result in results) {
+      for (final item in result) {
+        if (deduplicate) {
+          final key = item.toString();
+          if (seen.contains(key)) continue;
+          seen.add(key);
+        }
+        merged.add(item);
+      }
+    }
+
+    debugPrint('[ImageProcessor] 合并计算结果: ${results.length} 组 → ${merged.length} 项');
+    return merged;
+  }
+
+  /// 计算性能监控
+  ///
+  /// 获取各计算节点的详细性能统计
+  static Map<String, dynamic> getComputePerformanceMonitor() {
+    final nodePerformance = <String, Map<String, dynamic>>{};
+
+    for (final entry in _nodeLatencies.entries) {
+      final latencies = entry.value;
+      if (latencies.isEmpty) {
+        nodePerformance[entry.key] = {
+          'sampleCount': 0,
+          'avgLatencyMs': 0.0,
+          'p50LatencyMs': 0.0,
+          'p95LatencyMs': 0.0,
+          'maxLatencyMs': 0.0,
+        };
+        continue;
+      }
+
+      final sorted = List<double>.from(latencies)..sort();
+      final avg = sorted.reduce((a, b) => a + b) / sorted.length;
+      final p50Index = (sorted.length * 0.5).round().clamp(0, sorted.length - 1);
+      final p95Index = (sorted.length * 0.95).round().clamp(0, sorted.length - 1);
+
+      nodePerformance[entry.key] = {
+        'sampleCount': sorted.length,
+        'avgLatencyMs': avg,
+        'p50LatencyMs': sorted[p50Index],
+        'p95LatencyMs': sorted[p95Index],
+        'maxLatencyMs': sorted.last,
+        'minLatencyMs': sorted.first,
+      };
+    }
+
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'strategy': _taskAllocationStrategy,
+      'nodePerformance': nodePerformance,
+      'totalTasksProcessed': _totalTasksProcessed,
+      'activeTaskCount': _activeTaskCount,
+      'peakTaskCount': _peakTaskCount,
+      'avgProcessingTimeMs': _totalTasksProcessed > 0
+          ? (_totalProcessingTimeUs / _totalTasksProcessed) / 1000.0
+          : 0.0,
+    };
+  }
+
+  /// 获取混合计算综合报告
+  static Map<String, dynamic> getHybridComputeReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'taskAllocation': getTaskAllocationStats(),
+      'performance': getComputePerformanceMonitor(),
+      'existing': getFullMonitorReport(),
+    };
+  }
+
 }
 
 class Point {

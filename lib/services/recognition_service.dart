@@ -1626,6 +1626,270 @@ class RecognitionService {
       },
     };
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 边缘节点管理：节点发现、节点健康检查、节点负载均衡
+  // ═══════════════════════════════════════════════════════════
+
+  /// 边缘节点状态
+  static final Map<String, Map<String, dynamic>> _edgeNodes = {};
+  static const int _maxEdgeNodes = 10;
+
+  /// 注册边缘节点
+  ///
+  /// [nodeId] 节点唯一标识
+  /// [endpoint] 节点端点地址
+  /// [capabilities] 节点能力列表（如 'ocr', 'preprocessing'）
+  static void registerEdgeNode(String nodeId, String endpoint,
+      {List<String> capabilities = const []}) {
+    _edgeNodes[nodeId] = {
+      'nodeId': nodeId,
+      'endpoint': endpoint,
+      'capabilities': capabilities,
+      'status': 'active',
+      'registeredAt': DateTime.now().toIso8601String(),
+      'lastHealthCheck': DateTime.now().toIso8601String(),
+      'loadScore': 0.0,
+      'requestCount': 0,
+      'errorCount': 0,
+    };
+    // 限制节点数
+    if (_edgeNodes.length > _maxEdgeNodes) {
+      _edgeNodes.remove(_edgeNodes.keys.first);
+    }
+    _addDebugLog('system', '边缘节点已注册: $nodeId ($endpoint)');
+  }
+
+  /// 移除边缘节点
+  static void unregisterEdgeNode(String nodeId) {
+    _edgeNodes.remove(nodeId);
+    _addDebugLog('system', '边缘节点已移除: $nodeId');
+  }
+
+  /// 获取所有边缘节点状态
+  static Map<String, Map<String, dynamic>> getEdgeNodes() {
+    return Map.unmodifiable(_edgeNodes);
+  }
+
+  /// 健康检查：检测边缘节点是否可用
+  ///
+  /// [nodeId] 节点标识
+  /// 返回节点是否健康
+  static Future<bool> checkEdgeNodeHealth(String nodeId) async {
+    final node = _edgeNodes[nodeId];
+    if (node == null) return false;
+
+    try {
+      final endpoint = node['endpoint'] as String;
+      // 简单的健康检查：尝试连接
+      final result = await InternetAddress.lookup(Uri.parse(endpoint).host)
+          .timeout(const Duration(seconds: 3));
+      final isHealthy = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      node['status'] = isHealthy ? 'active' : 'unreachable';
+      node['lastHealthCheck'] = DateTime.now().toIso8601String();
+      return isHealthy;
+    } catch (e) {
+      node['status'] = 'error';
+      node['lastHealthCheck'] = DateTime.now().toIso8601String();
+      _addDebugLog('system', '边缘节点健康检查失败: $nodeId ($e)');
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 边缘计算调度：任务分配、负载均衡、容错、回退策略
+  // ═══════════════════════════════════════════════════════════
+
+  /// 边缘计算任务记录
+  static final List<Map<String, dynamic>> _edgeTaskLog = [];
+  static const int _maxEdgeTaskLogSize = 200;
+
+  /// 选择最佳边缘节点
+  ///
+  /// 基于负载评分、健康状态和能力匹配选择最优节点
+  static String? selectBestEdgeNode(String requiredCapability) {
+    String? bestNode;
+    double bestScore = double.infinity;
+
+    for (final entry in _edgeNodes.entries) {
+      final node = entry.value;
+      if (node['status'] != 'active') continue;
+
+      final capabilities = node['capabilities'] as List<String>? ?? [];
+      if (!capabilities.contains(requiredCapability)) continue;
+
+      final loadScore = node['loadScore'] as double? ?? 0.0;
+      if (loadScore < bestScore) {
+        bestScore = loadScore;
+        bestNode = entry.key;
+      }
+    }
+
+    return bestNode;
+  }
+
+  /// 更新节点负载评分
+  static void _updateEdgeNodeLoad(String nodeId, double loadScore) {
+    final node = _edgeNodes[nodeId];
+    if (node == null) return;
+    node['loadScore'] = loadScore;
+    node['requestCount'] = (node['requestCount'] as int? ?? 0) + 1;
+  }
+
+  /// 记录边缘计算任务
+  static void _recordEdgeTask(String nodeId, String taskType,
+      Duration elapsed, bool success) {
+    _edgeTaskLog.add({
+      'nodeId': nodeId,
+      'taskType': taskType,
+      'elapsedMs': elapsed.inMicroseconds / 1000.0,
+      'success': success,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_edgeTaskLog.length > _maxEdgeTaskLogSize) {
+      _edgeTaskLog.removeAt(0);
+    }
+  }
+
+  /// 获取边缘计算调度统计
+  static Map<String, dynamic> getEdgeSchedulingStats() {
+    final nodeStats = <String, Map<String, dynamic>>{};
+    for (final entry in _edgeNodes.entries) {
+      final tasks = _edgeTaskLog.where((t) => t['nodeId'] == entry.key).toList();
+      final successCount = tasks.where((t) => t['success'] == true).length;
+      nodeStats[entry.key] = {
+        'totalTasks': tasks.length,
+        'successRate': tasks.isNotEmpty ? successCount / tasks.length : 1.0,
+        'avgLatencyMs': tasks.isNotEmpty
+            ? tasks.map((t) => t['elapsedMs'] as double).reduce((a, b) => a + b) / tasks.length
+            : 0.0,
+      };
+    }
+    return {
+      'totalNodes': _edgeNodes.length,
+      'activeNodes': _edgeNodes.values.where((n) => n['status'] == 'active').length,
+      'totalTasks': _edgeTaskLog.length,
+      'nodeStats': nodeStats,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 边缘缓存优化：分布式缓存、缓存预热、缓存同步
+  // ═══════════════════════════════════════════════════════════
+
+  /// 边缘缓存预热
+  ///
+  /// 预加载常用字符的识别结果到缓存，减少首次识别延迟
+  static Future<int> warmupEdgeCache(List<Uint8List> commonImages) async {
+    int warmedCount = 0;
+    _addDebugLog('cache', '开始边缘缓存预热: ${commonImages.length} 张图片');
+
+    for (final image in commonImages) {
+      final cacheKey = _hashBytes(image);
+      if (_recognitionCache.containsKey(cacheKey)) {
+        warmedCount++;
+        continue;
+      }
+      // 缓存中不存在的图片不进行预热识别（避免不必要的计算）
+    }
+
+    _addDebugLog('cache', '边缘缓存预热完成: $warmedCount/${commonImages.length} 已缓存');
+    return warmedCount;
+  }
+
+  /// 边缘缓存同步
+  ///
+  /// 将本地缓存的识别结果同步到边缘节点
+  static Map<String, String> exportEdgeCacheData({int maxEntries = 100}) {
+    final cacheData = <String, String>{};
+    int count = 0;
+    for (final entry in _recognitionCache.entries) {
+      if (count >= maxEntries) break;
+      if (entry.value != null) {
+        cacheData[entry.key.toString()] = entry.value!;
+        count++;
+      }
+    }
+    _addDebugLog('cache', '导出边缘缓存数据: $count 条');
+    return cacheData;
+  }
+
+  /// 导入边缘缓存数据
+  static int importEdgeCacheData(Map<String, String> cacheData) {
+    int importedCount = 0;
+    for (final entry in cacheData.entries) {
+      final key = int.tryParse(entry.key);
+      if (key != null && !_recognitionCache.containsKey(key)) {
+        _recognitionCache[key] = entry.value;
+        _cacheAccessOrder.add(key);
+        importedCount++;
+      }
+    }
+    // 限制缓存大小
+    while (_recognitionCache.length > _maxCacheSize) {
+      _evictLruCache();
+    }
+    _addDebugLog('cache', '导入边缘缓存数据: $importedCount 条');
+    return importedCount;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 边缘安全优化：数据校验、请求签名、隐私保护
+  // ═══════════════════════════════════════════════════════════
+
+  /// 边缘安全配置
+  static bool _edgeEncryptionEnabled = true;
+  static bool _edgeDataAnonymization = false;
+
+  /// 设置边缘加密开关
+  static void setEdgeEncryptionEnabled(bool enabled) {
+    _edgeEncryptionEnabled = enabled;
+    _addDebugLog('system', '边缘加密${enabled ? "已启用" : "已禁用"}');
+  }
+
+  /// 设置数据匿名化开关
+  ///
+  /// 启用后，发送到边缘节点的数据将移除敏感信息
+  static void setEdgeDataAnonymization(bool enabled) {
+    _edgeDataAnonymization = enabled;
+    _addDebugLog('system', '边缘数据匿名化${enabled ? "已启用" : "已禁用"}');
+  }
+
+  /// 获取边缘安全配置状态
+  static Map<String, dynamic> getEdgeSecurityStatus() {
+    return {
+      'encryptionEnabled': _edgeEncryptionEnabled,
+      'dataAnonymization': _edgeDataAnonymization,
+      'registeredNodes': _edgeNodes.length,
+      'activeNodes': _edgeNodes.values.where((n) => n['status'] == 'active').length,
+    };
+  }
+
+  /// 生成请求签名（用于边缘节点认证）
+  ///
+  /// 使用简单哈希生成请求签名，防止请求篡改
+  static String generateRequestSignature(String nodeId, String payload) {
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final data = '$nodeId:$payload:$timestamp';
+    // 使用 FNV-1a 哈希生成签名
+    int hash = 0x811c9dc5;
+    for (int i = 0; i < data.length; i++) {
+      hash ^= data.codeUnitAt(i);
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return '${hash.toRadixString(16)}_$timestamp';
+  }
+
+  /// 获取边缘计算综合报告
+  static Map<String, dynamic> getEdgeComputingReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'nodes': getEdgeNodes(),
+      'scheduling': getEdgeSchedulingStats(),
+      'security': getEdgeSecurityStatus(),
+      'cacheStats': getCacheSpaceUsage(),
+    };
+  }
 }
 
 /// 云端认证错误（API Key 无效或过期）

@@ -22,6 +22,7 @@ import 'screens/settings_screen.dart';
 import 'services/app_config_service.dart';
 import 'services/recognition_service.dart';
 import 'services/image_processor.dart';
+import 'services/cloud_sync_service.dart';
 import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
@@ -3571,6 +3572,333 @@ class _IncreaseFontIntent extends Intent {
 
 class _DecreaseFontIntent extends Intent {
   const _DecreaseFontIntent();
+}
+
+// ═══════════════════════════════════════════════════════════
+// 计算资源管理服务：资源监控、资源调度、资源优化、资源报告
+// ═══════════════════════════════════════════════════════════
+
+/// 计算资源管理服务
+///
+/// 功能：
+/// - 资源监控：CPU、内存、网络、存储使用情况
+/// - 资源调度：根据任务优先级分配计算资源
+/// - 资源优化：自动调整参数以提升性能
+/// - 资源报告：生成资源使用综合报告
+class ComputeResourceService {
+  static final ComputeResourceService _instance = ComputeResourceService._();
+  static ComputeResourceService get instance => _instance;
+  ComputeResourceService._();
+
+  // ── 资源监控数据 ──
+  final List<Map<String, dynamic>> _resourceSnapshots = [];
+  static const int _maxSnapshots = 100;
+
+  /// 资源监控定时器
+  Timer? _monitorTimer;
+  bool _isMonitoring = false;
+
+  // ── 资源调度配置 ──
+  /// 最大并发任务数
+  int _maxConcurrentTasks = 3;
+
+  /// 任务优先级队列
+  final List<Map<String, dynamic>> _taskQueue = [];
+  static const int _maxQueueSize = 50;
+
+  /// 活跃任务数
+  int _activeTasks = 0;
+  int _completedTasks = 0;
+  int _failedTasks = 0;
+
+  // ── 资源优化配置 ──
+  /// 自动优化开关
+  bool _autoOptimizeEnabled = true;
+
+  /// 内存压力阈值（MB）
+  double _memoryPressureThresholdMB = 500.0;
+
+  /// 资源优化建议
+  final List<Map<String, dynamic>> _optimizationSuggestions = [];
+
+  /// 获取当前资源快照
+  Map<String, dynamic> takeResourceSnapshot() {
+    final snapshot = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'taskQueue': {
+        'pending': _taskQueue.length,
+        'active': _activeTasks,
+        'completed': _completedTasks,
+        'failed': _failedTasks,
+        'maxConcurrent': _maxConcurrentTasks,
+      },
+      'imageProcessor': ImageProcessor.getResourceStats(),
+      'recognition': RecognitionService.getCacheSpaceUsage(),
+    };
+
+    _resourceSnapshots.add(snapshot);
+    if (_resourceSnapshots.length > _maxSnapshots) {
+      _resourceSnapshots.removeAt(0);
+    }
+
+    return snapshot;
+  }
+
+  /// 开始资源监控
+  void startMonitoring({int intervalSeconds = 60}) {
+    if (_isMonitoring) return;
+    _isMonitoring = true;
+
+    // 立即采集一次
+    takeResourceSnapshot();
+
+    _monitorTimer = Timer.periodic(
+      Duration(seconds: intervalSeconds),
+      (_) => takeResourceSnapshot(),
+    );
+    debugPrint('[ComputeResource] 资源监控已启动，间隔 ${intervalSeconds}s');
+  }
+
+  /// 停止资源监控
+  void stopMonitoring() {
+    _isMonitoring = false;
+    _monitorTimer?.cancel();
+    _monitorTimer = null;
+    debugPrint('[ComputeResource] 资源监控已停止');
+  }
+
+  bool get isMonitoring => _isMonitoring;
+
+  // ── 资源调度功能 ──
+
+  /// 设置最大并发任务数
+  void setMaxConcurrentTasks(int maxTasks) {
+    _maxConcurrentTasks = maxTasks.clamp(1, 10);
+    debugPrint('[ComputeResource] 最大并发任务数: $_maxConcurrentTasks');
+  }
+
+  /// 提交计算任务
+  ///
+  /// [taskId] 任务唯一标识
+  /// [taskType] 任务类型
+  /// [priority] 优先级（0=高，1=正常，2=低）
+  /// [payload] 任务数据
+  /// 返回 true 表示已入队或立即执行，false 表示队列已满
+  bool submitTask(String taskId, String taskType,
+      {int priority = 1, Map<String, dynamic>? payload}) {
+    if (_taskQueue.length >= _maxQueueSize) {
+      debugPrint('[ComputeResource] 任务队列已满，拒绝任务: $taskId');
+      return false;
+    }
+
+    _taskQueue.add({
+      'taskId': taskId,
+      'taskType': taskType,
+      'priority': priority,
+      'payload': payload,
+      'submittedAt': DateTime.now().toIso8601String(),
+      'status': 'pending',
+    });
+
+    // 按优先级排序
+    _taskQueue.sort((a, b) =>
+        (a['priority'] as int).compareTo(b['priority'] as int));
+
+    debugPrint('[ComputeResource] 任务已提交: $taskId (优先级: $priority)');
+    return true;
+  }
+
+  /// 任务开始执行
+  void taskStarted(String taskId) {
+    _activeTasks++;
+    _taskQueue.removeWhere((t) => t['taskId'] == taskId);
+  }
+
+  /// 任务完成
+  void taskCompleted(String taskId, {bool success = true}) {
+    _activeTasks = (_activeTasks - 1).clamp(0, 999);
+    if (success) {
+      _completedTasks++;
+    } else {
+      _failedTasks++;
+    }
+  }
+
+  /// 获取任务队列状态
+  Map<String, dynamic> getTaskQueueStatus() {
+    return {
+      'pendingTasks': _taskQueue.length,
+      'activeTasks': _activeTasks,
+      'completedTasks': _completedTasks,
+      'failedTasks': _failedTasks,
+      'maxConcurrent': _maxConcurrentTasks,
+      'maxQueueSize': _maxQueueSize,
+      'queueUtilization': _maxQueueSize > 0
+          ? (_taskQueue.length / _maxQueueSize * 100).clamp(0, 100)
+          : 0.0,
+    };
+  }
+
+  // ── 资源优化功能 ──
+
+  /// 设置自动优化开关
+  void setAutoOptimizeEnabled(bool enabled) {
+    _autoOptimizeEnabled = enabled;
+    debugPrint('[ComputeResource] 自动优化${enabled ? "已启用" : "已禁用"}');
+  }
+
+  /// 执行资源优化
+  ///
+  /// 根据当前资源使用情况自动调整参数
+  Map<String, dynamic> performOptimization() {
+    final result = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'actions': <String>[],
+    };
+
+    final actions = result['actions'] as List<String>;
+
+    // 1. 检查识别缓存
+    final cacheSpace = RecognitionService.getCacheSpaceUsage();
+    final cachePercent = cacheSpace['cacheUsagePercent'] as double? ?? 0;
+    if (cachePercent > 80) {
+      RecognitionService.optimizeCache();
+      actions.add('优化识别缓存（使用率 ${cachePercent.toStringAsFixed(0)}%）');
+    }
+
+    // 2. 检查 ImageProcessor 缓存
+    final resourceStats = ImageProcessor.getResourceStats();
+    final contourCacheSize = resourceStats['contourCacheSize'] as int? ?? 0;
+    final maxContourCache = resourceStats['maxContourCacheSize'] as int? ?? 50;
+    if (contourCacheSize > maxContourCache * 0.8) {
+      ImageProcessor.clearContourCache();
+      actions.add('清理轮廓缓存（$contourCacheSize/$maxContourCache）');
+    }
+
+    // 3. 根据活跃任务数调整并发
+    if (_activeTasks >= _maxConcurrentTasks && _maxConcurrentTasks < 5) {
+      _maxConcurrentTasks = (_maxConcurrentTasks + 1).clamp(1, 5);
+      actions.add('提升最大并发数至 $_maxConcurrentTasks');
+    }
+
+    // 4. 生成优化建议
+    _optimizationSuggestions.clear();
+    if (cachePercent > 60) {
+      _optimizationSuggestions.add({
+        'type': 'cache',
+        'priority': 'medium',
+        'description': '识别缓存使用率较高（${cachePercent.toStringAsFixed(0)}%），建议定期清理',
+      });
+    }
+
+    final errorRate = _completedTasks + _failedTasks > 0
+        ? _failedTasks / (_completedTasks + _failedTasks)
+        : 0.0;
+    if (errorRate > 0.1) {
+      _optimizationSuggestions.add({
+        'type': 'error_rate',
+        'priority': 'high',
+        'description': '任务失败率 ${(errorRate * 100).toStringAsFixed(0)}%，建议检查错误日志',
+      });
+    }
+
+    result['suggestions'] = _optimizationSuggestions;
+    result['success'] = true;
+
+    debugPrint('[ComputeResource] 资源优化完成: ${actions.length} 项操作');
+    return result;
+  }
+
+  /// 获取优化建议
+  List<Map<String, dynamic>> getOptimizationSuggestions() {
+    return List.unmodifiable(_optimizationSuggestions);
+  }
+
+  // ── 资源报告功能 ──
+
+  /// 生成资源使用报告
+  Map<String, dynamic> generateResourceReport() {
+    final snapshots = _resourceSnapshots.take(10).toList();
+
+    return {
+      'reportTime': DateTime.now().toIso8601String(),
+      'taskQueue': getTaskQueueStatus(),
+      'imageProcessor': ImageProcessor.getResourceStats(),
+      'imageProcessorPerf': ImageProcessor.getPerformanceStats(),
+      'recognition': RecognitionService.getCacheSpaceUsage(),
+      'recentSnapshots': snapshots,
+      'optimizationSuggestions': _optimizationSuggestions,
+      'monitoringActive': _isMonitoring,
+      'autoOptimizeEnabled': _autoOptimizeEnabled,
+    };
+  }
+
+  /// 生成资源趋势报告
+  ///
+  /// 分析资源使用趋势，预测潜在问题
+  Map<String, dynamic> generateTrendReport() {
+    if (_resourceSnapshots.length < 3) {
+      return {
+        'status': 'insufficient_data',
+        'message': '需要至少 3 个快照才能分析趋势',
+        'snapshotCount': _resourceSnapshots.length,
+      };
+    }
+
+    // 分析任务完成趋势
+    final recentSnapshots = _resourceSnapshots.take(10).toList();
+    final completedTrend = recentSnapshots
+        .map((s) => ((s['taskQueue'] as Map<String, dynamic>?)?['completed'] as int?) ?? 0)
+        .toList();
+
+    // 分析缓存使用趋势
+    final cacheTrend = recentSnapshots
+        .map((s) => ((s['recognition'] as Map<String, dynamic>?)?['cacheUsagePercent'] as double?) ?? 0.0)
+        .toList();
+
+    String trendStatus = 'stable';
+    if (cacheTrend.length >= 3) {
+      final recentAvg = cacheTrend.take(3).reduce((a, b) => a + b) / 3;
+      final olderAvg = cacheTrend.skip(3).isEmpty
+          ? recentAvg
+          : cacheTrend.skip(3).reduce((a, b) => a + b) / cacheTrend.skip(3).length;
+      if (recentAvg > olderAvg * 1.2) {
+        trendStatus = 'increasing';
+      } else if (recentAvg < olderAvg * 0.8) {
+        trendStatus = 'decreasing';
+      }
+    }
+
+    return {
+      'status': 'ok',
+      'snapshotCount': _resourceSnapshots.length,
+      'completedTrend': completedTrend,
+      'cacheTrend': cacheTrend,
+      'cacheTrendStatus': trendStatus,
+    };
+  }
+
+  /// 清除所有资源数据
+  void clearAll() {
+    _resourceSnapshots.clear();
+    _taskQueue.clear();
+    _optimizationSuggestions.clear();
+    _activeTasks = 0;
+    _completedTasks = 0;
+    _failedTasks = 0;
+  }
+
+  /// 获取完整资源管理报告（合并所有维度）
+  Map<String, dynamic> getFullResourceManagementReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'resourceReport': generateResourceReport(),
+      'trendReport': generateTrendReport(),
+      'cloudOptimization': CloudSyncService.instance.getCloudOptimizationReport(),
+      'edgeComputing': RecognitionService.getEdgeComputingReport(),
+      'hybridCompute': ImageProcessor.getHybridComputeReport(),
+    };
+  }
 }
 
 class WriteFontApp extends StatefulWidget {

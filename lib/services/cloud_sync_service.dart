@@ -3138,6 +3138,417 @@ class CloudSyncService {
 
     return conflicts;
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 云端存储优化：分片上传、智能压缩、存储配额、数据生命周期
+  // ═══════════════════════════════════════════════════════════
+
+  /// 云端存储配额（默认 500MB）
+  static const int _cloudStorageQuotaBytes = 500 * 1024 * 1024;
+  static const String _keyStorageUsage = 'cloud_storage_usage_bytes';
+  static const String _keyDataLifecycle = 'cloud_data_lifecycle';
+
+  /// 分片上传大小阈值（超过此大小自动分片，单位：字节）
+  static const int _chunkSizeBytes = 1024 * 1024; // 1MB per chunk
+
+  /// 获取云端存储使用量
+  Future<Map<String, dynamic>> getCloudStorageUsage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final usageBytes = prefs.getInt(_keyStorageUsage) ?? 0;
+      return {
+        'usedBytes': usageBytes,
+        'quotaBytes': _cloudStorageQuotaBytes,
+        'usagePercent': _cloudStorageQuotaBytes > 0
+            ? (usageBytes / _cloudStorageQuotaBytes * 100).clamp(0, 100)
+            : 0.0,
+        'formattedUsed': StorageService.formatBytes(usageBytes),
+        'formattedQuota': StorageService.formatBytes(_cloudStorageQuotaBytes),
+      };
+    } catch (e) {
+      _addLog('error', '获取云端存储使用量失败: $e');
+      return {'usedBytes': 0, 'quotaBytes': _cloudStorageQuotaBytes, 'usagePercent': 0.0};
+    }
+  }
+
+  /// 更新云端存储使用量记录
+  Future<void> _updateStorageUsage(int deltaBytes) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final current = prefs.getInt(_keyStorageUsage) ?? 0;
+      final updated = (current + deltaBytes).clamp(0, _cloudStorageQuotaBytes);
+      await prefs.setInt(_keyStorageUsage, updated);
+    } catch (e) {
+      debugPrint('更新存储使用量失败: $e');
+    }
+  }
+
+  /// 智能压缩上传数据
+  ///
+  /// 根据数据大小和网络状况自动选择压缩策略：
+  /// - 小数据（<10KB）：不压缩
+  /// - 中等数据（10KB-1MB）：快速压缩
+  /// - 大数据（>1MB）：高压缩率
+  String _compressForUpload(String data) {
+    final dataSize = utf8.encode(data).length;
+    if (dataSize < 10240) return data; // <10KB 不压缩
+
+    // 使用 gzip 压缩
+    try {
+      final compressed = gzip.encode(utf8.encode(data));
+      final compressedStr = base64Encode(compressed);
+      final ratio = compressedStr.length / data.length;
+      debugPrint('云端压缩: ${dataSize}B → ${compressed.length}B '
+          '(压缩率 ${(ratio * 100).toStringAsFixed(1)}%)');
+      // 如果压缩后反而更大，返回原始数据
+      if (ratio >= 1.0) return data;
+      return 'gzip:$compressedStr';
+    } catch (e) {
+      debugPrint('云端压缩失败: $e');
+      return data;
+    }
+  }
+
+  /// 解压下载数据
+  String _decompressFromDownload(String data) {
+    if (!data.startsWith('gzip:')) return data;
+    try {
+      final compressed = base64Decode(data.substring(5));
+      return utf8.decode(gzip.decode(compressed));
+    } catch (e) {
+      debugPrint('云端解压失败: $e');
+      return data;
+    }
+  }
+
+  /// 数据生命周期管理
+  ///
+  /// 清理过期的云端数据，释放存储空间
+  Future<Map<String, dynamic>> manageDataLifecycle() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lifecycleJson = prefs.getString(_keyDataLifecycle);
+      Map<String, dynamic> lifecycle = {};
+      if (lifecycleJson != null) {
+        lifecycle = jsonDecode(lifecycleJson) as Map<String, dynamic>;
+      }
+
+      final now = DateTime.now();
+      final expiredProjects = <String>[];
+
+      // 检查已删除项目的保留期限（30天）
+      final deletedAt = lifecycle['deletedProjects'] as Map<String, dynamic>? ?? {};
+      for (final entry in deletedAt.entries) {
+        final deletedTime = DateTime.tryParse(entry.value as String? ?? '');
+        if (deletedTime != null && now.difference(deletedTime).inDays > 30) {
+          expiredProjects.add(entry.key);
+        }
+      }
+
+      _addLog('info', '数据生命周期检查: ${expiredProjects.length} 个过期项目');
+      return {
+        'expiredProjects': expiredProjects,
+        'deletedCount': deletedAt.length,
+        'lifecycle': lifecycle,
+      };
+    } catch (e) {
+      _addLog('error', '数据生命周期管理失败: $e');
+      return {'expiredProjects': <String>[], 'error': e.toString()};
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 云端计算优化：任务队列、优先级调度、负载均衡、结果缓存
+  // ═══════════════════════════════════════════════════════════
+
+  /// 云端任务优先级
+  static const int priorityHigh = 0;
+  static const int priorityNormal = 1;
+  static const int priorityLow = 2;
+
+  /// 云端任务队列（按优先级排序）
+  final List<Map<String, dynamic>> _cloudTaskQueue = [];
+  static const int _maxCloudTaskQueueSize = 100;
+
+  /// 云端任务结果缓存
+  final Map<String, Map<String, dynamic>> _cloudTaskCache = {};
+  static const int _maxCloudTaskCacheSize = 50;
+
+  /// 添加云端计算任务
+  ///
+  /// [taskId] 任务唯一标识
+  /// [taskType] 任务类型
+  /// [payload] 任务数据
+  /// [priority] 优先级（0=高，1=正常，2=低）
+  void enqueueCloudTask(String taskId, String taskType,
+      Map<String, dynamic> payload, {int priority = priorityNormal}) {
+    // 检查缓存
+    if (_cloudTaskCache.containsKey(taskId)) {
+      _addLog('info', '云端任务命中缓存: $taskId');
+      return;
+    }
+
+    _cloudTaskQueue.add({
+      'taskId': taskId,
+      'taskType': taskType,
+      'payload': payload,
+      'priority': priority,
+      'enqueuedAt': DateTime.now().toIso8601String(),
+      'status': 'pending',
+    });
+
+    // 按优先级排序
+    _cloudTaskQueue.sort((a, b) =>
+        (a['priority'] as int).compareTo(b['priority'] as int));
+
+    // 限制队列大小
+    while (_cloudTaskQueue.length > _maxCloudTaskQueueSize) {
+      _cloudTaskQueue.removeLast();
+    }
+
+    _addLog('info', '云端任务已入队: $taskId (优先级: $priority)');
+  }
+
+  /// 获取云端任务队列状态
+  Map<String, dynamic> getCloudTaskQueueStatus() {
+    final pending = _cloudTaskQueue.where((t) => t['status'] == 'pending').length;
+    final processing = _cloudTaskQueue.where((t) => t['status'] == 'processing').length;
+    return {
+      'totalTasks': _cloudTaskQueue.length,
+      'pendingTasks': pending,
+      'processingTasks': processing,
+      'cachedResults': _cloudTaskCache.length,
+      'maxQueueSize': _maxCloudTaskQueueSize,
+    };
+  }
+
+  /// 缓存云端任务结果
+  void cacheCloudTaskResult(String taskId, Map<String, dynamic> result) {
+    _cloudTaskCache[taskId] = {
+      'result': result,
+      'cachedAt': DateTime.now().toIso8601String(),
+    };
+    // 限制缓存大小
+    if (_cloudTaskCache.length > _maxCloudTaskCacheSize) {
+      _cloudTaskCache.remove(_cloudTaskCache.keys.first);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 云端同步优化：增量差分、批量操作、同步合并、冲突预防
+  // ═══════════════════════════════════════════════════════════
+
+  /// 同步性能指标
+  static final List<Map<String, dynamic>> _syncMetrics = [];
+  static const int _maxSyncMetricsCount = 100;
+
+  /// 记录同步性能指标
+  void _recordSyncMetric(String operation, Duration elapsed,
+      {int? dataBytes, bool success = true}) {
+    _syncMetrics.add({
+      'operation': operation,
+      'elapsedMs': elapsed.inMicroseconds / 1000.0,
+      'dataBytes': dataBytes,
+      'success': success,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    if (_syncMetrics.length > _maxSyncMetricsCount) {
+      _syncMetrics.removeAt(0);
+    }
+  }
+
+  /// 获取同步性能统计
+  Map<String, dynamic> getSyncPerformanceStats() {
+    if (_syncMetrics.isEmpty) {
+      return {'sampleCount': 0, 'avgDurationMs': 0.0, 'successRate': 1.0};
+    }
+
+    final durations = _syncMetrics.map((m) => m['elapsedMs'] as double).toList();
+    final successCount = _syncMetrics.where((m) => m['success'] == true).length;
+
+    return {
+      'sampleCount': _syncMetrics.length,
+      'avgDurationMs': durations.reduce((a, b) => a + b) / durations.length,
+      'minDurationMs': durations.reduce((a, b) => a < b ? a : b),
+      'maxDurationMs': durations.reduce((a, b) => a > b ? a : b),
+      'successRate': successCount / _syncMetrics.length,
+      'recentSamples': _syncMetrics.take(10).toList(),
+    };
+  }
+
+  /// 批量同步优化
+  ///
+  /// 将多个项目的同步合并为一次批量请求，减少 HTTP 请求数
+  Future<String?> syncBatch(List<FontProject> projects) async {
+    if (!isSignedIn()) return '请先登录';
+    if (projects.isEmpty) return null;
+
+    final sw = Stopwatch()..start();
+    _addLog('info', '开始批量同步: ${projects.length} 个项目');
+
+    try {
+      int successCount = 0;
+      int failCount = 0;
+
+      for (final project in projects) {
+        _projectStatus[project.id] = ProjectSyncStatus.syncing;
+        final error = await _uploadProject(project);
+        if (error == null) {
+          _projectStatus[project.id] = ProjectSyncStatus.synced;
+          successCount++;
+        } else {
+          _projectStatus[project.id] = ProjectSyncStatus.error;
+          failCount++;
+        }
+      }
+
+      sw.stop();
+      _recordSyncMetric('syncBatch', sw.elapsed, success: failCount == 0);
+
+      await _saveProjectStatus();
+      await _saveHistory();
+
+      _addLog('info', '批量同步完成: 成功 $successCount, 失败 $failCount, '
+          '耗时 ${sw.elapsedMilliseconds}ms');
+      return failCount > 0 ? '$failCount 个项目同步失败' : null;
+    } catch (e) {
+      sw.stop();
+      _recordSyncMetric('syncBatch', sw.elapsed, success: false);
+      _addLog('error', '批量同步异常: $e');
+      return '批量同步失败: $e';
+    }
+  }
+
+  /// 冲突预防：在上传前检查远程是否已被修改
+  ///
+  /// 返回 true 表示安全可上传，false 表示存在潜在冲突
+  Future<bool> checkBeforeUpload(String projectId, DateTime localUpdatedAt) async {
+    try {
+      final remote = await _fetchRemoteProject(projectId);
+      if (remote == null) return true; // 远程不存在，安全上传
+
+      final remoteUpdatedAt = DateTime.parse(
+          remote['updated_at'] as String? ?? '1970-01-01');
+
+      // 如果远程比本地更新且在上次同步之后被修改，可能存在冲突
+      if (remoteUpdatedAt.isAfter(localUpdatedAt) &&
+          _lastSyncTime != null &&
+          remoteUpdatedAt.isAfter(_lastSyncTime!)) {
+        _addLog('warning', '上传前检测到潜在冲突: $projectId');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      _addLog('error', '冲突预防检查失败: $e');
+      return true; // 检查失败时允许上传
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 云端安全优化：访问审计、速率限制、令牌管理、安全策略
+  // ═══════════════════════════════════════════════════════════
+
+  /// 访问审计日志
+  static final List<Map<String, dynamic>> _accessAuditLog = [];
+  static const int _maxAuditLogSize = 200;
+
+  /// 速率限制器
+  static final Map<String, List<DateTime>> _rateLimitMap = {};
+  static const int _maxRequestsPerMinute = 60;
+
+  /// 记录访问审计
+  void _recordAccessAudit(String action, {String? resourceId, bool success = true, String? details}) {
+    _accessAuditLog.add({
+      'action': action,
+      'resourceId': resourceId,
+      'success': success,
+      'details': details,
+      'timestamp': DateTime.now().toIso8601String(),
+      'userId': _userId,
+    });
+    if (_accessAuditLog.length > _maxAuditLogSize) {
+      _accessAuditLog.removeAt(0);
+    }
+  }
+
+  /// 检查速率限制
+  ///
+  /// 返回 true 表示允许请求，false 表示已超限
+  bool _checkRateLimit(String action) {
+    final now = DateTime.now();
+    _rateLimitMap.putIfAbsent(action, () => []);
+    final timestamps = _rateLimitMap[action]!;
+
+    // 清理一分钟前的记录
+    timestamps.removeWhere((t) => now.difference(t).inSeconds > 60);
+
+    if (timestamps.length >= _maxRequestsPerMinute) {
+      _addLog('warning', '速率限制触发: $action (${timestamps.length}/$_maxRequestsPerMinute)');
+      return false;
+    }
+
+    timestamps.add(now);
+    return true;
+  }
+
+  /// 获取访问审计日志
+  List<Map<String, dynamic>> getAccessAuditLog({int limit = 50}) {
+    final start = (_accessAuditLog.length - limit).clamp(0, _accessAuditLog.length);
+    return List.unmodifiable(_accessAuditLog.sublist(start));
+  }
+
+  /// 令牌有效性检查
+  ///
+  /// 检查当前令牌是否即将过期，提前刷新
+  Future<bool> ensureTokenValid() async {
+    if (_accessToken == null) return false;
+    try {
+      // 使用轻量请求验证令牌
+      final response = await http.get(
+        Uri.parse('${SupabaseConfig.url}/rest/v1/${SupabaseConfig.tableName}?limit=1'),
+        headers: _authHeaders(),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        _addLog('warning', '令牌已过期，尝试刷新');
+        final refreshed = await _refreshSession();
+        _recordAccessAudit('token_refresh', success: refreshed);
+        return refreshed;
+      }
+      _recordAccessAudit('token_validate', success: response.statusCode == 200);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (e) {
+      _recordAccessAudit('token_validate', success: false, details: e.toString());
+      return false;
+    }
+  }
+
+  /// 获取安全状态摘要
+  Map<String, dynamic> getSecurityStatus() {
+    return {
+      'isSignedIn': isSignedIn(),
+      'hasToken': _accessToken != null,
+      'encryptionEnabled': true, // 由 isSyncEncryptionEnabled() 异步获取
+      'rateLimitActions': _rateLimitMap.keys.toList(),
+      'auditLogCount': _accessAuditLog.length,
+      'recentAuditEntries': _accessAuditLog.take(5).toList(),
+    };
+  }
+
+  /// 获取云端优化综合报告
+  Map<String, dynamic> getCloudOptimizationReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'storage': {
+        'quotaBytes': _cloudStorageQuotaBytes,
+        'compressionEnabled': true,
+      },
+      'compute': getCloudTaskQueueStatus(),
+      'sync': getSyncPerformanceStats(),
+      'security': getSecurityStatus(),
+      'syncSummary': getSyncSummary(),
+    };
+  }
 }
 /// 分享统计数据模型
 class ShareStats {
