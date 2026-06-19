@@ -16,6 +16,11 @@ import 'api_key.dart';
 /// OCR 识别服务
 /// 默认：本地 ML Kit 离线识别（免费，无需网络）
 /// 可选：云端 API（用户填自己的 API 地址 + Key）
+///
+/// 调试功能：
+/// - 结构化调试日志（带时间戳和分类标签）
+/// - 识别过程数据导出（JSON 格式，含预处理中间结果）
+/// - 调试统计面板数据（缓存命中率、错误率、延迟分布）
 class RecognitionService {
   // SharedPreferences keys
   static const String _prefKeyUseCloud = 'ocr_use_cloud';
@@ -61,6 +66,153 @@ class RecognitionService {
   // 内存监控：记录缓存占用的估算字节数
   static int _estimatedCacheBytes = 0;
   static const int _maxCacheBytes = 50 * 1024 * 1024; // 50MB 上限
+
+  // ═══════════════════════════════════════════════════════════
+  // 调试功能：结构化日志、调试工具、数据导出
+  // ═══════════════════════════════════════════════════════════
+
+  /// 调试日志开关（生产环境关闭以避免性能开销）
+  static bool _debugLogEnabled = kDebugMode;
+
+  /// 结构化调试日志缓冲区（最近 500 条）
+  static final List<Map<String, dynamic>> _debugLogBuffer = [];
+  static const int _maxDebugLogSize = 500;
+
+  /// 识别统计（用于调试面板）
+  static int _totalRecognitions = 0;
+  static int _successfulRecognitions = 0;
+  static int _failedRecognitions = 0;
+  static int _cacheHits = 0;
+  static int _cacheMisses = 0;
+  static final List<double> _latencyHistory = [];
+  static const int _maxLatencyHistory = 200;
+
+  /// 启用/禁用调试日志
+  static void setDebugLogEnabled(bool enabled) {
+    _debugLogEnabled = enabled;
+    _addDebugLog('system', '调试日志${enabled ? "已启用" : "已禁用"}');
+  }
+
+  /// 是否启用调试日志
+  static bool get isDebugLogEnabled => _debugLogEnabled;
+
+  /// 添加结构化调试日志
+  ///
+  /// [category] 分类标签：'recognition' | 'cache' | 'cloud' | 'local' | 'system'
+  /// [message] 日志消息
+  /// [data] 附加数据（可选）
+  static void _addDebugLog(String category, String message, {Map<String, dynamic>? data}) {
+    if (!_debugLogEnabled) return;
+
+    final entry = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'category': category,
+      'message': message,
+    };
+    if (data != null) entry['data'] = data;
+
+    _debugLogBuffer.add(entry);
+    if (_debugLogBuffer.length > _maxDebugLogSize) {
+      _debugLogBuffer.removeAt(0);
+    }
+
+    // 同时输出到 debugPrint（开发时可见）
+    debugPrint('[$category] $message');
+  }
+
+  /// 获取调试日志（最近 N 条）
+  static List<Map<String, dynamic>> getDebugLogs({int limit = 100}) {
+    final start = (_debugLogBuffer.length - limit).clamp(0, _debugLogBuffer.length);
+    return List.unmodifiable(_debugLogBuffer.sublist(start));
+  }
+
+  /// 清空调试日志
+  static void clearDebugLogs() => _debugLogBuffer.clear();
+
+  /// 获取调试统计数据（用于调试面板展示）
+  ///
+  /// 返回包含以下字段的 Map：
+  /// - totalRecognitions: 总识别次数
+  /// - successRate: 成功率 (0.0~1.0)
+  /// - cacheHitRate: 缓存命中率 (0.0~1.0)
+  /// - avgLatencyMs: 平均延迟（毫秒）
+  /// - p95LatencyMs: P95 延迟（毫秒）
+  /// - cacheSize: 当前缓存大小
+  /// - estimatedCacheBytes: 估算缓存内存占用
+  /// - activeMode: 当前识别模式（cloud/local）
+  static Future<Map<String, dynamic>> getDebugStats() async {
+    final avgLatency = _latencyHistory.isNotEmpty
+        ? _latencyHistory.reduce((a, b) => a + b) / _latencyHistory.length
+        : 0.0;
+
+    double p95Latency = 0.0;
+    if (_latencyHistory.isNotEmpty) {
+      final sorted = List<double>.from(_latencyHistory)..sort();
+      final p95Index = (sorted.length * 0.95).round().clamp(0, sorted.length - 1);
+      p95Latency = sorted[p95Index];
+    }
+
+    final hitRate = (_cacheHits + _cacheMisses) > 0
+        ? _cacheHits / (_cacheHits + _cacheMisses)
+        : 0.0;
+
+    return {
+      'totalRecognitions': _totalRecognitions,
+      'successfulRecognitions': _successfulRecognitions,
+      'failedRecognitions': _failedRecognitions,
+      'successRate': _totalRecognitions > 0
+          ? _successfulRecognitions / _totalRecognitions
+          : 0.0,
+      'cacheHitRate': hitRate,
+      'cacheHits': _cacheHits,
+      'cacheMisses': _cacheMisses,
+      'avgLatencyMs': avgLatency,
+      'p95LatencyMs': p95Latency,
+      'cacheSize': _recognitionCache.length,
+      'maxCacheSize': _maxCacheSize,
+      'estimatedCacheBytes': _estimatedCacheBytes,
+      'maxCacheBytes': _maxCacheBytes,
+      'activeMode': await getUseCloud() ? 'cloud' : 'local',
+      'debugLogCount': _debugLogBuffer.length,
+    };
+  }
+
+  /// 导出调试数据为 JSON 字符串（用于问题报告和离线分析）
+  ///
+  /// 包含：调试日志、统计信息、缓存摘要、配置信息
+  static Future<String> exportDebugData() async {
+    final stats = await getDebugStats();
+    final logs = getDebugLogs(limit: 200);
+
+    final exportData = <String, dynamic>{
+      'exportDate': DateTime.now().toIso8601String(),
+      'appVersion': 'v2.8.0',
+      'stats': stats,
+      'debugLogs': logs,
+      'config': {
+        'useCloud': await getUseCloud(),
+        'cloudUrl': await getCloudUrl(),
+        'hasCloudKey': (await getCloudKey())?.isNotEmpty ?? false,
+        'model': await getModel(),
+        'customModel': await getCustomModel(),
+      },
+      'cacheSummary': {
+        'recognitionCacheKeys': _recognitionCache.keys.take(50).toList(),
+        'confidenceCacheKeys': _confidenceCache.keys.take(50).toList(),
+        'cacheAccessOrderLength': _cacheAccessOrder.length,
+      },
+    };
+
+    return const JsonEncoder.withIndent('  ').convert(exportData);
+  }
+
+  /// 记录识别延迟（内部使用）
+  static void _recordLatency(double latencyMs) {
+    _latencyHistory.add(latencyMs);
+    if (_latencyHistory.length > _maxLatencyHistory) {
+      _latencyHistory.removeAt(0);
+    }
+  }
 
   /// 简单的字节哈希用于缓存 key
   static int _hashBytes(Uint8List bytes) {
@@ -167,18 +319,27 @@ class RecognitionService {
   /// 识别单个字符图片（带缓存）
   /// 返回 [RecognitionResult] 包含识别字符和置信度
   Future<String?> recognizeCharacter(Uint8List imageBytes, {bool? forceUseCloud}) async {
+    final sw = Stopwatch()..start();
+    _totalRecognitions++;
     final useCloud = forceUseCloud ?? await getUseCloud();
 
     final cacheKey = _hashBytes(imageBytes);
 
     // 云端和本地识别均使用缓存（缓存命中率提升）
     if (_recognitionCache.containsKey(cacheKey)) {
+      _cacheHits++;
+      _addDebugLog('cache', '缓存命中', data: {'hash': cacheKey, 'result': _recognitionCache[cacheKey]});
       debugPrint('ML Kit 识别: 命中缓存 (hash=$cacheKey)');
       // 更新 LRU 顺序
       _cacheAccessOrder.remove(cacheKey);
       _cacheAccessOrder.add(cacheKey);
+      sw.stop();
+      _recordLatency(sw.elapsed.inMicroseconds / 1000.0);
       return _recognitionCache[cacheKey];
     }
+
+    _cacheMisses++;
+    _addDebugLog('recognition', '开始识别', data: {'mode': useCloud ? 'cloud' : 'local', 'imageSize': imageBytes.length});
 
     final result = useCloud
         ? await _recognizeCloud(imageBytes)
@@ -193,6 +354,18 @@ class RecognitionService {
     _recognitionCache[cacheKey] = result;
     _cacheAccessOrder.add(cacheKey);
     _estimatedCacheBytes += imageBytes.length; // 估算缓存内存增长
+
+    sw.stop();
+    final latencyMs = sw.elapsed.inMicroseconds / 1000.0;
+    _recordLatency(latencyMs);
+
+    if (result != null) {
+      _successfulRecognitions++;
+      _addDebugLog('recognition', '识别成功', data: {'result': result, 'latencyMs': latencyMs, 'mode': useCloud ? 'cloud' : 'local'});
+    } else {
+      _failedRecognitions++;
+      _addDebugLog('recognition', '识别失败', data: {'latencyMs': latencyMs, 'mode': useCloud ? 'cloud' : 'local'});
+    }
 
     return result;
   }
@@ -747,6 +920,14 @@ class RecognitionService {
     _cacheAccessOrder.clear();
     _confidenceCache.clear();
     _estimatedCacheBytes = 0; // 重置内存计数
+    // 重置调试统计
+    _totalRecognitions = 0;
+    _successfulRecognitions = 0;
+    _failedRecognitions = 0;
+    _cacheHits = 0;
+    _cacheMisses = 0;
+    _latencyHistory.clear();
+    _debugLogBuffer.clear();
   }
 
   /// 清除配置缓存

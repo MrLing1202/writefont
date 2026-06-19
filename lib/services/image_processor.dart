@@ -311,10 +311,162 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
 }
 
 /// Service for processing handwriting images into glyph data.
+///
+/// 监控功能：
+/// - 性能监控：记录各处理步骤耗时
+/// - 错误监控：记录错误类型、频率和上下文
+/// - 使用监控：记录功能调用频率和参数分布
+/// - 资源监控：追踪内存使用和处理队列状态
 class ImageProcessor {
   // ── 轮廓提取结果缓存（避免重复计算相同图片的轮廓） ──
   static final Map<int, List<Contour>> _contourCache = {};
   static const int _maxContourCacheSize = 50;
+
+  // ═══════════════════════════════════════════════════════════
+  // 监控功能：性能、错误、使用、资源
+  // ═══════════════════════════════════════════════════════════
+
+  /// 性能监控数据（操作名 → 耗时列表）
+  static final Map<String, List<double>> _perfTimings = {};
+  static const int _maxTimingEntries = 100;
+
+  /// 错误监控数据
+  static final List<Map<String, dynamic>> _errorLog = [];
+  static const int _maxErrorLogSize = 200;
+
+  /// 使用监控数据（功能调用计数）
+  static final Map<String, int> _usageCounter = {};
+
+  /// 资源监控：处理中的任务数
+  static int _activeTaskCount = 0;
+  static int _peakTaskCount = 0;
+  static int _totalTasksProcessed = 0;
+  static int _totalProcessingTimeUs = 0;
+
+  /// 记录性能指标（内部使用）
+  static void _recordPerfTiming(String operation, Duration elapsed) {
+    _perfTimings.putIfAbsent(operation, () => []);
+    final timings = _perfTimings[operation]!;
+    timings.add(elapsed.inMicroseconds / 1000.0); // 转为毫秒
+    if (timings.length > _maxTimingEntries) {
+      timings.removeAt(0);
+    }
+  }
+
+  /// 记录错误（内部使用）
+  static void _recordError(String operation, Object error, {String? context}) {
+    _errorLog.add({
+      'timestamp': DateTime.now().toIso8601String(),
+      'operation': operation,
+      'error': error.toString(),
+      'errorType': error.runtimeType.toString(),
+      if (context != null) 'context': context,
+    });
+    if (_errorLog.length > _maxErrorLogSize) {
+      _errorLog.removeAt(0);
+    }
+    debugPrint('ImageProcessor 错误 [$operation]: $error');
+  }
+
+  /// 记录功能使用（内部使用）
+  static void _recordUsage(String feature) {
+    _usageCounter[feature] = (_usageCounter[feature] ?? 0) + 1;
+  }
+
+  /// 更新资源监控（任务开始）
+  static void _taskStarted() {
+    _activeTaskCount++;
+    if (_activeTaskCount > _peakTaskCount) {
+      _peakTaskCount = _activeTaskCount;
+    }
+  }
+
+  /// 更新资源监控（任务完成）
+  static void _taskCompleted(Duration elapsed) {
+    _activeTaskCount = (_activeTaskCount - 1).clamp(0, 999999);
+    _totalTasksProcessed++;
+    _totalProcessingTimeUs += elapsed.inMicroseconds;
+  }
+
+  /// 获取性能监控快照
+  ///
+  /// 返回各操作的统计信息：平均值、P50、P95、最大值
+  static Map<String, Map<String, double>> getPerformanceStats() {
+    final stats = <String, Map<String, double>>{};
+    for (final entry in _perfTimings.entries) {
+      final timings = entry.value;
+      if (timings.isEmpty) continue;
+      final sorted = List<double>.from(timings)..sort();
+      final avg = sorted.reduce((a, b) => a + b) / sorted.length;
+      final p50Index = (sorted.length * 0.5).round().clamp(0, sorted.length - 1);
+      final p95Index = (sorted.length * 0.95).round().clamp(0, sorted.length - 1);
+      stats[entry.key] = {
+        'count': sorted.length.toDouble(),
+        'avgMs': avg,
+        'p50Ms': sorted[p50Index],
+        'p95Ms': sorted[p95Index],
+        'maxMs': sorted.last,
+        'minMs': sorted.first,
+      };
+    }
+    return stats;
+  }
+
+  /// 获取错误监控数据
+  static List<Map<String, dynamic>> getErrorLog({int limit = 50}) {
+    final start = (_errorLog.length - limit).clamp(0, _errorLog.length);
+    return List.unmodifiable(_errorLog.sublist(start));
+  }
+
+  /// 获取错误统计摘要（按错误类型分组计数）
+  static Map<String, int> getErrorSummary() {
+    final summary = <String, int>{};
+    for (final error in _errorLog) {
+      final type = error['errorType'] as String? ?? 'unknown';
+      summary[type] = (summary[type] ?? 0) + 1;
+    }
+    return summary;
+  }
+
+  /// 获取使用监控数据（功能调用计数）
+  static Map<String, int> getUsageStats() => Map.unmodifiable(_usageCounter);
+
+  /// 获取资源监控数据
+  static Map<String, dynamic> getResourceStats() {
+    return {
+      'activeTaskCount': _activeTaskCount,
+      'peakTaskCount': _peakTaskCount,
+      'totalTasksProcessed': _totalTasksProcessed,
+      'avgProcessingTimeMs': _totalTasksProcessed > 0
+          ? (_totalProcessingTimeUs / _totalTasksProcessed) / 1000.0
+          : 0.0,
+      'contourCacheSize': _contourCache.length,
+      'maxContourCacheSize': _maxContourCacheSize,
+    };
+  }
+
+  /// 获取完整监控报告（合并所有监控维度）
+  static Map<String, dynamic> getFullMonitorReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'performance': getPerformanceStats(),
+      'errorSummary': getErrorSummary(),
+      'errorCount': _errorLog.length,
+      'usage': getUsageStats(),
+      'resources': getResourceStats(),
+    };
+  }
+
+  /// 清除所有监控数据
+  static void clearMonitorData() {
+    _perfTimings.clear();
+    _errorLog.clear();
+    _usageCounter.clear();
+    _activeTaskCount = 0;
+    _peakTaskCount = 0;
+    _totalTasksProcessed = 0;
+    _totalProcessingTimeUs = 0;
+  }
 
   /// 清除轮廓缓存（用于释放内存）
   static void clearContourCache() => _contourCache.clear();
@@ -326,8 +478,15 @@ class ImageProcessor {
     Uint8List imageBytes,
     ProcessingParams params,
   ) {
+    _recordUsage('segmentCharacters');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
     final image = img.decodeImage(imageBytes);
-    if (image == null) return [];
+    if (image == null) {
+      _recordError('segmentCharacters', '图片解码失败', context: 'imageSize=${imageBytes.length}');
+      return [];
+    }
 
     // --- Resolution-adaptive processing ---
     img.Image workImage = image;
@@ -515,6 +674,14 @@ class ImageProcessor {
     }
 
     return cells;
+    } catch (e) {
+      _recordError('segmentCharacters', e, context: 'imageSize=${imageBytes.length}');
+      rethrow;
+    } finally {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordPerfTiming('segmentCharacters', sw.elapsed);
+    }
   }
 
   /// Process a single character image with given parameters.
@@ -522,6 +689,9 @@ class ImageProcessor {
     Uint8List imageBytes,
     ProcessingParams params,
   ) {
+    _recordUsage('processCharacterImage');
+    final sw = Stopwatch()..start();
+    try {
     final image = img.decodeImage(imageBytes);
     if (image == null) return imageBytes;
 
@@ -548,7 +718,14 @@ class ImageProcessor {
       processed = _smooth(processed, params.smoothness);
     }
 
-    return img.encodePng(processed);
+    final result = img.encodePng(processed);
+    sw.stop();
+    _recordPerfTiming('processCharacterImage', sw.elapsed);
+    return result;
+    } catch (e) {
+      _recordError('processCharacterImage', e);
+      rethrow;
+    }
   }
 
   /// Extract contour points from a binary character image.
@@ -561,6 +738,11 @@ class ImageProcessor {
     ProgressCallback? onProgress,
     Duration timeout = const Duration(seconds: 60),
   }) async {
+    _recordUsage('extractContours');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+
+    try {
     // 性能优化：缓存命中检查
     final cacheKey = _fastHash(imageBytes, params);
     if (_contourCache.containsKey(cacheKey)) {
@@ -606,6 +788,14 @@ class ImageProcessor {
 
     onProgress?.call(1.0, '轮廓提取完成');
     return allContours;
+    } catch (e) {
+      _recordError('extractContours', e, context: 'imageSize=${imageBytes.length}');
+      rethrow;
+    } finally {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordPerfTiming('extractContours', sw.elapsed);
+    }
   }
 
   /// Convert a binary character image to a scaled PNG for display.

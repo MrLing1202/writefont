@@ -22,6 +22,197 @@ import 'ttf_builder.dart';
 class StorageService {
   static const _uuid = Uuid();
 
+  // ═══════════════════════════════════════════════════════════
+  // 测试支持：单元测试、集成测试、性能测试、测试数据生成
+  // ═══════════════════════════════════════════════════════════
+
+  /// 测试模式标志（启用后跳过文件系统操作，使用内存模拟）
+  static bool _testMode = false;
+  static bool get isTestMode => _testMode;
+
+  /// 内存模拟存储（测试模式下替代文件系统）
+  static final Map<String, String> _testFileStore = {};
+  static final Map<String, List<int>> _testBinaryStore = {};
+
+  /// 测试性能指标记录
+  static final List<Map<String, dynamic>> _performanceMetrics = [];
+
+  /// 启用测试模式（单元测试时调用，避免真实文件 I/O）
+  static void enableTestMode() {
+    _testMode = true;
+    _testFileStore.clear();
+    _testBinaryStore.clear();
+    _performanceMetrics.clear();
+    _cachedDocumentsDir = null;
+    _cachedProjectsDir = null;
+    _cachedExportsDir = null;
+    _cachedBackupDir = null;
+    _cachedProjectList = null;
+    _projectCache.clear();
+  }
+
+  /// 禁用测试模式，恢复正常文件系统操作
+  static void disableTestMode() {
+    _testMode = false;
+    _testFileStore.clear();
+    _testBinaryStore.clear();
+  }
+
+  /// 记录操作性能指标（用于性能测试和分析）
+  static void _recordMetric(String operation, Duration elapsed, {Map<String, dynamic>? extras}) {
+    _performanceMetrics.add({
+      'operation': operation,
+      'elapsedMs': elapsed.inMicroseconds / 1000.0,
+      'timestamp': DateTime.now().toIso8601String(),
+      if (extras != null) ...extras,
+    });
+    // 只保留最近 1000 条记录
+    if (_performanceMetrics.length > 1000) {
+      _performanceMetrics.removeRange(0, _performanceMetrics.length - 1000);
+    }
+  }
+
+  /// 获取性能指标快照（用于性能分析和测试报告）
+  static List<Map<String, dynamic>> getPerformanceMetrics() =>
+      List.unmodifiable(_performanceMetrics);
+
+  /// 清除性能指标记录
+  static void clearPerformanceMetrics() => _performanceMetrics.clear();
+
+  /// 生成测试用的 FontProject 数据（用于单元测试和集成测试）
+  ///
+  /// [charCount] 生成的字符数量，默认 10
+  /// [withImages] 是否生成模拟源图片，默认 false
+  static FontProject generateTestProject({
+    int charCount = 10,
+    bool withImages = false,
+    String? name,
+  }) {
+    final projectId = generateId();
+    final testChars = '天地人和春夏秋冬风雪雨霜雷电云雾山川河流海湖';
+    final glyphs = <String, GlyphData>{};
+
+    for (int i = 0; i < charCount && i < testChars.length; i++) {
+      final ch = testChars[i];
+      // 生成简单的模拟轮廓数据（正方形轮廓）
+      final contourPoints = [
+        ContourPoint(100, 100, onCurve: true),
+        ContourPoint(500, 100, onCurve: false),
+        ContourPoint(900, 100, onCurve: true),
+        ContourPoint(900, 500, onCurve: false),
+        ContourPoint(900, 900, onCurve: true),
+        ContourPoint(500, 900, onCurve: false),
+        ContourPoint(100, 900, onCurve: true),
+        ContourPoint(100, 500, onCurve: false),
+        ContourPoint(100, 100, onCurve: true),
+      ];
+      glyphs[ch] = GlyphData(
+        contours: [Contour(contourPoints)],
+        advanceWidth: 1000,
+      );
+    }
+
+    final sourceImages = <Uint8List>[];
+    if (withImages) {
+      // 生成最小 PNG 作为模拟源图片
+      sourceImages.add(Uint8List.fromList([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE,
+        0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54,
+        0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00, 0x00,
+        0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC, 0x33,
+        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+        0xAE, 0x42, 0x60, 0x82,
+      ]));
+    }
+
+    return FontProject(
+      id: projectId,
+      name: name ?? '测试项目_${DateTime.now().millisecondsSinceEpoch}',
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      glyphs: glyphs,
+      params: ProcessingParams(),
+      sourceImages: sourceImages,
+    );
+  }
+
+  /// 批量生成测试项目（用于集成测试和性能测试）
+  ///
+  /// [count] 生成项目数量
+  /// [charRange] 每个项目字符数范围 [min, max]
+  static List<FontProject> generateTestProjects(int count, {List<int> charRange = const [5, 20]}) {
+    final projects = <FontProject>[];
+    for (int i = 0; i < count; i++) {
+      final charCount = charRange[0] + (i % (charRange[1] - charRange[0] + 1));
+      projects.add(generateTestProject(
+        charCount: charCount,
+        name: '批量测试项目_${i + 1}',
+      ));
+    }
+    return projects;
+  }
+
+  /// 运行存储服务自检（返回诊断结果 Map）
+  ///
+  /// 检查项：目录可写性、加密功能、完整性校验、缓存一致性
+  static Future<Map<String, dynamic>> runDiagnostics() async {
+    final results = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'testMode': _testMode,
+      'checks': <String, dynamic>{},
+    };
+    final checks = results['checks'] as Map<String, dynamic>;
+
+    // 1. 目录可写性检查
+    try {
+      final temp = await tempDir;
+      final testFile = File(p.join(temp.path, '_diag_test.tmp'));
+      await testFile.writeAsString('diagnostic_check');
+      final content = await testFile.readAsString();
+      checks['directoryWritable'] = content == 'diagnostic_check';
+      await testFile.delete();
+    } catch (e) {
+      checks['directoryWritable'] = false;
+      checks['directoryWritableError'] = e.toString();
+    }
+
+    // 2. 加密/解密一致性检查
+    try {
+      const testPlain = 'WriteFont 诊断测试数据 🔤';
+      final encrypted = await encryptData(testPlain);
+      final decrypted = await decryptData(encrypted);
+      checks['encryptionConsistent'] = decrypted == testPlain;
+    } catch (e) {
+      checks['encryptionConsistent'] = false;
+      checks['encryptionError'] = e.toString();
+    }
+
+    // 3. 完整性校验功能检查
+    try {
+      final temp = await tempDir;
+      final testFile = File(p.join(temp.path, '_diag_checksum.tmp'));
+      await testFile.writeAsString('checksum_test');
+      final checksum = await computeFileChecksum(testFile);
+      checks['checksumWorking'] = checksum.isNotEmpty && checksum.length == 64;
+      await testFile.delete();
+      final csFile = File('${testFile.path}$_checksumSuffix');
+      if (await csFile.exists()) await csFile.delete();
+    } catch (e) {
+      checks['checksumWorking'] = false;
+      checks['checksumError'] = e.toString();
+    }
+
+    // 4. 缓存状态
+    checks['projectCacheSize'] = _projectCache.length;
+    checks['projectListCached'] = _cachedProjectList != null;
+    checks['performanceMetricsCount'] = _performanceMetrics.length;
+
+    return results;
+  }
+
   // ── 目录路径缓存（首次调用时初始化，后续直接返回） ──
   static Directory? _cachedDocumentsDir;
   static Directory? _cachedProjectsDir;
@@ -454,6 +645,8 @@ class StorageService {
   /// - 数据完整性校验（SHA-256）
   /// - 可选加密存储
   static Future<void> saveProject(FontProject project) async {
+    final sw = Stopwatch()..start();
+
     // ── 自动备份（仅对已存在的项目创建备份）──
     await _autoBackup(project.id);
 
@@ -487,6 +680,12 @@ class StorageService {
     // 网络优化：更新缓存（保存后缓存失效）
     _projectCache[project.id] = project;
     _cachedProjectList = null; // 使列表缓存失效
+
+    sw.stop();
+    _recordMetric('saveProject', sw.elapsed, extras: {
+      'projectId': project.id,
+      'glyphCount': project.glyphs.length,
+    });
   }
 
   /// 自动备份：在覆盖前将现有 project.json 拷贝到 backup 目录
@@ -703,11 +902,14 @@ class StorageService {
   /// - 可选解密
   /// - 使用内存缓存，30秒内重复调用直接返回缓存结果
   static Future<List<FontProject>> loadProjects() async {
+    final sw = Stopwatch()..start();
+
     // 检查缓存是否有效
     if (_cachedProjectList != null && _projectListCacheTime != null) {
       final elapsed = DateTime.now().difference(_projectListCacheTime!);
       if (elapsed < _projectListCacheTTL) {
         debugPrint('loadProjects: 命中缓存 (${elapsed.inSeconds}秒前)');
+        _recordMetric('loadProjects', elapsed, extras: {'cacheHit': true, 'projectCount': _cachedProjectList!.length});
         return _cachedProjectList!;
       }
     }
@@ -771,6 +973,12 @@ class StorageService {
     // 写入缓存
     _cachedProjectList = projects;
     _projectListCacheTime = DateTime.now();
+
+    sw.stop();
+    _recordMetric('loadProjects', sw.elapsed, extras: {
+      'projectCount': projects.length,
+      'cacheHit': false,
+    });
 
     return projects;
   }

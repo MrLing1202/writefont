@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +22,221 @@ import 'services/recognition_service.dart';
 import 'services/image_processor.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
+
+// ═══════════════════════════════════════════════════════════
+// 分析功能：使用分析、性能分析、错误分析、用户行为分析
+// ═══════════════════════════════════════════════════════════
+
+/// 应用分析服务（轻量级，无需第三方依赖）
+///
+/// 功能：
+/// - 使用分析：记录页面访问、功能使用频率
+/// - 性能分析：记录启动时间、页面切换延迟
+/// - 错误分析：记录未捕获异常和用户操作上下文
+/// - 用户行为分析：记录操作路径和会话时长
+class AppAnalytics {
+  // 使用分析
+  static final Map<String, int> _pageViews = {};
+  static final Map<String, int> _featureUsage = {};
+
+  // 性能分析
+  static DateTime? _appStartTime;
+  static final List<Map<String, dynamic>> _performanceEvents = [];
+  static const int _maxPerfEvents = 200;
+
+  // 错误分析
+  static final List<Map<String, dynamic>> _errorEvents = [];
+  static const int _maxErrorEvents = 100;
+
+  // 用户行为分析
+  static final List<String> _actionPath = [];
+  static const int _maxActionPath = 50;
+  static DateTime? _sessionStartTime;
+  static int _sessionCount = 0;
+  static String? _currentPage;
+
+  /// 初始化分析（应用启动时调用）
+  static void init() {
+    _appStartTime = DateTime.now();
+    _sessionStartTime = DateTime.now();
+    _sessionCount++;
+    debugPrint('[Analytics] 会话开始 #$_sessionCount');
+  }
+
+  // ── 使用分析 ──
+
+  /// 记录页面访问
+  static void trackPageView(String pageName) {
+    _pageViews[pageName] = (_pageViews[pageName] ?? 0) + 1;
+    _currentPage = pageName;
+    _recordAction('page:$pageName');
+    debugPrint('[Analytics] 页面访问: $pageName (第${_pageViews[pageName]}次)');
+  }
+
+  /// 记录功能使用
+  static void trackFeature(String featureName) {
+    _featureUsage[featureName] = (_featureUsage[featureName] ?? 0) + 1;
+    _recordAction('feature:$featureName');
+    debugPrint('[Analytics] 功能使用: $featureName');
+  }
+
+  /// 获取使用分析报告
+  static Map<String, dynamic> getUsageReport() {
+    return {
+      'pageViews': Map<String, int>.from(_pageViews),
+      'featureUsage': Map<String, int>.from(_featureUsage),
+      'totalPageViews': _pageViews.values.fold(0, (a, b) => a + b),
+      'totalFeatureUsage': _featureUsage.values.fold(0, (a, b) => a + b),
+      'mostVisitedPage': _getMaxKey(_pageViews),
+      'mostUsedFeature': _getMaxKey(_featureUsage),
+    };
+  }
+
+  // ── 性能分析 ──
+
+  /// 记录性能事件
+  static void trackPerformance(String event, {Duration? duration, Map<String, dynamic>? metadata}) {
+    _performanceEvents.add({
+      'timestamp': DateTime.now().toIso8601String(),
+      'event': event,
+      'durationMs': duration?.inMicroseconds.toDouble().clamp(0, double.infinity) ?? 0,
+      if (metadata != null) ...metadata,
+    });
+    if (_performanceEvents.length > _maxPerfEvents) {
+      _performanceEvents.removeAt(0);
+    }
+  }
+
+  /// 记录页面切换延迟
+  static void trackPageTransition(String fromPage, String toPage, Duration duration) {
+    trackPerformance('page_transition', duration: duration, metadata: {
+      'from': fromPage,
+      'to': toPage,
+    });
+  }
+
+  /// 获取应用运行时长
+  static Duration? get uptime {
+    if (_appStartTime == null) return null;
+    return DateTime.now().difference(_appStartTime!);
+  }
+
+  /// 获取性能分析报告
+  static Map<String, dynamic> getPerformanceReport() {
+    final durations = _performanceEvents
+        .where((e) => (e['durationMs'] as double) > 0)
+        .map((e) => e['durationMs'] as double)
+        .toList();
+
+    double avgDuration = 0;
+    if (durations.isNotEmpty) {
+      avgDuration = durations.reduce((a, b) => a + b) / durations.length;
+    }
+
+    return {
+      'eventCount': _performanceEvents.length,
+      'avgDurationMs': avgDuration,
+      'uptime': uptime?.inSeconds,
+      'recentEvents': _performanceEvents.take(20).toList(),
+    };
+  }
+
+  // ── 错误分析 ──
+
+  /// 记录错误事件
+  static void trackError(String error, {String? context, StackTrace? stackTrace}) {
+    _errorEvents.add({
+      'timestamp': DateTime.now().toIso8601String(),
+      'error': error,
+      if (context != null) 'context': context,
+      'currentPage': _currentPage,
+      'lastActions': _actionPath.take(5).toList(),
+    });
+    if (_errorEvents.length > _maxErrorEvents) {
+      _errorEvents.removeAt(0);
+    }
+    debugPrint('[Analytics] 错误: $error${context != null ? ' ($context)' : ''}');
+  }
+
+  /// 获取错误分析报告
+  static Map<String, dynamic> getErrorReport() {
+    // 按错误类型分组
+    final errorTypes = <String, int>{};
+    for (final e in _errorEvents) {
+      final errorStr = e['error'] as String;
+      final type = errorStr.length > 50 ? errorStr.substring(0, 50) : errorStr;
+      errorTypes[type] = (errorTypes[type] ?? 0) + 1;
+    }
+
+    return {
+      'totalErrors': _errorEvents.length,
+      'errorTypes': errorTypes,
+      'recentErrors': _errorEvents.take(20).toList(),
+    };
+  }
+
+  // ── 用户行为分析 ──
+
+  /// 记录用户操作
+  static void _recordAction(String action) {
+    _actionPath.add(action);
+    if (_actionPath.length > _maxActionPath) {
+      _actionPath.removeAt(0);
+    }
+  }
+
+  /// 记录用户自定义操作
+  static void trackAction(String action) {
+    _recordAction(action);
+    debugPrint('[Analytics] 用户操作: $action');
+  }
+
+  /// 获取会话信息
+  static Map<String, dynamic> getSessionInfo() {
+    final sessionDuration = _sessionStartTime != null
+        ? DateTime.now().difference(_sessionStartTime!).inSeconds
+        : 0;
+
+    return {
+      'sessionCount': _sessionCount,
+      'sessionDurationSeconds': sessionDuration,
+      'currentPage': _currentPage,
+      'recentActions': List<String>.from(_actionPath),
+      'actionPathLength': _actionPath.length,
+    };
+  }
+
+  /// 获取完整分析报告（合并所有维度）
+  static Map<String, dynamic> getFullReport() {
+    return {
+      'reportTime': DateTime.now().toIso8601String(),
+      'session': getSessionInfo(),
+      'usage': getUsageReport(),
+      'performance': getPerformanceReport(),
+      'errors': getErrorReport(),
+    };
+  }
+
+  /// 导出分析数据为 JSON
+  static String exportAnalyticsData() {
+    return const JsonEncoder.withIndent('  ').convert(getFullReport());
+  }
+
+  /// 清除所有分析数据
+  static void clearAll() {
+    _pageViews.clear();
+    _featureUsage.clear();
+    _performanceEvents.clear();
+    _errorEvents.clear();
+    _actionPath.clear();
+  }
+
+  /// 辅助方法：获取 Map 中值最大的 key
+  static String? _getMaxKey(Map<String, int> map) {
+    if (map.isEmpty) return null;
+    return map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+  }
+}
 
 /// 应用主导航页面 - 包含底部导航栏和页面状态保持
 class MainNavigationPage extends StatefulWidget {
@@ -69,6 +285,8 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
+            final pages = ['home', 'my-fonts', 'writing-tips', 'settings'];
+            AppAnalytics.trackPageView(pages[index]);
             setState(() {
               _currentIndex = index;
             });
@@ -109,6 +327,14 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AppAnalytics.init(); // 初始化分析服务
+  FlutterError.onError = (details) {
+    AppAnalytics.trackError(
+      details.exceptionAsString(),
+      context: details.library,
+      stackTrace: details.stack,
+    );
+  };
   runApp(const WriteFontApp());
 }
 
@@ -204,6 +430,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       case AppLifecycleState.resumed:
         // 电池优化：应用回到前台时恢复状态
         _isAppInForeground = true;
+        AppAnalytics.trackFeature('app_resumed');
         break;
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
@@ -211,10 +438,12 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         _isAppInForeground = false;
         // 清理轮廓提取缓存，释放内存
         ImageProcessor.clearContourCache();
+        AppAnalytics.trackFeature('app_paused');
         break;
       case AppLifecycleState.detached:
         RecognitionService.instance.dispose();
         ImageProcessor.clearContourCache();
+        AppAnalytics.trackFeature('app_detached');
         break;
       case AppLifecycleState.hidden:
         break;
@@ -493,6 +722,8 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       themeMode: _themeMode,
       home: homeWidget,
       onGenerateRoute: (settings) {
+        // 分析：记录路由导航
+        AppAnalytics.trackPageView(settings.name ?? 'unknown');
         switch (settings.name) {
           case '/writing-tips':
             return MaterialPageRoute(builder: (_) => const WritingTipsScreen());
