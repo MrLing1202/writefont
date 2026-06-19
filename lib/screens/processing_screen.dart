@@ -8,6 +8,11 @@ import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
 import '../services/app_config_service.dart';
 import '../theme/app_theme.dart';
+import 'widgets/parameter_panel.dart';
+import 'widgets/processing_stats_bar.dart';
+import 'widgets/summary_panel.dart';
+import 'widgets/character_cell.dart';
+import 'widgets/edit_character_dialog.dart';
 
 /// 字符识别状态
 enum CellStatus { pending, recognizing, recognized, failed }
@@ -450,12 +455,27 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
           : Column(
               children: [
                 // 参数面板
-                _buildParameterPanel(colorScheme),
+                ParameterPanel(
+                  params: _params,
+                  onChanged: _onParamsChanged,
+                ),
 
                 const Divider(height: 1),
 
                 // 识别进度与统计栏
-                _buildStatsBar(colorScheme),
+                ProcessingStatsBar(
+                  charsetLength: widget.charset?.length,
+                  matchedCount: _charAssignments.length,
+                  cellCount: _processedCells.length,
+                  isRecognizing: _isRecognizing,
+                  isProcessing: _isProcessing,
+                  recognizedCount: _recognizedCount,
+                  totalCount: _totalCount,
+                  useCloudRecognition: _useCloudRecognition,
+                  highConfidenceCount: _highConfidenceCount,
+                  needConfirmCount: _needConfirmCount,
+                  selectedCount: _selectedCells.length,
+                ),
 
                 // 全选行
                 if (_processedCells.isNotEmpty)
@@ -543,13 +563,31 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
                           ),
                           itemCount: _processedCells.length,
                           itemBuilder: (context, index) {
-                            return _buildCharacterCell(index, colorScheme);
+                            return CharacterCell(
+                              index: index,
+                              imageBytes: _processedCells[index],
+                              isSelected: _selectedCells.contains(index),
+                              assignedChar: _charAssignments[index],
+                              status: _cellResults[index]?.status ?? CellStatus.pending,
+                              confidence: _cellResults[index]?.confidence ?? ConfidenceLevel.low,
+                              bounceController: _bounceControllers[index],
+                              onTap: () {
+                                setState(() {
+                                  if (_selectedCells.contains(index)) {
+                                    _selectedCells.remove(index);
+                                  } else {
+                                    _selectedCells.add(index);
+                                  }
+                                });
+                              },
+                              onLongPress: () => _showEditDialog(index),
+                            );
                           },
                         ),
                 ),
 
                 // 底部统计 + 完成汇总 / 按钮
-                _buildBottomSection(colorScheme),
+                _buildBottomBar(colorScheme),
               ],
             ),
     );
@@ -649,55 +687,47 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
   }
 
   /// 底部区域：完成汇总或操作按钮
-  Widget _buildBottomSection(ColorScheme colorScheme) {
-    return AnimatedBuilder(
-      animation: _celebrationAnimation,
-      builder: (context, child) {
-        // 庆祝渐变色
-        final celebrationColor = _showSummary
-            ? Color.lerp(
-                colorScheme.primaryContainer,
-                colorScheme.tertiaryContainer,
-                _celebrationAnimation.value,
-              )
-            : null;
-
-        return Container(
-          decoration: BoxDecoration(
-            color: celebrationColor ?? colorScheme.surface,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
-              ),
-            ],
+  Widget _buildBottomBar(ColorScheme colorScheme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
           ),
-          child: SafeArea(
-            child: _showSummary && !_isRecognizing
-                ? _buildSummaryPanel(colorScheme)
-                : Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _processedCells.isNotEmpty && !_isRecognizing
-                            ? _proceedToPreview
-                            : null,
-                        icon: const Icon(Icons.arrow_forward),
-                        label: Text(_isRecognizing ? '识别中...' : '生成字体预览'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
+        ],
+      ),
+      child: SafeArea(
+        child: _showSummary && !_isRecognizing
+            ? SummaryPanel(
+                totalCount: _totalCount,
+                recognizedSuccessCount: _recognizedSuccessCount,
+                needConfirmCount: _needConfirmCount,
+                onCheckEach: _proceedToEditor,
+                onContinue: _proceedToPreview,
+              )
+            : Padding(
+                padding: const EdgeInsets.all(16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _processedCells.isNotEmpty && !_isRecognizing
+                        ? _proceedToPreview
+                        : null,
+                    icon: const Icon(Icons.arrow_forward),
+                    label: Text(_isRecognizing ? '识别中...' : '生成字体预览'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
-          ),
-        );
-      },
+                ),
+              ),
+      ),
     );
   }
 
@@ -1151,102 +1181,29 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
 
   /// 弹出编辑对话框（带图片预览）
   void _showEditDialog(int index) {
-    final controller = TextEditingController(text: _charAssignments[index] ?? '');
     final result = _cellResults[index];
     final confidence = result?.confidence ?? ConfidenceLevel.low;
 
     showDialog(
       context: context,
       builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
-        return AlertDialog(
-          title: Row(
-            children: [
-              const Text('修正字符'),
-              const Spacer(),
-              // 置信度指示
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: confidence == ConfidenceLevel.high
-                      ? Colors.green.withValues(alpha: 0.1)
-                      : confidence == ConfidenceLevel.medium
-                          ? Colors.orange.withValues(alpha: 0.1)
-                          : Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: confidence == ConfidenceLevel.high
-                        ? Colors.green
-                        : confidence == ConfidenceLevel.medium
-                            ? Colors.orange
-                            : Colors.red,
-                  ),
-                ),
-                child: Text(
-                  confidence == ConfidenceLevel.high
-                      ? '高置信'
-                      : confidence == ConfidenceLevel.medium
-                          ? '中置信'
-                          : '低置信',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: confidence == ConfidenceLevel.high
-                        ? Colors.green
-                        : confidence == ConfidenceLevel.medium
-                            ? Colors.orange
-                            : Colors.red,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 原始裁切图片
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  border: Border.all(color: colorScheme.outlineVariant),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.memory(
-                    _processedCells[index],
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 编辑输入框
-              TextField(
-                controller: controller,
-                autofocus: true,
-                maxLength: 1,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                decoration: InputDecoration(
-                  labelText: '识别结果',
-                  hintText: '输入对应字符',
-                  border: const OutlineInputBorder(),
-                  counterText: '',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            // 跳过按钮
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('跳过'),
-            ),
-            // 正确按钮（确认当前识别结果）
-            if (_charAssignments[index] != null)
-              FilledButton.tonal(
-                onPressed: () {
-                  // 标记为高置信度
+        return EditCharacterDialog(
+          index: index,
+          imageBytes: _processedCells[index],
+          currentChar: _charAssignments[index],
+          confidence: confidence,
+          onConfirm: (text) {
+            setState(() {
+              _charAssignments[index] = text;
+              _cellResults[index] = CellResult(
+                character: text,
+                status: CellStatus.recognized,
+                confidence: ConfidenceLevel.high, // 用户手动修正 = 高置信
+              );
+            });
+          },
+          onMarkCorrect: _charAssignments[index] != null
+              ? () {
                   setState(() {
                     _cellResults[index] = CellResult(
                       character: _charAssignments[index],
@@ -1254,29 +1211,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> with TickerProvider
                       confidence: ConfidenceLevel.high,
                     );
                   });
-                  Navigator.pop(context);
-                },
-                child: const Text('正确'),
-              ),
-            // 确认修正
-            FilledButton(
-              onPressed: () {
-                final text = controller.text.trim();
-                if (text.isNotEmpty) {
-                  setState(() {
-                    _charAssignments[index] = text;
-                    _cellResults[index] = CellResult(
-                      character: text,
-                      status: CellStatus.recognized,
-                      confidence: ConfidenceLevel.high, // 用户手动修正 = 高置信
-                    );
-                  });
                 }
-                Navigator.pop(context);
-              },
-              child: const Text('确认'),
-            ),
-          ],
+              : null,
         );
       },
     );
