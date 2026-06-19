@@ -862,6 +862,387 @@ class _ProjectListScreenState extends State<ProjectListScreen>
     }
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 数据导出功能：CSV、JSON、PDF、Excel
+  // ═══════════════════════════════════════════════════════════
+
+  /// 导出项目列表为 CSV 格式
+  ///
+  /// 将当前筛选后的项目列表导出为 CSV 文件
+  /// 包含项目名称、字符数、完成度、创建时间、更新时间等字段
+  Future<void> _exportProjectsAsCsv() async {
+    try {
+      final projects = _filteredProjects;
+      if (projects.isEmpty) {
+        if (mounted) WFSnackBar.show(context, '没有可导出的项目');
+        return;
+      }
+
+      final buffer = StringBuffer();
+      // CSV 表头
+      buffer.writeln('项目名称,字符数,已编辑数,完成率(%),创建时间,更新时间');
+
+      for (final project in projects) {
+        final glyphCount = project.glyphs.length;
+        final editedCount = project.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final progress = glyphCount > 0
+            ? (editedCount / glyphCount * 100).toStringAsFixed(1)
+            : '0.0';
+
+        // CSV 字段转义（处理包含逗号的项目名称）
+        final safeName = project.name.contains(',')
+            ? '"${project.name}"'
+            : project.name;
+
+        buffer.writeln(
+          '$safeName,$glyphCount,$editedCount,$progress,'
+          '${project.createdAt.toIso8601String()},'
+          '${project.updatedAt.toIso8601String()}',
+        );
+      }
+
+      // 保存到临时文件
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'writefont_projects_$timestamp.csv';
+      final filePath = '${Directory.systemTemp.path}/$fileName';
+      final file = File(filePath);
+      // 添加 BOM 头以支持中文在 Excel 中正确显示
+      await file.writeAsString('\uFEFF${buffer.toString()}');
+
+      // 分享文件
+      await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目列表 CSV');
+
+      if (mounted) {
+        WFSnackBar.show(context, 'CSV 导出完成: ${projects.length} 个项目');
+      }
+      debugPrint('[ProjectListScreen] CSV 导出完成: $filePath');
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, 'CSV 导出失败: $e');
+      }
+      debugPrint('[ProjectListScreen] CSV 导出失败: $e');
+    }
+  }
+
+  /// 导出项目列表为 JSON 格式
+  ///
+  /// 将当前筛选后的项目列表导出为 JSON 文件
+  /// 包含完整的项目元数据（不含源图片二进制数据）
+  Future<void> _exportProjectsAsJson() async {
+    try {
+      final projects = _filteredProjects;
+      if (projects.isEmpty) {
+        if (mounted) WFSnackBar.show(context, '没有可导出的项目');
+        return;
+      }
+
+      final exportData = <String, dynamic>{
+        'exportDate': DateTime.now().toIso8601String(),
+        'appVersion': 'v2.13.0',
+        'format': 'WriteFont Project List Export',
+        'projectCount': projects.length,
+        'projects': projects.map((p) {
+          final glyphCount = p.glyphs.length;
+          final editedCount = p.glyphs.values
+              .where((g) => g.contours.isNotEmpty)
+              .length;
+          return {
+            'id': p.id,
+            'name': p.name,
+            'glyphCount': glyphCount,
+            'editedCount': editedCount,
+            'progress': glyphCount > 0
+                ? (editedCount / glyphCount * 100).toStringAsFixed(1)
+                : '0.0',
+            'createdAt': p.createdAt.toIso8601String(),
+            'updatedAt': p.updatedAt.toIso8601String(),
+          };
+        }).toList(),
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'writefont_projects_$timestamp.json';
+      final filePath = '${Directory.systemTemp.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsString(jsonString);
+
+      await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目列表 JSON');
+
+      if (mounted) {
+        WFSnackBar.show(context, 'JSON 导出完成: ${projects.length} 个项目');
+      }
+      debugPrint('[ProjectListScreen] JSON 导出完成: $filePath');
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, 'JSON 导出失败: $e');
+      }
+      debugPrint('[ProjectListScreen] JSON 导出失败: $e');
+    }
+  }
+
+  /// 导出项目列表为 PDF 格式（文本形式）
+  ///
+  /// 由于无 PDF 生成依赖，使用格式化文本替代
+  /// 包含项目概览和详情表格
+  Future<void> _exportProjectsAsPdf() async {
+    try {
+      final projects = _filteredProjects;
+      if (projects.isEmpty) {
+        if (mounted) WFSnackBar.show(context, '没有可导出的项目');
+        return;
+      }
+
+      final buffer = StringBuffer();
+      buffer.writeln('╔══════════════════════════════════════════════════════╗');
+      buffer.writeln('║            WriteFont 项目报告 (PDF 格式)            ║');
+      buffer.writeln('║            生成时间: ${DateTime.now().toLocal()}            ║');
+      buffer.writeln('╚══════════════════════════════════════════════════════╝');
+      buffer.writeln();
+
+      // 统计概览
+      int totalGlyphs = 0;
+      int totalEdited = 0;
+      for (final p in projects) {
+        totalGlyphs += p.glyphs.length;
+        totalEdited += p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+      }
+
+      buffer.writeln('┌─ 项目概览 ─────────────────────────────────────────┐');
+      buffer.writeln('│  总项目数: ${projects.length}');
+      buffer.writeln('│  总字符数: $totalGlyphs');
+      buffer.writeln('│  已编辑数: $totalEdited');
+      buffer.writeln('│  完成率: ${totalGlyphs > 0 ? (totalEdited / totalGlyphs * 100).toStringAsFixed(1) : 0}%');
+      buffer.writeln('└─────────────────────────────────────────────────────┘');
+      buffer.writeln();
+
+      // 项目详情表格
+      buffer.writeln('┌─ 项目详情 ─────────────────────────────────────────┐');
+      buffer.writeln('│  序号 │ 项目名称          │ 字符 │ 编辑 │ 进度   │');
+      buffer.writeln('├───────┼───────────────────┼──────┼──────┼────────┤');
+
+      for (int i = 0; i < projects.length; i++) {
+        final p = projects[i];
+        final glyphCount = p.glyphs.length;
+        final editedCount = p.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final progress = glyphCount > 0
+            ? '${(editedCount / glyphCount * 100).toStringAsFixed(0)}%'
+            : '0%';
+        final name = p.name.length > 16
+            ? '${p.name.substring(0, 16)}..'
+            : p.name.padRight(18);
+
+        buffer.writeln('│  ${(i + 1).toString().padLeft(4)} │ $name │ ${glyphCount.toString().padLeft(4)} │ ${editedCount.toString().padLeft(4)} │ ${progress.padLeft(6)} │');
+      }
+
+      buffer.writeln('└───────┴───────────────────┴──────┴──────┴────────┘');
+      buffer.writeln();
+      buffer.writeln('报告结束 - WriteFont v2.13.0');
+
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'writefont_report_$timestamp.txt';
+      final filePath = '${Directory.systemTemp.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsString(buffer.toString());
+
+      await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目报告');
+
+      if (mounted) {
+        WFSnackBar.show(context, '报告导出完成: ${projects.length} 个项目');
+      }
+      debugPrint('[ProjectListScreen] PDF 报告导出完成: $filePath');
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '报告导出失败: $e');
+      }
+      debugPrint('[ProjectListScreen] PDF 报告导出失败: $e');
+    }
+  }
+
+  /// 导出项目列表为 Excel 格式（TSV 格式，兼容 Excel 打开）
+  ///
+  /// 使用制表符分隔，可直接在 Excel 中打开
+  /// 包含多个工作表风格的数据分区
+  Future<void> _exportProjectsAsExcel() async {
+    try {
+      final projects = _filteredProjects;
+      if (projects.isEmpty) {
+        if (mounted) WFSnackBar.show(context, '没有可导出的项目');
+        return;
+      }
+
+      final buffer = StringBuffer();
+
+      // Sheet 1: 项目列表
+      buffer.writeln('WriteFont 项目数据导出');
+      buffer.writeln('导出时间:\t${DateTime.now().toLocal()}');
+      buffer.writeln();
+
+      // 表头
+      buffer.writeln('项目名称\t项目ID\t字符数\t已编辑数\t完成率(%)\t创建时间\t更新时间\t状态');
+
+      for (final project in projects) {
+        final glyphCount = project.glyphs.length;
+        final editedCount = project.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final progress = glyphCount > 0
+            ? (editedCount / glyphCount * 100).toStringAsFixed(1)
+            : '0.0';
+
+        String status;
+        if (glyphCount == 0 || editedCount == 0) {
+          status = '未开始';
+        } else if (editedCount >= glyphCount * 0.8) {
+          status = '已完成';
+        } else {
+          status = '进行中';
+        }
+
+        buffer.writeln(
+          '${project.name}\t${project.id}\t$glyphCount\t$editedCount\t$progress\t'
+          '${project.createdAt.toIso8601String()}\t'
+          '${project.updatedAt.toIso8601String()}\t$status',
+        );
+      }
+
+      buffer.writeln();
+
+      // Sheet 2: 统计汇总
+      buffer.writeln('统计汇总');
+      buffer.writeln('指标\t数值');
+
+      int totalGlyphs = 0;
+      int totalEdited = 0;
+      int completedCount = 0;
+      int inProgressCount = 0;
+      int emptyCount = 0;
+
+      for (final p in projects) {
+        totalGlyphs += p.glyphs.length;
+        totalEdited += p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+        final edited = p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+        if (p.glyphs.length == 0 || edited == 0) {
+          emptyCount++;
+        } else if (edited >= p.glyphs.length * 0.8) {
+          completedCount++;
+        } else {
+          inProgressCount++;
+        }
+      }
+
+      buffer.writeln('总项目数\t${projects.length}');
+      buffer.writeln('总字符数\t$totalGlyphs');
+      buffer.writeln('已编辑字符\t$totalEdited');
+      buffer.writeln('完成率\t${totalGlyphs > 0 ? (totalEdited / totalGlyphs * 100).toStringAsFixed(1) : 0}%');
+      buffer.writeln('已完成项目\t$completedCount');
+      buffer.writeln('进行中项目\t$inProgressCount');
+      buffer.writeln('未开始项目\t$emptyCount');
+
+      // 保存为 .xls 扩展名，Excel 可直接打开 TSV
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'writefont_data_$timestamp.xls';
+      final filePath = '${Directory.systemTemp.path}/$fileName';
+      final file = File(filePath);
+      // 添加 BOM 头支持中文
+      await file.writeAsString('\uFEFF${buffer.toString()}');
+
+      await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目数据 Excel');
+
+      if (mounted) {
+        WFSnackBar.show(context, 'Excel 导出完成: ${projects.length} 个项目');
+      }
+      debugPrint('[ProjectListScreen] Excel 导出完成: $filePath');
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, 'Excel 导出失败: $e');
+      }
+      debugPrint('[ProjectListScreen] Excel 导出失败: $e');
+    }
+  }
+
+  /// 显示数据导出选项面板
+  ///
+  /// 提供 CSV、JSON、PDF、Excel 四种导出格式选择
+  void _showExportOptionsSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '数据导出',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: WFColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '导出 ${_filteredProjects.length} 个项目的数据',
+                style: const TextStyle(fontSize: 14, color: WFColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              // CSV 导出
+              ListTile(
+                leading: const Icon(Icons.table_chart, color: WFColors.success),
+                title: const Text('CSV 格式'),
+                subtitle: const Text('适合在表格软件中打开'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportProjectsAsCsv();
+                },
+              ),
+              // JSON 导出
+              ListTile(
+                leading: const Icon(Icons.code, color: WFColors.info),
+                title: const Text('JSON 格式'),
+                subtitle: const Text('适合程序化处理和备份'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportProjectsAsJson();
+                },
+              ),
+              // PDF 导出
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf, color: WFColors.error),
+                title: const Text('PDF 报告'),
+                subtitle: const Text('生成格式化的项目报告'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportProjectsAsPdf();
+                },
+              ),
+              // Excel 导出
+              ListTile(
+                leading: const Icon(Icons.grid_on, color: WFColors.warning),
+                title: const Text('Excel 格式'),
+                subtitle: const Text('包含项目列表和统计汇总'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportProjectsAsExcel();
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 重命名项目
   Future<void> _renameProject(FontProject project) async {
     final controller = TextEditingController(text: project.name);
@@ -1272,6 +1653,13 @@ class _ProjectListScreenState extends State<ProjectListScreen>
             icon: const Icon(Icons.file_upload),
             tooltip: '导入备份',
           ),
+          // 数据导出按钮
+          if (_projects.isNotEmpty && !_isMultiSelectMode)
+            IconButton(
+              onPressed: _showExportOptionsSheet,
+              icon: const Icon(Icons.file_download),
+              tooltip: '数据导出',
+            ),
           // 排序按钮
           IconButton(
             onPressed: _showSortSheet,

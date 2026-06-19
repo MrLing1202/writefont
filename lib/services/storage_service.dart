@@ -1660,4 +1660,212 @@ class StorageService {
       return r.scheduledTime!.isAfter(now) && r.scheduledTime!.isBefore(tomorrow);
     }).toList();
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 统计图表数据支持：柱状图、折线图、饼图、散点图
+  // ═══════════════════════════════════════════════════════════
+
+  /// 生成柱状图数据
+  ///
+  /// 根据项目列表生成字符数分布的柱状图数据
+  /// 返回 Map 包含:
+  /// - 'labels': 标签列表 (List<String>)
+  /// - 'values': 值列表 (List<double>)
+  /// - 'maxValue': 最大值 (double)
+  static Map<String, dynamic> generateBarChartData(List<FontProject> projects) {
+    try {
+      if (projects.isEmpty) {
+        return {'labels': <String>[], 'values': <double>[], 'maxValue': 0.0};
+      }
+
+      final labels = <String>[];
+      final values = <double>[];
+
+      for (final project in projects.take(10)) {
+        final editedCount = project.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final name = project.name.length > 6
+            ? '${project.name.substring(0, 6)}..'
+            : project.name;
+        labels.add(name);
+        values.add(editedCount.toDouble());
+      }
+
+      final maxValue = values.isEmpty
+          ? 1.0
+          : values.reduce((a, b) => a > b ? a : b).clamp(1.0, double.infinity);
+
+      debugPrint('[StorageService] 生成柱状图数据: ${labels.length} 项');
+      return {'labels': labels, 'values': values, 'maxValue': maxValue};
+    } catch (e) {
+      debugPrint('[StorageService] 生成柱状图数据失败: $e');
+      return {'labels': <String>[], 'values': <double>[], 'maxValue': 0.0};
+    }
+  }
+
+  /// 生成折线图数据
+  ///
+  /// 根据项目更新时间生成时间序列折线图数据
+  /// [days] 统计天数，默认7天
+  /// 返回 Map 包含:
+  /// - 'labels': 日期标签列表 (List<String>)
+  /// - 'values': 每日更新数 (List<double>)
+  /// - 'maxValue': 最大值 (double)
+  static Map<String, dynamic> generateLineChartData(List<FontProject> projects, {int days = 7}) {
+    try {
+      final now = DateTime.now();
+      final labels = <String>[];
+      final values = <double>[];
+
+      for (int i = days - 1; i >= 0; i--) {
+        final day = now.subtract(Duration(days: i));
+        final count = projects.where((p) {
+          return p.updatedAt.year == day.year &&
+              p.updatedAt.month == day.month &&
+              p.updatedAt.day == day.day;
+        }).length;
+        labels.add('${day.month}/${day.day}');
+        values.add(count.toDouble());
+      }
+
+      final maxValue = values.isEmpty
+          ? 1.0
+          : values.reduce((a, b) => a > b ? a : b).clamp(1.0, double.infinity);
+
+      debugPrint('[StorageService] 生成折线图数据: $days 天');
+      return {'labels': labels, 'values': values, 'maxValue': maxValue};
+    } catch (e) {
+      debugPrint('[StorageService] 生成折线图数据失败: $e');
+      return {'labels': <String>[], 'values': <double>[], 'maxValue': 0.0};
+    }
+  }
+
+  /// 生成饼图数据
+  ///
+  /// 根据项目状态分类生成饼图数据
+  /// 返回 Map 包含:
+  /// - 'labels': 分类标签列表 (List<String>)
+  /// - 'values': 各分类数量 (List<double>)
+  /// - 'colors': 各分类颜色 (List<int> - ARGB)
+  static Map<String, dynamic> generatePieChartData(List<FontProject> projects) {
+    try {
+      int completed = 0;
+      int inProgress = 0;
+      int empty = 0;
+
+      for (final project in projects) {
+        final editedCount = project.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final total = project.glyphs.length;
+
+        if (total == 0 || editedCount == 0) {
+          empty++;
+        } else if (editedCount >= total * 0.8) {
+          completed++;
+        } else {
+          inProgress++;
+        }
+      }
+
+      final labels = ['已完成', '进行中', '未开始'];
+      final values = [completed.toDouble(), inProgress.toDouble(), empty.toDouble()];
+      final colors = [0xFF4CAF50, 0xFF2196F3, 0xFF9E9E9E]; // green, blue, grey
+
+      debugPrint('[StorageService] 生成饼图数据: 完成$completed, 进行中$inProgress, 未开始$empty');
+      return {'labels': labels, 'values': values, 'colors': colors};
+    } catch (e) {
+      debugPrint('[StorageService] 生成饼图数据失败: $e');
+      return {
+        'labels': ['已完成', '进行中', '未开始'],
+        'values': [0.0, 0.0, 0.0],
+        'colors': [0xFF4CAF50, 0xFF2196F3, 0xFF9E9E9E],
+      };
+    }
+  }
+
+  /// 生成散点图数据
+  ///
+  /// 根据项目属性生成散点图数据（X轴: 字符数, Y轴: 完成度）
+  /// 返回 Map 包含:
+  /// - 'points': 散点列表 (List<Map<String, double>>) 每个包含 {'x': 0.0-1.0, 'y': 0.0-1.0}
+  /// - 'xLabel': X轴标签
+  /// - 'yLabel': Y轴标签
+  static Map<String, dynamic> generateScatterPlotData(List<FontProject> projects) {
+    try {
+      if (projects.isEmpty) {
+        return {
+          'points': <Map<String, double>>[],
+          'xLabel': '字符数',
+          'yLabel': '完成度',
+        };
+      }
+
+      final maxChars = projects
+          .map((p) => p.glyphs.length)
+          .reduce((a, b) => a > b ? a : b)
+          .clamp(1, 9999);
+
+      final points = projects.take(20).map((p) {
+        final charCount = p.glyphs.length;
+        final editedCount = p.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final progress = charCount > 0 ? editedCount / charCount : 0.0;
+
+        return {
+          'x': charCount / maxChars,
+          'y': progress,
+        };
+      }).toList();
+
+      debugPrint('[StorageService] 生成散点图数据: ${points.length} 个点');
+      return {
+        'points': points,
+        'xLabel': '字符数',
+        'yLabel': '完成度',
+      };
+    } catch (e) {
+      debugPrint('[StorageService] 生成散点图数据失败: $e');
+      return {
+        'points': <Map<String, double>>[],
+        'xLabel': '字符数',
+        'yLabel': '完成度',
+      };
+    }
+  }
+
+  /// 获取综合统计数据
+  ///
+  /// 聚合所有图表数据，便于一次性获取全部统计信息
+  static Future<Map<String, dynamic>> getComprehensiveStats() async {
+    try {
+      final projects = await loadProjects();
+
+      return {
+        'projectCount': projects.length,
+        'barChart': generateBarChartData(projects),
+        'lineChart': generateLineChartData(projects),
+        'pieChart': generatePieChartData(projects),
+        'scatterPlot': generateScatterPlotData(projects),
+        'totalGlyphs': projects.fold(0, (sum, p) => sum + p.glyphs.length),
+        'totalEdited': projects.fold(0, (sum, p) =>
+            sum + p.glyphs.values.where((g) => g.contours.isNotEmpty).length),
+        'generatedAt': DateTime.now().toIso8601String(),
+      };
+    } catch (e) {
+      debugPrint('[StorageService] 获取综合统计数据失败: $e');
+      return {
+        'projectCount': 0,
+        'barChart': generateBarChartData([]),
+        'lineChart': generateLineChartData([]),
+        'pieChart': generatePieChartData([]),
+        'scatterPlot': generateScatterPlotData([]),
+        'totalGlyphs': 0,
+        'totalEdited': 0,
+        'generatedAt': DateTime.now().toIso8601String(),
+      };
+    }
+  }
 }

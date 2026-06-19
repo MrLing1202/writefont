@@ -21,6 +21,7 @@ import 'screens/settings_screen.dart';
 import 'services/app_config_service.dart';
 import 'services/recognition_service.dart';
 import 'services/image_processor.dart';
+import 'services/storage_service.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
 
@@ -320,6 +321,7 @@ class ProjectCategoryData {
 /// - 手动分类（用户自定义分类）
 /// - 分类统计（各类别项目数量和进度）
 /// - 分类管理（增删改查分类）
+/// - 报告生成（项目报告、使用报告、性能报告、错误报告）
 class CategoryService {
   static final CategoryService _instance = CategoryService._();
   static CategoryService get instance => _instance;
@@ -565,6 +567,256 @@ class CategoryService {
       final autoCategories = autoClassify(project);
       return autoCategories.contains(category);
     }).toList();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 报告生成功能：项目报告、使用报告、性能报告、错误报告
+  // ═══════════════════════════════════════════════════════════
+
+  /// 生成项目报告
+  ///
+  /// 包含项目概览、字符统计、进度分布等信息
+  /// [projects] 项目列表
+  /// 返回格式化的报告文本
+  String generateProjectReport(List<dynamic> projects) {
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 项目报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      // 项目概览
+      buffer.writeln('【项目概览】');
+      buffer.writeln('  总项目数: ${projects.length}');
+
+      int totalGlyphs = 0;
+      int totalEdited = 0;
+      int completedCount = 0;
+      int inProgressCount = 0;
+      int emptyCount = 0;
+
+      for (final project in projects) {
+        final glyphCount = project.glyphs.length;
+        final editedCount = project.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        totalGlyphs += glyphCount;
+        totalEdited += editedCount;
+
+        if (glyphCount == 0 || editedCount == 0) {
+          emptyCount++;
+        } else if (editedCount >= glyphCount * 0.8) {
+          completedCount++;
+        } else {
+          inProgressCount++;
+        }
+      }
+
+      buffer.writeln('  总字符数: $totalGlyphs');
+      buffer.writeln('  已编辑字符: $totalEdited');
+      buffer.writeln('  完成率: ${totalGlyphs > 0 ? (totalEdited / totalGlyphs * 100).toStringAsFixed(1) : 0}%');
+      buffer.writeln();
+
+      // 进度分布
+      buffer.writeln('【进度分布】');
+      buffer.writeln('  已完成: $completedCount 个项目');
+      buffer.writeln('  进行中: $inProgressCount 个项目');
+      buffer.writeln('  未开始: $emptyCount 个项目');
+      buffer.writeln();
+
+      // 各项目详情
+      buffer.writeln('【项目详情】');
+      for (int i = 0; i < projects.length; i++) {
+        final project = projects[i];
+        final glyphCount = project.glyphs.length;
+        final editedCount = project.glyphs.values
+            .where((g) => g.contours.isNotEmpty)
+            .length;
+        final progress = glyphCount > 0 ? (editedCount / glyphCount * 100).toStringAsFixed(1) : '0.0';
+        buffer.writeln('  ${i + 1}. ${project.name}');
+        buffer.writeln('     字符数: $glyphCount | 已编辑: $editedCount | 进度: $progress%');
+        buffer.writeln('     创建: ${project.createdAt.toLocal()}');
+        buffer.writeln('     更新: ${project.updatedAt.toLocal()}');
+      }
+
+      buffer.writeln();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      debugPrint('[CategoryService] 项目报告生成完成: ${projects.length} 个项目');
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[CategoryService] 生成项目报告失败: $e');
+      return '报告生成失败: $e';
+    }
+  }
+
+  /// 生成使用报告
+  ///
+  /// 包含功能使用频率、页面访问统计等信息
+  /// 返回格式化的报告文本
+  String generateUsageReport() {
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 使用报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      // 获取分析数据
+      final analyticsReport = AppAnalytics.getUsageReport();
+
+      buffer.writeln('【功能使用统计】');
+      final featureUsage = analyticsReport['featureUsage'] as Map<String, dynamic>? ?? {};
+      if (featureUsage.isEmpty) {
+        buffer.writeln('  暂无功能使用数据');
+      } else {
+        final sortedFeatures = featureUsage.entries.toList()
+          ..sort((a, b) => (b.value as int).compareTo(a.value as int));
+        for (final entry in sortedFeatures.take(10)) {
+          buffer.writeln('  ${entry.key}: ${entry.value} 次');
+        }
+      }
+      buffer.writeln();
+
+      buffer.writeln('【页面访问统计】');
+      final pageViews = analyticsReport['pageViews'] as Map<String, dynamic>? ?? {};
+      if (pageViews.isEmpty) {
+        buffer.writeln('  暂无页面访问数据');
+      } else {
+        final sortedPages = pageViews.entries.toList()
+          ..sort((a, b) => (b.value as int).compareTo(a.value as int));
+        for (final entry in sortedPages.take(10)) {
+          buffer.writeln('  ${entry.key}: ${entry.value} 次');
+        }
+      }
+      buffer.writeln();
+
+      buffer.writeln('【会话信息】');
+      buffer.writeln('  会话次数: ${analyticsReport['sessionCount'] ?? 0}');
+      buffer.writeln('  当前页面: ${analyticsReport['currentPage'] ?? '未知'}');
+
+      buffer.writeln();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      debugPrint('[CategoryService] 使用报告生成完成');
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[CategoryService] 生成使用报告失败: $e');
+      return '报告生成失败: $e';
+    }
+  }
+
+  /// 生成性能报告
+  ///
+  /// 包含应用启动时间、页面切换延迟、存储性能等信息
+  /// 返回格式化的报告文本
+  String generatePerformanceReport() {
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 性能报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      // 应用运行时间
+      final analyticsReport = AppAnalytics.getUsageReport();
+      final uptimeMinutes = analyticsReport['uptimeMinutes'] as double? ?? 0.0;
+
+      buffer.writeln('【应用运行信息】');
+      buffer.writeln('  运行时长: ${uptimeMinutes.toStringAsFixed(1)} 分钟');
+      buffer.writeln('  会话次数: ${analyticsReport['sessionCount'] ?? 0}');
+      buffer.writeln();
+
+      // 性能事件统计
+      final perfEvents = analyticsReport['performanceEvents'] as List<dynamic>? ?? [];
+      buffer.writeln('【性能事件统计】');
+      buffer.writeln('  记录事件数: ${perfEvents.length}');
+      if (perfEvents.isNotEmpty) {
+        final recentEvents = perfEvents.take(5);
+        buffer.writeln('  最近事件:');
+        for (final event in recentEvents) {
+          final eventMap = event as Map<String, dynamic>;
+          buffer.writeln('    - ${eventMap['event']}: ${eventMap['durationMs']?.toStringAsFixed(1) ?? 'N/A'} ms');
+        }
+      }
+      buffer.writeln();
+
+      // 存储性能指标
+      buffer.writeln('【存储性能指标】');
+      final metrics = StorageService.getPerformanceMetrics();
+      buffer.writeln('  记录操作数: ${metrics.length}');
+      if (metrics.isNotEmpty) {
+        final avgDuration = metrics.fold(0.0, (sum, m) => sum + (m['elapsedMs'] as double? ?? 0.0)) / metrics.length;
+        buffer.writeln('  平均操作耗时: ${avgDuration.toStringAsFixed(2)} ms');
+      }
+
+      buffer.writeln();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      debugPrint('[CategoryService] 性能报告生成完成');
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[CategoryService] 生成性能报告失败: $e');
+      return '报告生成失败: $e';
+    }
+  }
+
+  /// 生成错误报告
+  ///
+  /// 包含错误事件统计、最近错误详情等信息
+  /// 返回格式化的报告文本
+  String generateErrorReport() {
+    try {
+      final buffer = StringBuffer();
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('        WriteFont 错误报告');
+      buffer.writeln('        生成时间: ${DateTime.now().toLocal()}');
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln();
+
+      final analyticsReport = AppAnalytics.getUsageReport();
+      final errorEvents = analyticsReport['errorEvents'] as List<dynamic>? ?? [];
+
+      buffer.writeln('【错误统计】');
+      buffer.writeln('  错误总数: ${errorEvents.length}');
+      buffer.writeln();
+
+      if (errorEvents.isNotEmpty) {
+        buffer.writeln('【最近错误详情】');
+        final recentErrors = errorEvents.take(10);
+        int index = 1;
+        for (final error in recentErrors) {
+          final errorMap = error as Map<String, dynamic>;
+          buffer.writeln('  $index. ${errorMap['error'] ?? '未知错误'}');
+          buffer.writeln('     时间: ${errorMap['timestamp'] ?? 'N/A'}');
+          buffer.writeln('     上下文: ${errorMap['context'] ?? '无'}');
+          buffer.writeln();
+          index++;
+        }
+      } else {
+        buffer.writeln('  无错误记录 ✓');
+      }
+
+      buffer.writeln('═══════════════════════════════════════');
+      buffer.writeln('              报告结束');
+      buffer.writeln('═══════════════════════════════════════');
+
+      debugPrint('[CategoryService] 错误报告生成完成: ${errorEvents.length} 个错误');
+      return buffer.toString();
+    } catch (e) {
+      debugPrint('[CategoryService] 生成错误报告失败: $e');
+      return '报告生成失败: $e';
+    }
   }
 }
 
