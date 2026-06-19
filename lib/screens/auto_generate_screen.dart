@@ -162,8 +162,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         final mapped = mapProcessingError(e.toString());
         setState(() {
           _hasError = true;
-          _errorMessage = mapped['message'];
-          _status = mapped['status'];
+          _errorMessage = mapped['message'] ?? '未知错误';
+          _status = mapped['status'] ?? '处理失败';
         });
       }
     } finally {
