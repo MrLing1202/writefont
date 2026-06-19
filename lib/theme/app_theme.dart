@@ -1,8 +1,130 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ═══════════════════════════════════════════════════════════
 // 统一设计系统 — 手迹造字 App
 // ═══════════════════════════════════════════════════════════
+
+/// 主题配置服务 - 管理主题自定义设置
+class ThemeConfigService extends ChangeNotifier {
+  static const String _keyThemeColor = 'theme_color';
+  static const String _keyFontSize = 'font_size';
+  static const String _keyBorderRadius = 'border_radius';
+
+  static ThemeConfigService? _instance;
+  static ThemeConfigService get instance => _instance ??= ThemeConfigService._();
+  ThemeConfigService._();
+
+  /// 主题色索引
+  int _themeColorIndex = 0;
+  int get themeColorIndex => _themeColorIndex;
+
+  /// 字体大小缩放因子 (0.8 - 1.2)
+  double _fontScale = 1.0;
+  double get fontScale => _fontScale;
+
+  /// 圆角大小 (8.0 - 20.0)
+  double _borderRadius = 12.0;
+  double get borderRadius => _borderRadius;
+
+  /// 预设主题色列表
+  static const List<Color> themeColors = [
+    Color(0xFF2C3E50), // 深墨蓝（默认）
+    Color(0xFF8E44AD), // 紫色
+    Color(0xFF2980B9), // 蓝色
+    Color(0xFF27AE60), // 绿色
+    Color(0xFFD35400), // 橙色
+    Color(0xFFC0392B), // 红色
+    Color(0xFF16A085), // 青色
+    Color(0xFFF39C12), // 黄色
+  ];
+
+  /// 主题色名称
+  static const List<String> themeColorNames = [
+    '深墨蓝',
+    '紫色',
+    '蓝色',
+    '绿色',
+    '橙色',
+    '红色',
+    '青色',
+    '黄色',
+  ];
+
+  /// 获取当前主题色
+  Color get currentThemeColor => themeColors[_themeColorIndex];
+
+  /// 初始化配置
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _themeColorIndex = prefs.getInt(_keyThemeColor) ?? 0;
+      _fontScale = prefs.getDouble(_keyFontSize) ?? 1.0;
+      _borderRadius = prefs.getDouble(_keyBorderRadius) ?? 12.0;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('加载主题配置失败: $e');
+    }
+  }
+
+  /// 设置主题色
+  Future<void> setThemeColor(int index) async {
+    if (index < 0 || index >= themeColors.length) return;
+    if (_themeColorIndex == index) return;
+    _themeColorIndex = index;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_keyThemeColor, index);
+    } catch (e) {
+      debugPrint('保存主题色失败: $e');
+    }
+  }
+
+  /// 设置字体大小缩放
+  Future<void> setFontScale(double scale) async {
+    final clampedScale = scale.clamp(0.8, 1.2);
+    if (_fontScale == clampedScale) return;
+    _fontScale = clampedScale;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_keyFontSize, clampedScale);
+    } catch (e) {
+      debugPrint('保存字体大小失败: $e');
+    }
+  }
+
+  /// 设置圆角大小
+  Future<void> setBorderRadius(double radius) async {
+    final clampedRadius = radius.clamp(8.0, 20.0);
+    if (_borderRadius == clampedRadius) return;
+    _borderRadius = clampedRadius;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_keyBorderRadius, clampedRadius);
+    } catch (e) {
+      debugPrint('保存圆角大小失败: $e');
+    }
+  }
+
+  /// 重置为默认配置
+  Future<void> resetToDefault() async {
+    _themeColorIndex = 0;
+    _fontScale = 1.0;
+    _borderRadius = 12.0;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyThemeColor);
+      await prefs.remove(_keyFontSize);
+      await prefs.remove(_keyBorderRadius);
+    } catch (e) {
+      debugPrint('重置主题配置失败: $e');
+    }
+  }
+}
 
 /// 统一色彩方案
 class WFColors {

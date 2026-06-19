@@ -21,6 +21,91 @@ import 'services/recognition_service.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
 
+/// 应用主导航页面 - 包含底部导航栏和页面状态保持
+class MainNavigationPage extends StatefulWidget {
+  final VoidCallback? onThemeChanged;
+  
+  const MainNavigationPage({super.key, this.onThemeChanged});
+  
+  @override
+  State<MainNavigationPage> createState() => _MainNavigationPageState();
+}
+
+class _MainNavigationPageState extends State<MainNavigationPage> {
+  int _currentIndex = 0;
+  late final List<Widget> _pages;
+  
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      HomeScreen(onThemeChanged: widget.onThemeChanged),
+      const ProjectListScreen(),
+      const WritingTipsScreen(),
+      SettingsScreen(onThemeChanged: widget.onThemeChanged),
+    ];
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          selectedItemColor: Theme.of(context).primaryColor,
+          unselectedItemColor: WFColors.textSecondary,
+          selectedFontSize: 12,
+          unselectedFontSize: 10,
+          items: [
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.home_outlined),
+              activeIcon: const Icon(Icons.home),
+              label: l10n.appName,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.folder_outlined),
+              activeIcon: const Icon(Icons.folder),
+              label: l10n.myFonts,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.tips_and_updates_outlined),
+              activeIcon: const Icon(Icons.tips_and_updates),
+              label: l10n.writingTips,
+            ),
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.settings_outlined),
+              activeIcon: const Icon(Icons.settings),
+              label: l10n.settings,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const WriteFontApp());
@@ -38,6 +123,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   bool _onboardingSeen = false;
   bool _onboardingChecked = false;
   Locale _locale = const Locale('zh');
+  bool _useBottomNav = true; // 是否使用底部导航栏
 
   /// SharedPreferences 缓存，避免重复同步 I/O
   static SharedPreferences? _prefsCache;
@@ -59,6 +145,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     _loadThemeMode();
     _loadLocale();
     _checkOnboarding();
+    _loadNavigationPreference();
     // 3秒兜底：如果 _checkOnboarding 还没完成，强制标记为已检查，避免永久 loading
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted && !_onboardingChecked) {
@@ -67,6 +154,18 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         });
       }
     });
+  }
+
+  /// 加载导航偏好设置
+  Future<void> _loadNavigationPreference() async {
+    try {
+      final prefs = await getPrefs();
+      if (mounted) {
+        setState(() {
+          _useBottomNav = prefs.getBool('use_bottom_nav') ?? true;
+        });
+      }
+    } catch (_) {}
   }
 
   /// 检查是否已看过新手引导
@@ -351,7 +450,9 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     } else if (!_onboardingSeen) {
       homeWidget = const OnboardingScreen();
     } else {
-      homeWidget = HomeScreen(onThemeChanged: () => _loadThemeMode());
+      homeWidget = _useBottomNav 
+        ? MainNavigationPage(onThemeChanged: () => _loadThemeMode())
+        : HomeScreen(onThemeChanged: () => _loadThemeMode());
     }
 
     return MaterialApp(
