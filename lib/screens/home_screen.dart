@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../generated/l10n/app_localizations.dart';
 import '../models/project.dart';
 import '../theme/app_theme.dart';
 import 'font_preview_screen.dart';
@@ -26,7 +27,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _savedProjectCount = 0;
   int _totalCharCount = 0;
-  String _lastActivityDesc = '';
+  DateTime? _lastActivityTime;
   List<FontProject> _recentProjects = [];
   String _appVersion = '';
 
@@ -53,31 +54,37 @@ class _HomeScreenState extends State<HomeScreen> {
           charCount += p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
         }
 
-        String lastDesc = '';
+        DateTime? lastTime;
         if (projects.isNotEmpty) {
-          final last = projects.first.updatedAt;
-          final diff = DateTime.now().difference(last);
-          if (diff.inMinutes < 1) {
-            lastDesc = '刚刚';
-          } else if (diff.inHours < 1) {
-            lastDesc = '${diff.inMinutes} 分钟前';
-          } else if (diff.inDays < 1) {
-            lastDesc = '${diff.inHours} 小时前';
-          } else if (diff.inDays < 30) {
-            lastDesc = '${diff.inDays} 天前';
-          } else {
-            lastDesc = '${last.month}/${last.day}';
-          }
+          lastTime = projects.first.updatedAt;
         }
 
         setState(() {
           _savedProjectCount = projects.length;
           _totalCharCount = charCount;
-          _lastActivityDesc = lastDesc;
+          _lastActivityTime = lastTime;
           _recentProjects = projects.take(2).toList();
         });
       }
     } catch (_) {}
+  }
+
+  /// 根据时间差生成本地化的描述文本
+  String _formatLastActivity(BuildContext context) {
+    if (_lastActivityTime == null) return '-';
+    final l10n = AppLocalizations.of(context);
+    final diff = DateTime.now().difference(_lastActivityTime!);
+    if (diff.inMinutes < 1) {
+      return l10n.justNow;
+    } else if (diff.inHours < 1) {
+      return l10n.minutesAgo(diff.inMinutes);
+    } else if (diff.inDays < 1) {
+      return l10n.hoursAgo(diff.inHours);
+    } else if (diff.inDays < 30) {
+      return l10n.daysAgo(diff.inDays);
+    } else {
+      return '${_lastActivityTime!.month}/${_lastActivityTime!.day}';
+    }
   }
 
   /// 动态获取应用版本号
@@ -94,16 +101,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: WFAppBar(
-        title: '手迹造字',
+        title: l10n.appName,
         leading: IconButton(
           icon: Badge(
             isLabelVisible: _savedProjectCount > 0,
             label: Text('$_savedProjectCount'),
             child: const Icon(Icons.folder_special),
           ),
-          tooltip: '我的字体',
+          tooltip: l10n.myFonts,
           onPressed: () async {
             await HomeActions.openProjectList(context);
             _loadProjectData();
@@ -112,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: '设置',
+            tooltip: l10n.settings,
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -135,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 WelcomeHeader(
                   savedProjectCount: _savedProjectCount,
                   totalCharCount: _totalCharCount,
-                  lastActivityDesc: _lastActivityDesc,
+                  lastActivityDesc: _formatLastActivity(context),
                 ),
               ),
               const SizedBox(height: 28),
@@ -144,8 +152,8 @@ class _HomeScreenState extends State<HomeScreen> {
               WFAnimations.fadeInSlide(
                 WFActionCard(
                   icon: Icons.auto_awesome,
-                  title: '一键生成',
-                  subtitle: '拍照即生成，全自动无需手动操作',
+                  title: l10n.oneClickGenerate,
+                  subtitle: l10n.oneClickGenerateDesc,
                   color: WFColors.primary,
                   onTap: () => HomeActions.quickCapture(context),
                 ),
@@ -156,8 +164,8 @@ class _HomeScreenState extends State<HomeScreen> {
               WFAnimations.fadeInSlide(
                 WFActionCard(
                   icon: Icons.grid_on,
-                  title: '标准字表造字',
-                  subtitle: '按40个常用字书写，AI自动识别匹配',
+                  title: l10n.standardCharset,
+                  subtitle: l10n.standardCharsetDesc,
                   color: WFColors.info,
                   onTap: () {
                     Navigator.push(
@@ -173,8 +181,8 @@ class _HomeScreenState extends State<HomeScreen> {
               WFAnimations.fadeInSlide(
                 WFActionCard(
                   icon: Icons.bolt,
-                  title: '快速体验',
-                  subtitle: '只需写10个字，快速体验造字',
+                  title: l10n.quickExperience,
+                  subtitle: l10n.quickExperienceDesc,
                   color: WFColors.warning,
                   onTap: () => HomeActions.startQuickMode(context),
                 ),
@@ -185,8 +193,8 @@ class _HomeScreenState extends State<HomeScreen> {
               WFAnimations.fadeInSlide(
                 WFActionCard(
                   icon: Icons.camera_alt,
-                  title: '自由拍照造字',
-                  subtitle: '任意手写内容，自由拍照识别',
+                  title: l10n.freeCapture,
+                  subtitle: l10n.freeCaptureDesc,
                   color: WFColors.accent,
                   onTap: () => HomeActions.pickImages(context),
                 ),
@@ -232,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // 底部提示
               Text(
-                '推荐使用标准字表，生成效果更好',
+                l10n.recommendStandard,
                 style: TextStyle(
                   fontSize: 13,
                   color: WFColors.textSecondary.withValues(alpha: 0.7),

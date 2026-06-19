@@ -1,0 +1,210 @@
+{
+  "@@locale": "ja",
+  "appName": "WriteFont",
+  "appTitle": "WriteFont - 手書きフォントメーカー",
+
+  "settings": "設定",
+  "cancel": "キャンセル",
+  "confirm": "確認",
+  "close": "閉じる",
+  "save": "保存",
+  "delete": "削除",
+  "retry": "再試行",
+  "back": "戻る",
+  "start": "開始",
+  "done": "完了",
+  "skip": "スキップ",
+  "nextStep": "次へ",
+  "prevStep": "戻る",
+  "resetToDefault": "デフォルトに戻す",
+
+  "welcomeToApp": "WriteFontへようこそ",
+  "welcomeSubtitle": "あなたの手書きをフォントに",
+  "createdProjects": "プロジェクト",
+  "recognizedChars": "文字数",
+  "recentActivity": "最近の活動",
+  "oneClickGenerate": "ワンクリック生成",
+  "oneClickGenerateDesc": "写真を撮るだけで全自動で生成",
+  "standardCharset": "標準文字表",
+  "standardCharsetDesc": "40個の常用漢字を書く、AI自動認識",
+  "quickExperience": "クイック体験",
+  "quickExperienceDesc": "わずか10文字で造字を体験",
+  "freeCapture": "自由撮影",
+  "freeCaptureDesc": "任意の手書き内容を自由に撮影認識",
+  "myFonts": "マイフォント",
+  "myFontsSaved": "{count}件のフォントプロジェクト",
+  "@myFontsSaved": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "myFontsDesc": "保存済みフォントの管理",
+  "charOverview": "文字一覧",
+  "charOverviewDesc": "造字の進捗を確認",
+  "fontPreview": "フォントプレビュー",
+  "fontPreviewDesc": "テキストを入力して手書き効果を確認",
+  "enhancedPreview": "拡張プレビュー",
+  "enhancedPreviewDesc": "複数サイズ・複数テンプレート・リアルタイム比較",
+  "styleTransfer": "スタイル転写",
+  "styleTransferDesc": "AI搭載フォントスタイル変換",
+  "recommendStandard": "標準文字表の使用で、より良い結果が得られます",
+  "justNow": "たった今",
+  "minutesAgo": "{count}分前",
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "hoursAgo": "{count}時間前",
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "daysAgo": "{count}日前",
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+
+  "onboardingWelcome": "あなたの筆跡で、オリジナルフォントを",
+  "onboardingWelcomeDesc": "たった3ステップで手書きフォントを作成",
+  "onboardingStep1": "ステップ1",
+  "onboardingStep1Title": "写真を撮る",
+  "onboardingStep1Desc": "紙に指定の漢字を書き、カメラで撮影",
+  "onboardingStep2": "ステップ2",
+  "onboardingStep2Title": "書き方を確認",
+  "onboardingStep2Desc": "AIが各文字を自動認識、不正確な部分を修正",
+  "onboardingStep3": "ステップ3",
+  "onboardingStep3Title": "ワンクリック生成",
+  "onboardingStep3Desc": "あなたの筆跡スタイルに基づいて\nAIが6763個の常用漢字を自動生成",
+  "onboardingStartBtn": "今すぐ開始！",
+  "aiRecognizeAndFix": "AI認識 + 手動修正",
+  "captureUpload": "撮影",
+
+  "appearance": "外観",
+  "recognitionSettings": "認識設定",
+  "fontGeneration": "フォント生成",
+  "storage": "ストレージ",
+  "cloudSync": "クラウド同期",
+  "about": "アプリについて",
+
+  "lightMode": "ライト",
+  "darkMode": "ダーク",
+  "followSystem": "システム設定に従う",
+  "appearanceChanged": "外観を{mode}に変更しました",
+  "@appearanceChanged": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+
+  "language": "言語",
+  "languageDesc": "アプリの表示言語を切り替え",
+  "chinese": "中文",
+  "english": "English",
+  "japanese": "日本語",
+  "languageChanged": "言語を{language}に変更しました",
+  "@languageChanged": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+
+  "localRecognition": "ローカル認識",
+  "localRecognitionDesc": "オフライン認識、ネットワーク不要、無料",
+  "cloudRecognition": "クラウド DeepSeek-OCR",
+  "cloudRecognitionDesc": "高精度、ネットワークとAPIキーが必要",
+  "cloudConfig": "クラウド設定",
+  "cloudConfigDesc": "API URL、キー、モデル",
+  "switchedToLocal": "ローカル認識に切り替えました",
+  "switchedToCloud": "クラウド認識に切り替えました",
+
+  "threshold": "閾値",
+  "thresholdDesc": "二値化の分岐点を制御、値が大きいほど太い",
+  "contrast": "コントラスト",
+  "contrastDesc": "手書き画像のコントラストを強化",
+  "smoothness": "スムーズネス",
+  "smoothnessDesc": "輪郭の滑らかさを制御、値が大きいほど丸い",
+  "strokeWidth": "線の太さ",
+  "strokeWidthDesc": "出力フォントの基本線の太さ",
+  "paramsReset": "パラメータをデフォルトに戻しました",
+
+  "exportSettings": "設定のエクスポート",
+  "exportSettingsDesc": "現在の設定をJSONファイルとしてエクスポート",
+  "importSettings": "設定のインポート",
+  "importSettingsDesc": "JSONファイルから設定を復元",
+  "clearTempFiles": "一時ファイルの削除",
+  "clearTempFilesDesc": "認識・処理で生成された一時画像を削除",
+  "tempFilesCleared": "一時ファイルを削除しました",
+  "clearFailed": "削除失敗: {error}",
+  "@clearFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsExported": "設定をエクスポートしました",
+  "exportFailed": "エクスポート失敗: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsImported": "設定をインポートしました",
+  "importFailed": "インポート失敗: {error}",
+  "@importFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "invalidSettingsFile": "無効な設定ファイル",
+  "selectSettingsFile": "WriteFont設定ファイルを選択",
+  "settingsBackupSubject": "WriteFont設定バックアップ",
+  "settingsBackupText": "WriteFont設定ファイル",
+
+  "cloudSyncDesc": "マルチデバイス同期とバックアップ",
+
+  "version": "バージョン",
+  "openSourceLicense": "オープンソースライセンス",
+  "viewSourceCode": "ソースコードを見る",
+  "cannotOpenLink": "リンクを開けません",
+
+  "processing": "処理中...",
+  "generating": "生成中...",
+  "loading": "読み込み中...",
+  "networkError": "ネットワークエラー、接続を確認してください",
+  "unknownError": "不明なエラー",
+
+  "projectList": "プロジェクト一覧",
+  "fontPreviewTitle": "フォントプレビュー",
+  "characterEdit": "文字編集",
+  "captureTitle": "撮影",
+  "batchProcessing": "バッチ処理",
+  "ocrSettings": "OCR設定",
+  "writingTips": "書き方のヒント",
+  "charsetGuide": "文字表ガイド",
+  "autoGenerate": "自動認識"
+}

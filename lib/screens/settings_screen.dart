@@ -6,7 +6,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../generated/l10n/app_localizations.dart';
 import '../services/app_config_service.dart';
+import '../services/locale_service.dart';
 import '../services/recognition_service.dart';
 import '../services/storage_service.dart';
 import '../services/cloud_sync_service.dart';
@@ -104,7 +106,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _recognition.setUseCloud(value);
     if (mounted) {
       setState(() => _useCloud = value);
-      WFSnackBar.show(context, value ? '已切换到云端识别' : '已切换到本地识别');
+      final l10n = AppLocalizations.of(context);
+      WFSnackBar.show(context, value ? l10n.switchedToCloud : l10n.switchedToLocal);
     }
   }
 
@@ -114,11 +117,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await StorageService.cleanupTemp();
       if (mounted) {
-        WFSnackBar.show(context, '临时文件已清除');
+        WFSnackBar.show(context, AppLocalizations.of(context).tempFilesCleared);
       }
     } catch (e) {
       if (mounted) {
-        WFSnackBar.error(context, '清除失败: $e');
+        WFSnackBar.error(context, AppLocalizations.of(context).clearFailed('$e'));
       }
     } finally {
       if (mounted) setState(() => _isClearing = false);
@@ -135,7 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _smoothness = AppConfigService.defaultSmoothness;
         _strokeWidth = AppConfigService.defaultStrokeWidth;
       });
-      WFSnackBar.show(context, '参数已重置为默认值');
+      WFSnackBar.show(context, AppLocalizations.of(context).paramsReset);
     }
   }
 
@@ -158,16 +161,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await file.writeAsString(jsonString);
 
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         await Share.shareXFiles(
           [XFile(file.path)],
-          subject: 'WriteFont 设置备份',
-          text: 'WriteFont 设置文件',
+          subject: l10n.settingsBackupSubject,
+          text: l10n.settingsBackupText,
         );
-        WFSnackBar.show(context, '设置已导出');
+        WFSnackBar.show(context, l10n.settingsExported);
       }
     } catch (e) {
       if (mounted) {
-        WFSnackBar.error(context, '导出失败: $e');
+        WFSnackBar.error(context, AppLocalizations.of(context).exportFailed('$e'));
       }
     }
   }
@@ -178,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
-        dialogTitle: '选择 WriteFont 设置文件',
+        dialogTitle: AppLocalizations.of(context).selectSettingsFile,
       );
 
       if (result == null || result.files.isEmpty) return;
@@ -192,7 +196,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       // 校验
       if (!settings.containsKey('version')) {
-        if (mounted) WFSnackBar.error(context, '无效的设置文件');
+        if (mounted) WFSnackBar.error(context, AppLocalizations.of(context).invalidSettingsFile);
         return;
       }
 
@@ -221,11 +225,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadSettings();
 
       if (mounted) {
-        WFSnackBar.show(context, '设置已导入');
+        WFSnackBar.show(context, AppLocalizations.of(context).settingsImported);
       }
     } catch (e) {
       if (mounted) {
-        WFSnackBar.error(context, '导入失败: $e');
+        WFSnackBar.error(context, AppLocalizations.of(context).importFailed('$e'));
       }
     }
   }
@@ -271,59 +275,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _themeMode = mode);
       // 通知主页面刷新主题
       widget.onThemeChanged?.call();
-      WFSnackBar.show(context, '外观已切换为${_themeModeLabel(mode)}');
+      WFSnackBar.show(context, AppLocalizations.of(context).appearanceChanged(_themeModeLabel(mode)));
     }
   }
 
-  /// 主题模式中文标签
+  /// 主题模式标签
   String _themeModeLabel(String mode) {
+    final l10n = AppLocalizations.of(context);
     switch (mode) {
       case 'light':
-        return '浅色';
+        return l10n.lightMode;
       case 'dark':
-        return '深色';
+        return l10n.darkMode;
       case 'system':
       default:
-        return '跟随系统';
+        return l10n.followSystem;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: const WFAppBar(title: '设置'),
+      appBar: WFAppBar(title: l10n.settings),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               children: [
                 // ═══ 外观 ═══
-                _buildSectionHeader('外观', Icons.palette),
+                _buildSectionHeader(l10n.appearance, Icons.palette),
                 _buildAppearanceCard(),
                 const SizedBox(height: 16),
 
+                // ═══ 语言 ═══
+                _buildSectionHeader(l10n.language, Icons.language),
+                _buildLanguageCard(),
+                const SizedBox(height: 16),
+
                 // ═══ 识别设置 ═══
-                _buildSectionHeader('识别设置', Icons.auto_fix_high),
+                _buildSectionHeader(l10n.recognitionSettings, Icons.auto_fix_high),
                 _buildRecognitionCard(),
                 const SizedBox(height: 16),
 
                 // ═══ 字体生成 ═══
-                _buildSectionHeader('字体生成', Icons.tune),
+                _buildSectionHeader(l10n.fontGeneration, Icons.tune),
                 _buildParamsCard(),
                 const SizedBox(height: 16),
 
                 // ═══ 存储 ═══
-                _buildSectionHeader('存储', Icons.storage),
+                _buildSectionHeader(l10n.storage, Icons.storage),
                 _buildStorageCard(),
                 const SizedBox(height: 16),
 
                 // ═══ 云同步 ═══
-                _buildSectionHeader('云同步', Icons.cloud_sync),
+                _buildSectionHeader(l10n.cloudSync, Icons.cloud_sync),
                 _buildCloudSyncCard(),
                 const SizedBox(height: 16),
 
                 // ═══ 关于 ═══
-                _buildSectionHeader('关于', Icons.info_outline),
+                _buildSectionHeader(l10n.about, Icons.info_outline),
                 _buildAboutCard(),
                 const SizedBox(height: 32),
               ],
@@ -358,29 +369,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildAppearanceCard() {
+    final l10n = AppLocalizations.of(context);
     return WFCard(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
-          // 浅色模式
           _buildThemeRadioTile(
             mode: 'light',
             icon: Icons.light_mode,
-            title: '浅色',
+            title: l10n.lightMode,
           ),
           _buildDivider(),
-          // 深色模式
           _buildThemeRadioTile(
             mode: 'dark',
             icon: Icons.dark_mode,
-            title: '深色',
+            title: l10n.darkMode,
           ),
           _buildDivider(),
-          // 跟随系统
           _buildThemeRadioTile(
             mode: 'system',
             icon: Icons.settings_brightness,
-            title: '跟随系统',
+            title: l10n.followSystem,
           ),
         ],
       ),
@@ -410,21 +419,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // 识别设置
+  // 语言设置
   // ═══════════════════════════════════════════════════════════
 
-  Widget _buildRecognitionCard() {
+  Widget _buildLanguageCard() {
+    final localeService = LocaleService.instance;
+    final currentCode = localeService.locale.languageCode;
+
     return WFCard(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
-          // 本地识别
+          _buildLanguageRadioTile(
+            code: 'zh',
+            icon: Icons.language,
+            title: '中文',
+          ),
+          _buildDivider(),
+          _buildLanguageRadioTile(
+            code: 'en',
+            icon: Icons.language,
+            title: 'English',
+          ),
+          _buildDivider(),
+          _buildLanguageRadioTile(
+            code: 'ja',
+            icon: Icons.language,
+            title: '日本語',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageRadioTile({
+    required String code,
+    required IconData icon,
+    required String title,
+  }) {
+    final localeService = LocaleService.instance;
+    final isActive = localeService.locale.languageCode == code;
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isActive ? WFColors.primary : WFColors.textLight,
+      ),
+      title: Text(title),
+      trailing: Radio<String>(
+        value: code,
+        groupValue: localeService.locale.languageCode,
+        onChanged: (v) => _setLocale(v!),
+        activeColor: WFColors.primary,
+      ),
+      onTap: () => _setLocale(code),
+    );
+  }
+
+  Future<void> _setLocale(String code) async {
+    await LocaleService.instance.setLocale(Locale(code));
+    if (mounted) {
+      WFSnackBar.show(context, AppLocalizations.of(context).languageChanged(LocaleService.instance.currentLocaleName));
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 识别设置
+  // ═══════════════════════════════════════════════════════════
+
+  Widget _buildRecognitionCard() {
+    final l10n = AppLocalizations.of(context);
+    return WFCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
           RadioListTile<bool>(
             value: false,
             groupValue: _useCloud,
             onChanged: (v) => _toggleUseCloud(v!),
-            title: const Text('本地识别'),
-            subtitle: const Text('离线识别，无需网络，免费使用'),
+            title: Text(l10n.localRecognition),
+            subtitle: Text(l10n.localRecognitionDesc),
             secondary: Icon(
               Icons.phone_android,
               color: _useCloud ? WFColors.textLight : WFColors.primary,
@@ -432,26 +505,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: WFColors.primary,
           ),
           _buildDivider(),
-          // 云端识别
           RadioListTile<bool>(
             value: true,
             groupValue: _useCloud,
             onChanged: (v) => _toggleUseCloud(v!),
-            title: const Text('云端 DeepSeek-OCR'),
-            subtitle: const Text('更高精度，需要网络和 API Key'),
+            title: Text(l10n.cloudRecognition),
+            subtitle: Text(l10n.cloudRecognitionDesc),
             secondary: Icon(
               Icons.cloud_outlined,
               color: _useCloud ? WFColors.primary : WFColors.textLight,
             ),
             activeColor: WFColors.primary,
           ),
-          // 云端配置入口
           if (_useCloud) ...[
             _buildDivider(),
             ListTile(
               leading: const Icon(Icons.settings, color: WFColors.accent),
-              title: const Text('云端配置'),
-              subtitle: const Text('API 地址、Key、模型'),
+              title: Text(l10n.cloudConfig),
+              subtitle: Text(l10n.cloudConfigDesc),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 Navigator.push(
@@ -471,11 +542,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildParamsCard() {
+    final l10n = AppLocalizations.of(context);
     return WFCard(
       child: Column(
         children: [
           _buildSliderRow(
-            label: '阈值',
+            label: l10n.threshold,
             value: _threshold,
             min: 0.0,
             max: 1.0,
@@ -483,10 +555,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onThresholdChanged,
             onChangeEnd: _onThresholdChangeEnd,
           ),
-          _buildParamHint('控制二值化分割点，值越大笔画越粗'),
+          _buildParamHint(l10n.thresholdDesc),
           const SizedBox(height: 8),
           _buildSliderRow(
-            label: '对比度',
+            label: l10n.contrast,
             value: _contrast,
             min: 0.5,
             max: 3.0,
@@ -494,10 +566,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onContrastChanged,
             onChangeEnd: _onContrastChangeEnd,
           ),
-          _buildParamHint('增强手写图片对比度，照片较淡时增大此值'),
+          _buildParamHint(l10n.contrastDesc),
           const SizedBox(height: 8),
           _buildSliderRow(
-            label: '平滑度',
+            label: l10n.smoothness,
             value: _smoothness,
             min: 0.0,
             max: 1.0,
@@ -505,10 +577,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onSmoothnessChanged,
             onChangeEnd: _onSmoothnessChangeEnd,
           ),
-          _buildParamHint('控制轮廓平滑程度，值越大笔画越圆润'),
+          _buildParamHint(l10n.smoothnessDesc),
           const SizedBox(height: 8),
           _buildSliderRow(
-            label: '笔画宽度',
+            label: l10n.strokeWidth,
             value: _strokeWidth,
             min: 0.5,
             max: 3.0,
@@ -516,15 +588,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _onStrokeWidthChanged,
             onChangeEnd: _onStrokeWidthChangeEnd,
           ),
-          _buildParamHint('输出字体的基础笔画粗细'),
+          _buildParamHint(l10n.strokeWidthDesc),
           const SizedBox(height: 12),
-          // 重置按钮
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
               onPressed: _resetParams,
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('重置为默认值'),
+              label: Text(l10n.resetToDefault),
             ),
           ),
         ],
@@ -607,30 +678,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildStorageCard() {
+    final l10n = AppLocalizations.of(context);
     return WFCard(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.upload_file, color: WFColors.primary),
-            title: const Text('导出设置'),
-            subtitle: const Text('将当前设置导出为 JSON 文件'),
+            title: Text(l10n.exportSettings),
+            subtitle: Text(l10n.exportSettingsDesc),
             trailing: const Icon(Icons.chevron_right),
             onTap: _exportSettings,
           ),
           _buildDivider(),
           ListTile(
             leading: const Icon(Icons.download, color: WFColors.accent),
-            title: const Text('导入设置'),
-            subtitle: const Text('从 JSON 文件恢复设置'),
+            title: Text(l10n.importSettings),
+            subtitle: Text(l10n.importSettingsDesc),
             trailing: const Icon(Icons.chevron_right),
             onTap: _importSettings,
           ),
           _buildDivider(),
           ListTile(
             leading: const Icon(Icons.delete_sweep, color: WFColors.error),
-            title: const Text('清除临时文件'),
-            subtitle: const Text('清除识别和处理过程中产生的临时图片'),
+            title: Text(l10n.clearTempFiles),
+            subtitle: Text(l10n.clearTempFilesDesc),
             trailing: _isClearing
                 ? const SizedBox(
                     width: 20,
@@ -650,14 +722,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildCloudSyncCard() {
+    final l10n = AppLocalizations.of(context);
     return WFCard(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.cloud_sync, color: WFColors.primary),
-            title: const Text('云同步'),
-            subtitle: const Text('多设备同步和备份'),
+            title: Text(l10n.cloudSync),
+            subtitle: Text(l10n.cloudSyncDesc),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -697,14 +770,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // ═══════════════════════════════════════════════════════════
 
   Widget _buildAboutCard() {
+    final l10n = AppLocalizations.of(context);
     return WFCard(
       padding: EdgeInsets.zero,
       child: Column(
         children: [
-          // 版本号
           ListTile(
             leading: const Icon(Icons.info_outline, color: WFColors.primary),
-            title: const Text('版本'),
+            title: Text(l10n.version),
             subtitle: Text('v$_version'),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -723,20 +796,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           _buildDivider(),
-          // 开源协议
           ListTile(
             leading: const Icon(Icons.code, color: WFColors.info),
-            title: const Text('开源协议'),
+            title: Text(l10n.openSourceLicense),
             subtitle: const Text('MIT License'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => _showLicenseDialog(),
           ),
           _buildDivider(),
-          // GitHub
           ListTile(
             leading: const Icon(Icons.language, color: WFColors.accent),
             title: const Text('GitHub'),
-            subtitle: const Text('查看源代码'),
+            subtitle: Text(l10n.viewSourceCode),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () async {
               final uri = Uri.parse('https://github.com/MrLing1202/writefont');
@@ -744,7 +815,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               } else {
                 if (mounted) {
-                  WFSnackBar.error(context, '无法打开链接');
+                  WFSnackBar.error(context, AppLocalizations.of(context).cannotOpenLink);
                 }
               }
             },
@@ -796,7 +867,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
+          child: Text(AppLocalizations.of(context).close),
         ),
       ],
     );
