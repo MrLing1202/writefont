@@ -4,6 +4,16 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.1.3] - 2026-06-19
+
+### 优化
+- 拆分 home_screen.dart (717行) 为 4 个独立组件（主文件 ≤200 行）
+- 拆分 font_preview_screen.dart (711行) 为 4 个独立组件（主文件 ≤250 行）
+- 提取 WelcomeHeader、RecentProjectsSection、SecondaryEntryCard 等为独立 StatelessWidget
+- 提取 PreviewInputArea、PreviewContent、PreviewToolbar、PreviewEmptyState 为独立组件
+- 提取业务逻辑为 HomeActions 辅助类，提升可测试性
+- 子组件通过回调函数通信，避免循环依赖
+
 ## [1.1.2] - 2026-06-19
 
 ### 优化
