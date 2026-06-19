@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/storage_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../theme/app_theme.dart';
 
@@ -29,6 +30,12 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
   String? _syncError;
   List<SyncHistoryEntry> _history = [];
 
+  // 同步进度跟踪
+  int _syncTotal = 0;
+  int _syncCompleted = 0;
+  String? _syncCurrentItem;
+  DateTime? _lastSyncTime;
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +62,10 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       setState(() {
         _syncStatusMap = statusMap;
         _history = history;
+        // 从历史记录中获取最后同步时间
+        if (history.isNotEmpty) {
+          _lastSyncTime = history.first.timestamp;
+        }
       });
     }
   }
@@ -112,12 +123,19 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     setState(() {
       _isSyncing = true;
       _syncError = null;
+      _syncCompleted = 0;
+      _syncTotal = _syncStatusMap.length;
+      _syncCurrentItem = null;
     });
 
     final error = await _sync.syncAll();
 
     if (mounted) {
-      setState(() => _isSyncing = false);
+      setState(() {
+        _isSyncing = false;
+        _syncCurrentItem = null;
+        _lastSyncTime = DateTime.now();
+      });
       if (error == null) {
         WFSnackBar.show(context, '同步完成');
       } else {
@@ -153,6 +171,140 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
       setState(() => _isSyncing = false);
       if (error == null) {
         WFSnackBar.show(context, '恢复成功');
+      } else {
+        WFSnackBar.error(context, error);
+      }
+      _refreshData();
+    }
+  }
+
+  /// 清除同步历史记录
+  Future<void> _clearHistory() async {
+    final confirmed = await WFDialog.confirm(
+      context,
+      title: '清除同步历史',
+      message: '确定要清除所有同步历史记录吗？此操作不影响已同步的数据。',
+      confirmText: '清除',
+      isDestructive: true,
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _history.clear();
+      _lastSyncTime = null;
+    });
+    WFSnackBar.show(context, '同步历史已清除');
+  }
+
+  /// 显示同步冲突解决对话框
+  Future<void> _showConflictDialog(String projectId, String projectName) async {
+    final choice = await WFDialog.show<String>(
+      context,
+      title: '同步冲突',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '项目"$projectName"在本地和云端都有修改，请选择保留哪个版本：',
+            style: const TextStyle(fontSize: 14, color: WFColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          // 本地版本选项
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: WFColors.info.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: WFColors.info.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.phone_android, color: WFColors.info, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('保留本地版本',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      Text('上传本地数据覆盖云端',
+                          style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 云端版本选项
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: WFColors.success.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: WFColors.success.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_download, color: WFColors.success, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('保留云端版本',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      Text('下载云端数据覆盖本地',
+                          style: TextStyle(fontSize: 12, color: WFColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'local'),
+          style: TextButton.styleFrom(foregroundColor: WFColors.info),
+          child: const Text('保留本地'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'remote'),
+          style: TextButton.styleFrom(foregroundColor: WFColors.success),
+          child: const Text('保留云端'),
+        ),
+      ],
+    );
+
+    if (choice == null) return;
+
+    setState(() => _isSyncing = true);
+    String? error;
+
+    if (choice == 'local') {
+      // 上传本地版本
+      final projects = await StorageService.loadProjects();
+      final project = projects.where((p) => p.id == projectId).firstOrNull;
+      if (project != null) {
+        error = await _sync.uploadProject(project);
+      }
+    } else {
+      // 下载云端版本
+      error = await _sync.downloadProject(projectId);
+    }
+
+    if (mounted) {
+      setState(() => _isSyncing = false);
+      if (error == null) {
+        WFSnackBar.show(context, choice == 'local' ? '已上传本地版本' : '已下载云端版本');
       } else {
         WFSnackBar.error(context, error);
       }
@@ -360,7 +512,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
         const SizedBox(height: 16),
 
         // 同步历史
-        _buildSectionHeader('同步历史', Icons.history),
+        _buildHistorySectionHeader(),
         _buildHistoryCard(),
         const SizedBox(height: 32),
       ],
@@ -434,6 +586,16 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
                   color: WFColors.textPrimary,
                 ),
               ),
+              const Spacer(),
+              // 最后同步时间
+              if (_lastSyncTime != null)
+                Text(
+                  '上次同步: ${_formatTime(_lastSyncTime!)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: WFColors.textSecondary,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -459,6 +621,26 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
             Text(
               _syncError!,
               style: TextStyle(color: WFColors.error, fontSize: 12),
+            ),
+          ],
+          // 同步进度条
+          if (_isSyncing) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                minHeight: 4,
+                backgroundColor: WFColors.textLight.withValues(alpha: 0.3),
+                valueColor: AlwaysStoppedAnimation<Color>(WFColors.primary),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _syncCurrentItem ?? '正在同步...',
+              style: TextStyle(
+                fontSize: 12,
+                color: WFColors.textSecondary,
+              ),
             ),
           ],
           const SizedBox(height: 12),
@@ -576,6 +758,40 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
               letterSpacing: 0.5,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// 同步历史区域标题（带清除按钮）
+  Widget _buildHistorySectionHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.history, size: 18, color: WFColors.primary),
+          const SizedBox(width: 8),
+          const Text(
+            '同步历史',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: WFColors.primary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const Spacer(),
+          if (_history.isNotEmpty)
+            GestureDetector(
+              onTap: _clearHistory,
+              child: Text(
+                '清除',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: WFColors.error,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -30,6 +30,10 @@ class _ProjectListScreenState extends State<ProjectListScreen>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // 项目筛选状态
+  // null = 全部, 'completed' = 已完成, 'in_progress' = 进行中, 'empty' = 未开始
+  String? _filterStatus;
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -94,9 +98,32 @@ class _ProjectListScreenState extends State<ProjectListScreen>
 
   /// 根据搜索关键词过滤项目
   List<FontProject> get _filteredProjects {
-    if (_searchQuery.isEmpty) return _projects;
-    final query = _searchQuery.toLowerCase();
-    return _projects.where((p) => p.name.toLowerCase().contains(query)).toList();
+    var filtered = _projects;
+
+    // 按状态筛选
+    if (_filterStatus != null) {
+      filtered = filtered.where((p) {
+        final editedCount = p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
+        switch (_filterStatus) {
+          case 'completed':
+            return editedCount > 0 && editedCount >= p.glyphs.length * 0.8;
+          case 'in_progress':
+            return editedCount > 0 && editedCount < p.glyphs.length * 0.8;
+          case 'empty':
+            return editedCount == 0;
+          default:
+            return true;
+        }
+      }).toList();
+    }
+
+    // 按搜索关键词过滤
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((p) => p.name.toLowerCase().contains(query)).toList();
+    }
+
+    return filtered;
   }
 
   /// 切换排序模式
@@ -237,6 +264,84 @@ class _ProjectListScreenState extends State<ProjectListScreen>
         _selectedProjectIds.addAll(_filteredProjects.map((p) => p.id));
       }
     });
+  }
+
+  /// 切换筛选状态
+  void _cycleFilterStatus() {
+    setState(() {
+      switch (_filterStatus) {
+        case null:
+          _filterStatus = 'completed';
+          break;
+        case 'completed':
+          _filterStatus = 'in_progress';
+          break;
+        case 'in_progress':
+          _filterStatus = 'empty';
+          break;
+        case 'empty':
+          _filterStatus = null;
+          break;
+      }
+    });
+  }
+
+  /// 获取筛选状态信息
+  (IconData, String) _getFilterInfo() {
+    switch (_filterStatus) {
+      case 'completed':
+        return (Icons.check_circle, '已完成');
+      case 'in_progress':
+        return (Icons.edit_note, '进行中');
+      case 'empty':
+        return (Icons.inbox_outlined, '未开始');
+      default:
+        return (Icons.filter_list, '全部');
+    }
+  }
+
+  /// 批量导出选中项目的 TTF
+  Future<void> _batchExportSelectedTtf() async {
+    if (_selectedProjectIds.isEmpty) return;
+
+    final selectedProjects = _projects
+        .where((p) => _selectedProjectIds.contains(p.id))
+        .toList();
+
+    final confirmed = await WFDialog.confirm(
+      context,
+      title: '批量导出 TTF',
+      message: '将为选中的 ${selectedProjects.length} 个项目生成 TTF 字体文件，是否继续？',
+      confirmText: '开始导出',
+      icon: Icons.font_download,
+      iconColor: WFColors.info,
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      int successCount = 0;
+      int failCount = 0;
+      for (final project in selectedProjects) {
+        try {
+          await StorageService.exportTtf(project);
+          successCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _isMultiSelectMode = false;
+          _selectedProjectIds.clear();
+        });
+        WFSnackBar.show(context, '导出完成: $successCount 成功, $failCount 失败');
+      }
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '批量导出失败: $e');
+      }
+    }
   }
 
   /// 批量删除选中项目
@@ -490,10 +595,53 @@ class _ProjectListScreenState extends State<ProjectListScreen>
     ).then((_) => _loadProjects()); // 返回时刷新列表
   }
 
+  /// 构建筛选状态指示条
+  Widget _buildFilterIndicator(ColorScheme colorScheme) {
+    final filterInfo = _getFilterInfo();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      color: colorScheme.primaryContainer.withValues(alpha: 0.2),
+      child: Row(
+        children: [
+          Icon(filterInfo.$1, size: 16, color: colorScheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            '筛选: ${filterInfo.$2}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '(${_filteredProjects.length} 个项目)',
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: () => setState(() => _filterStatus = null),
+            child: Text(
+              '清除筛选',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final sortInfo = _getSortInfo();
+    final filterInfo = _getFilterInfo();
 
     return Scaffold(
       appBar: WFAppBar(
@@ -511,12 +659,19 @@ class _ProjectListScreenState extends State<ProjectListScreen>
               icon: const Icon(Icons.dynamic_feed_outlined),
               tooltip: '批量处理',
             ),
+          // 筛选按钮
+          if (_projects.isNotEmpty && !_isMultiSelectMode)
+            IconButton(
+              onPressed: _cycleFilterStatus,
+              icon: Icon(filterInfo.$1),
+              tooltip: '筛选: ${filterInfo.$2}',
+            ),
           // 批量删除按钮
           if (_projects.isNotEmpty)
             IconButton(
               onPressed: _toggleMultiSelectMode,
               icon: Icon(_isMultiSelectMode ? Icons.close : Icons.checklist),
-              tooltip: _isMultiSelectMode ? '退出多选' : '批量删除',
+              tooltip: _isMultiSelectMode ? '退出多选' : '多选操作',
             ),
           // 多选模式下的全选和删除
           if (_isMultiSelectMode) ...[
@@ -525,6 +680,12 @@ class _ProjectListScreenState extends State<ProjectListScreen>
               icon: const Icon(Icons.select_all),
               tooltip: '全选',
             ),
+            if (_selectedProjectIds.isNotEmpty)
+              IconButton(
+                onPressed: _batchExportSelectedTtf,
+                icon: const Icon(Icons.font_download, color: WFColors.info),
+                tooltip: '导出 TTF',
+              ),
             if (_selectedProjectIds.isNotEmpty)
               IconButton(
                 onPressed: _batchDeleteProjects,
@@ -571,6 +732,9 @@ class _ProjectListScreenState extends State<ProjectListScreen>
                         setState(() => _searchQuery = '');
                       },
                     ),
+                    // 筛选状态指示
+                    if (_filterStatus != null)
+                      _buildFilterIndicator(colorScheme),
                     // 项目列表或搜索空状态
                     Expanded(
                       child: _filteredProjects.isEmpty

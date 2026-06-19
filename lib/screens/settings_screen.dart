@@ -36,6 +36,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _useCloud = false;
   bool _isLoading = true;
 
+  // 设置搜索
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
   // 默认参数
   double _threshold = AppConfigService.defaultThreshold;
   double _contrast = AppConfigService.defaultContrast;
@@ -59,6 +63,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   /// 加载当前设置
@@ -139,6 +149,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _strokeWidth = AppConfigService.defaultStrokeWidth;
       });
       WFSnackBar.show(context, AppLocalizations.of(context).paramsReset);
+    }
+  }
+
+  /// 重置所有设置（含外观和识别模式）
+  Future<void> _resetAllSettings() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await WFDialog.confirm(
+      context,
+      title: '重置所有设置',
+      message: '确定要将所有设置恢复为默认值吗？包括外观、识别模式和字体生成参数。',
+      confirmText: '重置',
+      isDestructive: true,
+    );
+
+    if (confirmed != true) return;
+
+    // 重置处理参数
+    await _config.resetParams();
+    // 重置主题为跟随系统
+    await _config.setThemeMode(AppConfigService.defaultThemeMode);
+    // 重置识别模式为本地
+    await _recognition.setUseCloud(false);
+
+    if (mounted) {
+      setState(() {
+        _threshold = AppConfigService.defaultThreshold;
+        _contrast = AppConfigService.defaultContrast;
+        _smoothness = AppConfigService.defaultSmoothness;
+        _strokeWidth = AppConfigService.defaultStrokeWidth;
+        _themeMode = AppConfigService.defaultThemeMode;
+        _useCloud = false;
+      });
+      widget.onThemeChanged?.call();
+      WFSnackBar.show(context, '所有设置已重置为默认值');
     }
   }
 
@@ -293,6 +337,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// 设置搜索框
+  Widget _buildSearchBar() {
+    return TextField(
+      controller: _searchController,
+      onChanged: (value) => setState(() => _searchQuery = value.trim()),
+      decoration: InputDecoration(
+        hintText: '搜索设置项...',
+        hintStyle: TextStyle(
+          color: WFColors.textSecondary,
+        ),
+        prefixIcon: Icon(Icons.search, color: WFColors.textSecondary),
+        suffixIcon: _searchQuery.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              )
+            : null,
+        filled: true,
+        fillColor: WFColors.textLight.withValues(alpha: 0.15),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+      ),
+    );
+  }
+
+  /// 检查设置项是否匹配搜索
+  bool _matchesSearch(List<String> keywords) {
+    if (_searchQuery.isEmpty) return true;
+    final query = _searchQuery.toLowerCase();
+    for (final kw in keywords) {
+      if (kw.toLowerCase().contains(query)) return true;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -303,6 +388,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               children: [
+                // 设置搜索框
+                _buildSearchBar(),
+                const SizedBox(height: 8),
+
                 // ═══ 外观 ═══
                 _buildSectionHeader(l10n.appearance, Icons.palette),
                 _buildAppearanceCard(),

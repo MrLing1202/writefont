@@ -29,6 +29,31 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
   BatchProgress? _progress;
   List<BatchTaskResult>? _results;
 
+  // 计时器：记录批量处理开始时间和已用时间
+  DateTime? _processStartTime;
+  String _elapsedTime = '';
+
+  /// 取消当前任务
+  void _cancelProcessing() {
+    _processor.cancel();
+    WFSnackBar.show(context, '正在取消...');
+  }
+
+  /// 更新已用时间显示
+  void _updateElapsedTime() {
+    if (_processStartTime == null) return;
+    final elapsed = DateTime.now().difference(_processStartTime!);
+    final minutes = elapsed.inMinutes;
+    final seconds = elapsed.inSeconds % 60;
+    if (mounted) {
+      setState(() {
+        _elapsedTime = minutes > 0
+            ? '$minutes 分 $seconds 秒'
+            : '$seconds 秒';
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -104,6 +129,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     if (confirmed != true) return;
 
     setState(() {
+      _processStartTime = DateTime.now();
       _isProcessing = true;
       _progress = null;
       _results = null;
@@ -113,7 +139,10 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
       final results = await _processor.batchExportTtf(
         projects,
         onProgress: (progress) {
-          if (mounted) setState(() => _progress = progress);
+          if (mounted) {
+            setState(() => _progress = progress);
+            _updateElapsedTime();
+          }
         },
       );
 
@@ -123,7 +152,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
         _results = results;
       });
 
-      _showResults('批量导出 TTF', results);
+      _showResults('批量导出 TTF', results, canRetry: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
@@ -151,6 +180,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     if (confirmed != true) return;
 
     setState(() {
+      _processStartTime = DateTime.now();
       _isProcessing = true;
       _progress = null;
       _results = null;
@@ -160,7 +190,10 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
       final results = await _processor.batchExportBackup(
         projects,
         onProgress: (progress) {
-          if (mounted) setState(() => _progress = progress);
+          if (mounted) {
+            setState(() => _progress = progress);
+            _updateElapsedTime();
+          }
         },
       );
 
@@ -170,7 +203,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
         _results = results;
       });
 
-      _showResults('批量导出备份', results);
+      _showResults('批量导出备份', results, canRetry: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isProcessing = false);
@@ -199,6 +232,7 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     if (confirmed != true) return;
 
     setState(() {
+      _processStartTime = DateTime.now();
       _isProcessing = true;
       _progress = null;
       _results = null;
@@ -208,7 +242,10 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
       final results = await _processor.batchDelete(
         projects,
         onProgress: (progress) {
-          if (mounted) setState(() => _progress = progress);
+          if (mounted) {
+            setState(() => _progress = progress);
+            _updateElapsedTime();
+          }
         },
       );
 
@@ -234,15 +271,13 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
   }
 
   /// 取消当前任务
-  void _cancelProcessing() {
-    _processor.cancel();
-    WFSnackBar.show(context, '正在取消...');
-  }
-
-  /// 显示结果摘要
-  void _showResults(String title, List<BatchTaskResult> results) {
+  /// 显示结果摘要（含用时统计和重试功能）
+  void _showResults(String title, List<BatchTaskResult> results, {bool canRetry = false}) {
     final successCount = results.where((r) => r.success).length;
     final failureCount = results.where((r) => !r.success).length;
+    final elapsed = _processStartTime != null
+        ? DateTime.now().difference(_processStartTime!)
+        : null;
 
     showDialog(
       context: context,
@@ -251,8 +286,35 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
         results: results,
         successCount: successCount,
         failureCount: failureCount,
+        elapsed: elapsed,
+        canRetry: canRetry,
+        onRetryFailed: canRetry ? () => _retryFailedItems(results) : null,
       ),
     );
+  }
+
+  /// 重试失败的项目
+  Future<void> _retryFailedItems(List<BatchTaskResult> results) async {
+    final failedIds = results
+        .where((r) => !r.success && r.errorMessage != '已取消')
+        .map((r) => r.projectId)
+        .toList();
+
+    if (failedIds.isEmpty) {
+      WFSnackBar.show(context, '没有需要重试的项目');
+      return;
+    }
+
+    // 关闭结果对话框
+    Navigator.pop(context);
+
+    // 重新选中失败的项目
+    setState(() {
+      _selectedIds.clear();
+      _selectedIds.addAll(failedIds);
+    });
+
+    WFSnackBar.show(context, '已选中 ${failedIds.length} 个失败项目，请重新执行操作');
   }
 
   @override
@@ -471,6 +533,21 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     final currentName = progress?.currentProjectName;
     final isCancelled = progress?.isCancelled ?? false;
 
+    // 计算预估剩余时间
+    String? estimatedRemaining;
+    if (_processStartTime != null && progressValue > 0 && progressValue < 1) {
+      final elapsed = DateTime.now().difference(_processStartTime!);
+      final totalEstimated = elapsed ~/ progressValue;
+      final remaining = totalEstimated - elapsed;
+      if (remaining.inSeconds > 0) {
+        final remMinutes = remaining.inMinutes;
+        final remSeconds = remaining.inSeconds % 60;
+        estimatedRemaining = remMinutes > 0
+            ? '预计剩余 $remMinutes 分 $remSeconds 秒'
+            : '预计剩余 $remSeconds 秒';
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -528,6 +605,28 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
+          // 已用时间
+          if (_elapsedTime.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              '已用时间 $_elapsedTime',
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+          // 预估剩余时间
+          if (estimatedRemaining != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              estimatedRemaining,
+              style: TextStyle(
+                fontSize: 13,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
           if (currentName != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -721,12 +820,18 @@ class _ResultsDialog extends StatelessWidget {
   final List<BatchTaskResult> results;
   final int successCount;
   final int failureCount;
+  final Duration? elapsed;
+  final bool canRetry;
+  final VoidCallback? onRetryFailed;
 
   const _ResultsDialog({
     required this.title,
     required this.results,
     required this.successCount,
     required this.failureCount,
+    this.elapsed,
+    this.canRetry = false,
+    this.onRetryFailed,
   });
 
   @override
@@ -774,9 +879,23 @@ class _ResultsDialog extends StatelessWidget {
                           ? WFColors.error
                           : colorScheme.onSurfaceVariant,
                     ),
+                    if (elapsed != null) ...[
+                      Container(
+                        width: 1,
+                        height: 32,
+                        color: colorScheme.outlineVariant,
+                      ),
+                      _buildResultStat(
+                        icon: Icons.timer,
+                        label: '用时',
+                        count: elapsed!.inSeconds,
+                        color: WFColors.info,
+                        suffix: '秒',
+                      ),
+                    ],
                   ],
                 ),
-              ),
+                ),
               const SizedBox(height: 16),
 
               // 详细结果列表
@@ -837,6 +956,17 @@ class _ResultsDialog extends StatelessWidget {
         ),
       ),
       actions: [
+        if (canRetry && failureCount > 0)
+          OutlinedButton.icon(
+            onPressed: onRetryFailed,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: Text('重试失败项 ($failureCount)'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: WFColors.warning,
+              side: const BorderSide(color: WFColors.warning),
+            ),
+          ),
+        const SizedBox(width: 8),
         FilledButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('完成'),
@@ -850,13 +980,14 @@ class _ResultsDialog extends StatelessWidget {
     required String label,
     required int count,
     required Color color,
+    String suffix = '',
   }) {
     return Column(
       children: [
         Icon(icon, color: color, size: 24),
         const SizedBox(height: 4),
         Text(
-          '$count',
+          suffix.isNotEmpty ? '$count$suffix' : '$count',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
