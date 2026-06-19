@@ -7,6 +7,7 @@ import 'dart:io';
 import '../models/project.dart';
 import '../services/storage_service.dart';
 import 'font_test_screen.dart';
+import 'font_preview_enhanced_screen.dart';
 import '../theme/app_theme.dart';
 import 'font_preview/preview_empty_state.dart';
 import 'font_preview/preview_input_area.dart';
@@ -172,6 +173,16 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
           : WFAppBar(
               title: '字体预览',
               actions: [
+                IconButton(
+                  icon: const Icon(Icons.dashboard_customize),
+                  tooltip: '增强预览',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      WFAnimations.slideRoute(FontPreviewEnhancedScreen(project: _project)),
+                    );
+                  },
+                ),
                 IconButton(
                   icon: const Icon(Icons.text_fields),
                   tooltip: '字体测试',
