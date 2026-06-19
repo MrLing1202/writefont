@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../../models/project.dart';
 import '../../services/image_processor.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/summary_panel.dart';
