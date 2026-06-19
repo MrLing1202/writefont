@@ -15,6 +15,7 @@ import '../services/cloud_sync_service.dart';
 import '../theme/app_theme.dart';
 import 'cloud_sync_screen.dart';
 import 'ocr_settings_screen.dart';
+import 'package:flutter/services.dart';
 
 /// 设置页面
 /// 使用 WFCard 分组展示，支持深色模式实时切换
@@ -51,6 +52,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // 云同步状态
   String _syncStatus = 'none'; // none | synced | pending
+
+  // 错误日志记录
+  final List<_ErrorLogEntry> _errorLogs = [];
+  static const int _maxErrorLogs = 50;
 
   // 外观设置
   String _themeMode = AppConfigService.defaultThemeMode;
@@ -113,11 +118,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 切换识别模式
   Future<void> _toggleUseCloud(bool value) async {
-    await _recognition.setUseCloud(value);
-    if (mounted) {
-      setState(() => _useCloud = value);
-      final l10n = AppLocalizations.of(context);
-      WFSnackBar.show(context, value ? l10n.switchedToCloud : l10n.switchedToLocal);
+    try {
+      await _recognition.setUseCloud(value);
+      if (mounted) {
+        setState(() => _useCloud = value);
+        final l10n = AppLocalizations.of(context);
+        WFSnackBar.show(context, value ? l10n.switchedToCloud : l10n.switchedToLocal);
+      }
+    } catch (e) {
+      _logError('识别模式切换', e);
+      if (mounted) {
+        _showErrorWithRecovery('识别模式切换失败', e.toString(), () {
+          _toggleUseCloud(!value); // 尝试恢复原状态
+        });
+      }
     }
   }
 
@@ -130,8 +144,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         WFSnackBar.show(context, AppLocalizations.of(context).tempFilesCleared);
       }
     } catch (e) {
+      _logError('清除缓存', e);
       if (mounted) {
-        WFSnackBar.error(context, AppLocalizations.of(context).clearFailed('$e'));
+        _showErrorWithRecovery('清除缓存失败', e.toString(), _clearCache);
       }
     } finally {
       if (mounted) setState(() => _isClearing = false);
@@ -140,15 +155,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// 重置默认参数
   Future<void> _resetParams() async {
-    await _config.resetParams();
-    if (mounted) {
-      setState(() {
-        _threshold = AppConfigService.defaultThreshold;
-        _contrast = AppConfigService.defaultContrast;
-        _smoothness = AppConfigService.defaultSmoothness;
-        _strokeWidth = AppConfigService.defaultStrokeWidth;
-      });
-      WFSnackBar.show(context, AppLocalizations.of(context).paramsReset);
+    try {
+      await _config.resetParams();
+      if (mounted) {
+        setState(() {
+          _threshold = AppConfigService.defaultThreshold;
+          _contrast = AppConfigService.defaultContrast;
+          _smoothness = AppConfigService.defaultSmoothness;
+          _strokeWidth = AppConfigService.defaultStrokeWidth;
+        });
+        WFSnackBar.show(context, AppLocalizations.of(context).paramsReset);
+      }
+    } catch (e) {
+      _logError('重置参数', e);
+      if (mounted) {
+        _showErrorWithRecovery('重置参数失败', e.toString(), _resetParams);
+      }
     }
   }
 
@@ -165,24 +187,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirmed != true) return;
 
-    // 重置处理参数
-    await _config.resetParams();
-    // 重置主题为跟随系统
-    await _config.setThemeMode(AppConfigService.defaultThemeMode);
-    // 重置识别模式为本地
-    await _recognition.setUseCloud(false);
+    try {
+      // 重置处理参数
+      await _config.resetParams();
+      // 重置主题为跟随系统
+      await _config.setThemeMode(AppConfigService.defaultThemeMode);
+      // 重置识别模式为本地
+      await _recognition.setUseCloud(false);
 
-    if (mounted) {
-      setState(() {
-        _threshold = AppConfigService.defaultThreshold;
-        _contrast = AppConfigService.defaultContrast;
-        _smoothness = AppConfigService.defaultSmoothness;
-        _strokeWidth = AppConfigService.defaultStrokeWidth;
-        _themeMode = AppConfigService.defaultThemeMode;
-        _useCloud = false;
-      });
-      widget.onThemeChanged?.call();
-      WFSnackBar.show(context, '所有设置已重置为默认值');
+      if (mounted) {
+        setState(() {
+          _threshold = AppConfigService.defaultThreshold;
+          _contrast = AppConfigService.defaultContrast;
+          _smoothness = AppConfigService.defaultSmoothness;
+          _strokeWidth = AppConfigService.defaultStrokeWidth;
+          _themeMode = AppConfigService.defaultThemeMode;
+          _useCloud = false;
+        });
+        widget.onThemeChanged?.call();
+        WFSnackBar.show(context, '所有设置已重置为默认值');
+      }
+    } catch (e) {
+      _logError('重置所有设置', e);
+      if (mounted) {
+        _showErrorWithRecovery('重置设置失败', e.toString(), _resetAllSettings);
+      }
     }
   }
 
@@ -214,8 +243,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         WFSnackBar.show(context, l10n.settingsExported);
       }
     } catch (e) {
+      _logError('导出设置', e);
       if (mounted) {
-        WFSnackBar.error(context, AppLocalizations.of(context).exportFailed('$e'));
+        _showErrorWithRecovery('导出设置失败', e.toString(), _exportSettings);
       }
     }
   }
@@ -272,8 +302,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         WFSnackBar.show(context, AppLocalizations.of(context).settingsImported);
       }
     } catch (e) {
+      _logError('导入设置', e);
       if (mounted) {
-        WFSnackBar.error(context, AppLocalizations.of(context).importFailed('$e'));
+        _showErrorWithRecovery('导入设置失败', e.toString(), _importSettings);
       }
     }
   }
@@ -915,6 +946,154 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ═══════════════════════════════════════════════════════════
+  // 错误处理与日志系统
+  // ═══════════════════════════════════════════════════════════
+
+  /// 记录错误日志
+  void _logError(String operation, dynamic error) {
+    final entry = _ErrorLogEntry(
+      timestamp: DateTime.now(),
+      operation: operation,
+      error: error.toString(),
+    );
+    setState(() {
+      _errorLogs.insert(0, entry);
+      if (_errorLogs.length > _maxErrorLogs) {
+        _errorLogs.removeLast();
+      }
+    });
+    debugPrint('[SettingsError] $operation: $error');
+  }
+
+  /// 分类错误类型，便于用户理解
+  String _classifyError(dynamic error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('network') || msg.contains('socket') || msg.contains('connection')) {
+      return '网络错误';
+    } else if (msg.contains('permission') || msg.contains('denied')) {
+      return '权限错误';
+    } else if (msg.contains('file') || msg.contains('path') || msg.contains('io')) {
+      return '文件错误';
+    } else if (msg.contains('timeout')) {
+      return '超时错误';
+    } else if (msg.contains('format') || msg.contains('parse') || msg.contains('json')) {
+      return '数据格式错误';
+    }
+    return '未知错误';
+  }
+
+  /// 显示带恢复选项的错误对话框
+  void _showErrorWithRecovery(String title, String error, VoidCallback? onRetry) {
+    final category = _classifyError(error);
+    HapticFeedback.mediumImpact(); // 触觉反馈提示错误
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.error_outline, color: WFColors.error, size: 36),
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: WFColors.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(category, style: const TextStyle(fontSize: 12, color: WFColors.error, fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(height: 8),
+            Text(error, style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showErrorLogDialog();
+            },
+            child: const Text('查看日志'),
+          ),
+          if (onRetry != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                onRetry();
+              },
+              child: const Text('重试'),
+            ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _reportError(title, error);
+            },
+            child: const Text('报告问题'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 显示错误日志对话框
+  void _showErrorLogDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('错误日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: _errorLogs.isEmpty
+              ? const Center(child: Text('暂无错误日志'))
+              : ListView.builder(
+                  itemCount: _errorLogs.length,
+                  itemBuilder: (ctx, i) {
+                    final log = _errorLogs[i];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.bug_report, size: 18, color: WFColors.error),
+                      title: Text(log.operation, style: const TextStyle(fontSize: 13)),
+                      subtitle: Text(
+                        '${log.timestamp.hour}:${log.timestamp.minute.toString().padLeft(2, '0')} - ${log.error}',
+                        style: const TextStyle(fontSize: 11),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          if (_errorLogs.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() => _errorLogs.clear());
+                Navigator.pop(ctx);
+              },
+              child: const Text('清除日志'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 报告错误（复制到剪贴板）
+  void _reportError(String title, String error) {
+    final report = 'WriteFont 错误报告\n标题: $title\n错误: $error\n时间: ${DateTime.now()}\n版本: v$_version';
+    Clipboard.setData(ClipboardData(text: report));
+    WFSnackBar.show(context, '错误报告已复制到剪贴板，可粘贴发送给开发者');
+  }
+
+  // ═══════════════════════════════════════════════════════════
   // 辅助方法
   // ═══════════════════════════════════════════════════════════
 
@@ -958,4 +1137,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
+}
+
+/// 错误日志条目数据类
+class _ErrorLogEntry {
+  final DateTime timestamp;
+  final String operation;
+  final String error;
+
+  const _ErrorLogEntry({
+    required this.timestamp,
+    required this.operation,
+    required this.error,
+  });
 }

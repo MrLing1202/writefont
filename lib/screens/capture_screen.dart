@@ -32,6 +32,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
   bool _batchMode = false;
   // 拍照计数器（批量模式下显示已拍数量）
   int _captureCount = 0;
+  // 帮助引导状态
+  bool _showHelpOverlay = false;
+  int _helpStep = 0;
 
   Future<void> _takePhoto() async {
     try {
@@ -183,6 +186,124 @@ class _CaptureScreenState extends State<CaptureScreen> {
     }
   }
 
+  /// 显示操作引导帮助
+  void _toggleHelp() {
+    setState(() {
+      _showHelpOverlay = !_showHelpOverlay;
+      _helpStep = 0;
+    });
+  }
+
+  /// 下一步帮助引导
+  void _nextHelpStep() {
+    final helpSteps = _getHelpSteps();
+    if (_helpStep < helpSteps.length - 1) {
+      setState(() => _helpStep++);
+    } else {
+      setState(() => _showHelpOverlay = false);
+    }
+  }
+
+  /// 获取帮助步骤列表
+  List<Map<String, dynamic>> _getHelpSteps() {
+    return [
+      {
+        'icon': Icons.camera_alt,
+        'title': '拍照或选图',
+        'desc': '点击底部"拍照"按钮拍摄手写字体，或从相册选择已有的图片',
+      },
+      {
+        'icon': Icons.grid_on,
+        'title': '网格引导',
+        'desc': '开启网格引导可帮助你按照标准字表逐字拍摄，确保每个字符位置准确',
+      },
+      {
+        'icon': Icons.burst_mode,
+        'title': '批量拍摄',
+        'desc': '开启批量模式后，拍照成功会自动准备下一张，适合连续拍摄多个字符',
+      },
+      {
+        'icon': Icons.high_quality,
+        'title': '图片质量',
+        'desc': '系统会自动检测图片质量，建议使用光线充足、清晰度高的图片以获得最佳识别效果',
+      },
+      {
+        'icon': Icons.arrow_forward,
+        'title': '开始处理',
+        'desc': '选择完图片后点击"下一步"，系统将自动识别字符并生成字体',
+      },
+    ];
+  }
+
+  /// 显示常见问题解答
+  void _showFAQDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help_outline, color: WFColors.primary),
+            SizedBox(width: 8),
+            Text('常见问题'),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 350,
+          child: ListView(
+            children: [
+              _buildFAQItem(
+                'Q: 什么样的图片效果最好？',
+                'A: 建议使用白色背景、黑色字体的手写图片。光线均匀、无阴影、图片清晰度高效果最佳。',
+              ),
+              _buildFAQItem(
+                'Q: 可以一次选多少张图片？',
+                'A: 没有数量限制，但建议每个字符使用一张独立图片，方便后续识别和编辑。',
+              ),
+              _buildFAQItem(
+                'Q: 图片质量提示"较差"怎么办？',
+                'A: 可以继续使用，但可能影响识别准确率。建议重新拍摄或选择更清晰的图片。',
+              ),
+              _buildFAQItem(
+                'Q: 批量模式是什么？',
+                'A: 批量模式下拍照成功后会自动准备下一张拍摄，适合连续拍摄多个字符的场景。',
+              ),
+              _buildFAQItem(
+                'Q: 网格引导有什么用？',
+                'A: 网格引导会按照标准字表显示字符位置，帮助你有序地逐字拍摄。',
+              ),
+              _buildFAQItem(
+                'Q: 支持哪些图片格式？',
+                'A: 支持常见的 JPG、PNG 格式。建议使用 PNG 格式以获得更好的透明度支持。',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建FAQ条目
+  Widget _buildFAQItem(String question, String answer) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const SizedBox(height: 4),
+          Text(answer, style: TextStyle(fontSize: 13, color: WFColors.textSecondary, height: 1.4)),
+        ],
+      ),
+    );
+  }
+
   /// 批量从相册选择（并行检测质量）
   Future<void> _pickMultiFromGallery() async {
     try {
@@ -240,6 +361,12 @@ class _CaptureScreenState extends State<CaptureScreen> {
       appBar: WFAppBar(
         title: '拍照 / 选图',
         actions: [
+          // 帮助按钮
+          IconButton(
+            onPressed: _toggleHelp,
+            icon: const Icon(Icons.help_outline),
+            tooltip: '操作帮助',
+          ),
           if (charset != null && charset.isNotEmpty)
             IconButton(
               onPressed: _showGridGuideDialog,
@@ -265,59 +392,168 @@ class _CaptureScreenState extends State<CaptureScreen> {
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // 进度指示条
-                if (totalChars > 0)
-                  ProgressBanner(
-                    imageCount: _selectedImages.length,
-                    totalChars: totalChars,
-                    colorScheme: colorScheme,
-                  ),
+      body: Stack(
+        children: [
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    // 进度指示条
+                    if (totalChars > 0)
+                      ProgressBanner(
+                        imageCount: _selectedImages.length,
+                        totalChars: totalChars,
+                        colorScheme: colorScheme,
+                      ),
 
-                // 网格引导叠加层
-                if (_showGridGuide && charset != null)
-                  GridGuideOverlay(
-                    charset: charset,
-                    completedCount: _selectedImages.length,
-                    colorScheme: colorScheme,
-                  ),
+                    // 网格引导叠加层
+                    if (_showGridGuide && charset != null)
+                      GridGuideOverlay(
+                        charset: charset,
+                        completedCount: _selectedImages.length,
+                        colorScheme: colorScheme,
+                      ),
 
-                // 说明横幅
-                InfoBanner(colorScheme: colorScheme),
+                    // 说明横幅
+                    InfoBanner(colorScheme: colorScheme),
 
-                // 已选图片缩略图
-                if (_selectedImages.isNotEmpty)
-                  ThumbnailStrip(
-                    images: _selectedImages,
-                    onRemove: _removeImage,
-                    colorScheme: colorScheme,
-                  ),
+                    // 已选图片缩略图
+                    if (_selectedImages.isNotEmpty)
+                      ThumbnailStrip(
+                        images: _selectedImages,
+                        onRemove: _removeImage,
+                        colorScheme: colorScheme,
+                      ),
 
-                if (_selectedImages.isNotEmpty) const Divider(height: 1),
+                    if (_selectedImages.isNotEmpty) const Divider(height: 1),
 
-                // 主内容区域
-                Expanded(
-                  child: _selectedImages.isEmpty
-                      ? CaptureEmptyState(colorScheme: colorScheme)
-                      : CaptureImageList(
-                          images: _selectedImages,
-                          onRemove: _removeImage,
-                          colorScheme: colorScheme,
-                        ),
+                    // 主内容区域
+                    Expanded(
+                      child: _selectedImages.isEmpty
+                          ? CaptureEmptyState(colorScheme: colorScheme)
+                          : CaptureImageList(
+                              images: _selectedImages,
+                              onRemove: _removeImage,
+                              colorScheme: colorScheme,
+                            ),
+                    ),
+
+                    // 底部操作栏
+                    CaptureBottomBar(
+                      onTakePhoto: _takePhoto,
+                      onPickFromGallery: _pickFromGallery,
+                      onPickMulti: _pickMultiFromGallery,
+                      colorScheme: colorScheme,
+                    ),
+                  ],
                 ),
 
-                // 底部操作栏
-                CaptureBottomBar(
-                  onTakePhoto: _takePhoto,
-                  onPickFromGallery: _pickFromGallery,
-                  onPickMulti: _pickMultiFromGallery,
-                  colorScheme: colorScheme,
+          // 帮助引导覆盖层
+          if (_showHelpOverlay) _buildHelpOverlay(),
+        ],
+      ),
+    );
+  }
+
+  /// 构建帮助引导覆盖层
+  Widget _buildHelpOverlay() {
+    final helpSteps = _getHelpSteps();
+    final step = helpSteps[_helpStep];
+
+    return GestureDetector(
+      onTap: _nextHelpStep,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.75),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.all(32),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: WFColors.bgCard,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  step['icon'] as IconData,
+                  size: 56,
+                  color: WFColors.primary,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  step['title'] as String,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: WFColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  step['desc'] as String,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: WFColors.textSecondary,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                // 进度指示点
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    helpSteps.length,
+                    (i) => Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _helpStep ? WFColors.primary : WFColors.textLight,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      onPressed: () => setState(() => _showHelpOverlay = false),
+                      child: const Text('跳过', style: TextStyle(color: WFColors.textSecondary)),
+                    ),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: _showFAQDialog,
+                          child: const Text('常见问题'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _nextHelpStep,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: WFColors.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: Text(
+                            _helpStep < helpSteps.length - 1 ? '下一步' : '完成',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
+          ),
+        ),
+      ),
     );
   }
 

@@ -14,6 +14,7 @@ import 'home/welcome_header.dart';
 import 'home/recent_projects_section.dart';
 import 'home/secondary_entry_card.dart';
 import 'home/home_actions.dart';
+import 'package:flutter/services.dart';
 
 class HomeScreen extends StatefulWidget {
   /// 主题变更回调，用于从设置页返回时刷新主题
@@ -25,7 +26,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _savedProjectCount = 0;
   int _totalCharCount = 0;
   DateTime? _lastActivityTime;
@@ -33,6 +34,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _appVersion = '';
   bool _showOnboarding = false;
   int _onboardingStep = 0;
+  bool _isRefreshing = false;
+
+  // 快捷操作动画控制器
+  late AnimationController _quickActionAnimController;
+  late Animation<double> _quickActionScale;
 
   @override
   void initState() {
@@ -40,6 +46,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadProjectData();
     _loadAppVersion();
     _checkOnboardingGuide();
+    _quickActionAnimController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _quickActionScale = Tween<double>(begin: 1.0, end: 0.92).animate(
+      CurvedAnimation(parent: _quickActionAnimController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _quickActionAnimController.dispose();
+    super.dispose();
   }
 
   /// 检查是否需要显示新手引导
@@ -107,7 +126,20 @@ class _HomeScreenState extends State<HomeScreen> {
           _recentProjects = projects.take(2).toList();
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      // 加载失败时静默处理，避免中断用户操作
+      debugPrint('加载项目数据失败: $e');
+    }
+  }
+
+  /// 下拉刷新项目数据
+  Future<void> _onRefresh() async {
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    HapticFeedback.lightImpact(); // 触觉反馈
+    await _loadProjectData();
+    await _loadAppVersion();
+    if (mounted) setState(() => _isRefreshing = false);
   }
 
   /// 根据时间差生成本地化的描述文本
@@ -146,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: WFAppBar(
         title: l10n.appName,
-        leading: IconButton(
+        leading: IconButton( // 主题变更回调，用于从设置页返回时刷新主题
           icon: Badge(
             isLabelVisible: _savedProjectCount > 0,
             label: Text('$_savedProjectCount'),
@@ -176,9 +208,13 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Stack(
         children: [
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          RefreshIndicator(
+            onRefresh: _onRefresh,
+            color: WFColors.primary,
+            child: Center(
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Column(
                 children: [
                   // ── 欢迎语 + 统计 ──
@@ -193,7 +229,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   // ── 快速操作网格 ──
                   WFAnimations.fadeInSlide(
-                    _buildQuickActionsGrid(context),
+                    ScaleTransition(
+                      scale: _quickActionScale,
+                      child: _buildQuickActionsGrid(context),
+                    ),
                     delay: const Duration(milliseconds: 80),
                   ),
                   const SizedBox(height: 20),
@@ -320,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          ),
+          ), // end RefreshIndicator
 
           // 新手引导遮罩
           if (_showOnboarding) _buildOnboardingOverlay(context),
@@ -389,7 +428,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 构建快速操作按钮
   Widget _buildQuickActionButton(_QuickAction action) {
     return GestureDetector(
-      onTap: action.onTap,
+      onTapDown: (_) => _quickActionAnimController.forward(),
+      onTapUp: (_) {
+        _quickActionAnimController.reverse();
+        action.onTap();
+      },
+      onTapCancel: () => _quickActionAnimController.reverse(),
       child: Column(
         children: [
           Container(

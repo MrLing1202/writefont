@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import 'widgets/parameter_panel.dart';
 import 'widgets/processing_stats_bar.dart';
@@ -95,34 +96,7 @@ class _ProcessingScreenState extends State<ProcessingScreen>
         ],
       ),
       body: isProcessing
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 4,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '正在处理图片...',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '图片分割与轮廓提取中...',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              ),
-            )
+          ? _buildProcessingFeedback(colorScheme)
           : Column(
               children: [
                 // 参数面板
@@ -199,34 +173,7 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                 // 字符网格
                 Expanded(
                   child: processedCells.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search_off,
-                                size: 64,
-                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '未识别到字符',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '请尝试调整阈值或选择更清晰的图片',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
+                      ? _buildEmptyStateFeedback(colorScheme)
                       : GridView.builder(
                           padding: const EdgeInsets.all(12),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -275,5 +222,196 @@ class _ProcessingScreenState extends State<ProcessingScreen>
               ],
             ),
     );
+  }
+
+  /// 构建处理中的反馈界面（带动画和进度提示）
+  Widget _buildProcessingFeedback(ColorScheme colorScheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 主加载动画
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: CircularProgressIndicator(
+              strokeWidth: 5,
+              color: colorScheme.primary,
+              backgroundColor: colorScheme.primary.withValues(alpha: 0.15),
+            ),
+          ),
+          const SizedBox(height: 24),
+          // 处理状态文本
+          Text(
+            '正在处理图片...',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 详细步骤提示
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                _buildProcessingStep(Icons.crop, '图片分割', true, colorScheme),
+                const SizedBox(height: 8),
+                _buildProcessingStep(Icons.auto_fix_high, '轮廓提取', false, colorScheme),
+                const SizedBox(height: 8),
+                _buildProcessingStep(Icons.text_fields, '字符识别', false, colorScheme),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '请稍候，正在分析您的手写字体...',
+            style: TextStyle(
+              fontSize: 13,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建处理步骤指示项
+  Widget _buildProcessingStep(IconData icon, String label, bool isActive, ColorScheme colorScheme) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: isActive ? colorScheme.primary : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: isActive ? colorScheme.primary : colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        if (isActive) ...[
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: colorScheme.primary,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 构建空状态反馈界面（带操作建议）
+  Widget _buildEmptyStateFeedback(ColorScheme colorScheme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 72,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '未识别到字符',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 操作建议卡片
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _buildSuggestionItem(Icons.tune, '调整阈值参数', '降低阈值可能识别更多字符', colorScheme),
+                  const Divider(height: 16),
+                  _buildSuggestionItem(Icons.image, '使用更清晰的图片', '确保光线充足、字体清晰', colorScheme),
+                  const Divider(height: 16),
+                  _buildSuggestionItem(Icons.crop, '检查图片裁剪', '确保字符区域被正确裁剪', colorScheme),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            // 操作反馈提示
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lightbulb_outline, size: 16, color: colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    '提示：调整参数后系统会自动重新处理',
+                    style: TextStyle(fontSize: 12, color: colorScheme.primary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建建议项
+  Widget _buildSuggestionItem(IconData icon, String title, String subtitle, ColorScheme colorScheme) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: colorScheme.primary.withValues(alpha: 0.7)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurface)),
+              Text(subtitle, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6))),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 显示成功提示（触觉反馈 + 视觉提示）
+  void _showSuccessFeedback(String message) {
+    HapticFeedback.lightImpact();
+    WFSnackBar.show(context, message);
+  }
+
+  /// 显示失败提示（触觉反馈 + 错误提示）
+  void _showFailureFeedback(String message) {
+    HapticFeedback.heavyImpact();
+    WFSnackBar.error(context, message);
   }
 }
