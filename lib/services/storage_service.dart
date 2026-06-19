@@ -1868,4 +1868,299 @@ class StorageService {
       };
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 崩溃报告优化：崩溃捕获、日志记录、报告发送、崩溃分析
+  // ═══════════════════════════════════════════════════════════
+
+  /// 崩溃报告列表缓存
+  static final List<CrashReport> _crashReports = [];
+  static const String _crashReportsKey = 'crash_reports';
+  static const int _maxCrashReports = 50;
+
+  /// 捕获未处理异常并记录为崩溃报告
+  ///
+  /// [error] 异常对象
+  /// [stackTrace] 堆栈信息
+  /// [context] 崩溃发生的上下文描述（如页面名称、操作描述）
+  /// [fatal] 是否为致命崩溃
+  static Future<void> captureCrash(
+    dynamic error,
+    StackTrace? stackTrace, {
+    String? context,
+    bool fatal = false,
+  }) async {
+    try {
+      final report = CrashReport(
+        id: generateId(),
+        timestamp: DateTime.now(),
+        error: error.toString(),
+        stackTrace: stackTrace?.toString(),
+        context: context,
+        fatal: fatal,
+        errorType: _classifyCrashType(error),
+      );
+
+      _crashReports.insert(0, report);
+      // 限制崩溃报告数量
+      while (_crashReports.length > _maxCrashReports) {
+        _crashReports.removeLast();
+      }
+
+      await _saveCrashReports();
+      debugPrint('[CrashReporter] 崩溃已捕获: ${report.errorType} - ${report.error}');
+
+      // 致命崩溃立即尝试发送报告
+      if (fatal) {
+        await _sendCrashReport(report);
+      }
+    } catch (e) {
+      debugPrint('[CrashReporter] 记录崩溃失败: $e');
+    }
+  }
+
+  /// 分类崩溃类型
+  ///
+  /// 根据异常类型和错误信息自动分类崩溃类型。
+  static String _classifyCrashType(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+    final errorType = error.runtimeType.toString().toLowerCase();
+
+    if (errorType.contains('oom') || errorStr.contains('out of memory') || errorStr.contains('内存不足')) {
+      return 'memory';
+    } else if (errorType.contains('io') || errorStr.contains('file') || errorStr.contains('path')) {
+      return 'file_io';
+    } else if (errorType.contains('network') || errorStr.contains('socket') || errorStr.contains('connection')) {
+      return 'network';
+    } else if (errorType.contains('timeout') || errorStr.contains('timeout') || errorStr.contains('超时')) {
+      return 'timeout';
+    } else if (errorType.contains('format') || errorStr.contains('parse') || errorStr.contains('json')) {
+      return 'data_format';
+    } else if (errorType.contains('permission') || errorStr.contains('denied') || errorStr.contains('权限')) {
+      return 'permission';
+    } else if (errorType.contains('state') || errorStr.contains('null') || errorStr.contains('nullpointer')) {
+      return 'state_error';
+    }
+    return 'unknown';
+  }
+
+  /// 加载崩溃报告
+  static Future<List<CrashReport>> loadCrashReports() async {
+    if (_crashReports.isNotEmpty) return List.unmodifiable(_crashReports);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_crashReportsKey);
+      if (json != null) {
+        final list = jsonDecode(json) as List;
+        _crashReports.clear();
+        _crashReports.addAll(
+          list.map((e) => CrashReport.fromJson(e as Map<String, dynamic>)),
+        );
+      }
+    } catch (e) {
+      debugPrint('[CrashReporter] 加载崩溃报告失败: $e');
+    }
+    return List.unmodifiable(_crashReports);
+  }
+
+  /// 保存崩溃报告到持久化存储
+  static Future<void> _saveCrashReports() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_crashReports.map((e) => e.toJson()).toList());
+      await prefs.setString(_crashReportsKey, json);
+    } catch (e) {
+      debugPrint('[CrashReporter] 保存崩溃报告失败: $e');
+    }
+  }
+
+  /// 发送崩溃报告（生成可分享的报告文件）
+  ///
+  /// 将崩溃报告导出为 JSON 文件，便于用户通过分享发送给开发者。
+  static Future<String?> _sendCrashReport(CrashReport report) async {
+    try {
+      final expDir = await _exportsDir;
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'crash_report_${report.id.substring(0, 8)}_$timestamp.json';
+      final filePath = p.join(expDir.path, fileName);
+
+      final reportJson = {
+        'reportId': report.id,
+        'timestamp': report.timestamp.toIso8601String(),
+        'error': report.error,
+        'errorType': report.errorType,
+        'stackTrace': report.stackTrace,
+        'context': report.context,
+        'fatal': report.fatal,
+        'appVersion': 'v2.15.0',
+        'platform': Platform.operatingSystem,
+        'platformVersion': Platform.operatingSystemVersion,
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(reportJson);
+      final file = File(filePath);
+      await file.writeAsString(jsonString);
+      debugPrint('[CrashReporter] 崩溃报告已导出: $filePath');
+      return filePath;
+    } catch (e) {
+      debugPrint('[CrashReporter] 导出崩溃报告失败: $e');
+      return null;
+    }
+  }
+
+  /// 批量导出所有崩溃报告为可分享文件
+  ///
+  /// 返回导出文件路径
+  static Future<String?> exportCrashReports() async {
+    try {
+      await loadCrashReports();
+      if (_crashReports.isEmpty) return null;
+
+      final expDir = await _exportsDir;
+      final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final fileName = 'crash_reports_all_$timestamp.json';
+      final filePath = p.join(expDir.path, fileName);
+
+      final exportData = {
+        'exportDate': DateTime.now().toIso8601String(),
+        'reportCount': _crashReports.length,
+        'analysis': analyzeCrashReports(),
+        'reports': _crashReports.map((e) => e.toJson()).toList(),
+      };
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
+      final file = File(filePath);
+      await file.writeAsString(jsonString);
+      return filePath;
+    } catch (e) {
+      debugPrint('[CrashReporter] 批量导出崩溃报告失败: $e');
+      return null;
+    }
+  }
+
+  /// 分析崩溃报告
+  ///
+  /// 对所有崩溃报告进行统计分析，返回：
+  /// - 各类型崩溃数量
+  /// - 致命崩溃比例
+  /// - 最近崩溃时间
+  /// - 崩溃频率分析
+  static Map<String, dynamic> analyzeCrashReports() {
+    if (_crashReports.isEmpty) {
+      return {
+        'totalCount': 0,
+        'fatalCount': 0,
+        'typeDistribution': <String, int>{},
+        'frequency': 'none',
+      };
+    }
+
+    final typeDistribution = <String, int>{};
+    int fatalCount = 0;
+
+    for (final report in _crashReports) {
+      typeDistribution[report.errorType] = (typeDistribution[report.errorType] ?? 0) + 1;
+      if (report.fatal) fatalCount++;
+    }
+
+    // 分析崩溃频率
+    final now = DateTime.now();
+    final last24h = _crashReports.where((r) => now.difference(r.timestamp).inHours < 24).length;
+    final last7d = _crashReports.where((r) => now.difference(r.timestamp).inDays < 7).length;
+
+    String frequency;
+    if (last24h >= 5) {
+      frequency = 'critical';
+    } else if (last7d >= 10) {
+      frequency = 'high';
+    } else if (last7d >= 3) {
+      frequency = 'moderate';
+    } else {
+      frequency = 'low';
+    }
+
+    // 获取最常见的崩溃类型
+    String? mostFrequentType;
+    int maxCount = 0;
+    for (final entry in typeDistribution.entries) {
+      if (entry.value > maxCount) {
+        maxCount = entry.value;
+        mostFrequentType = entry.key;
+      }
+    }
+
+    return {
+      'totalCount': _crashReports.length,
+      'fatalCount': fatalCount,
+      'fatalRate': _crashReports.isNotEmpty ? (fatalCount / _crashReports.length) : 0.0,
+      'typeDistribution': typeDistribution,
+      'mostFrequentType': mostFrequentType,
+      'mostFrequentCount': maxCount,
+      'last24hCount': last24h,
+      'last7dCount': last7d,
+      'frequency': frequency,
+      'latestCrash': _crashReports.isNotEmpty ? _crashReports.first.toJson() : null,
+    };
+  }
+
+  /// 清除所有崩溃报告
+  static Future<void> clearCrashReports() async {
+    _crashReports.clear();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_crashReportsKey);
+    } catch (_) {}
+  }
+
+  /// 删除指定崩溃报告
+  static Future<void> deleteCrashReport(String reportId) async {
+    _crashReports.removeWhere((r) => r.id == reportId);
+    await _saveCrashReports();
+  }
+}
+
+/// 崩溃报告数据模型
+///
+/// 包含崩溃的完整信息：错误类型、堆栈、上下文、时间戳等。
+class CrashReport {
+  final String id;
+  final DateTime timestamp;
+  final String error;
+  final String? stackTrace;
+  final String? context;
+  final bool fatal;
+  final String errorType;
+
+  const CrashReport({
+    required this.id,
+    required this.timestamp,
+    required this.error,
+    this.stackTrace,
+    this.context,
+    this.fatal = false,
+    this.errorType = 'unknown',
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'timestamp': timestamp.toIso8601String(),
+        'error': error,
+        'stackTrace': stackTrace,
+        'context': context,
+        'fatal': fatal,
+        'errorType': errorType,
+      };
+
+  factory CrashReport.fromJson(Map<String, dynamic> json) => CrashReport(
+        id: json['id'] as String,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        error: json['error'] as String,
+        stackTrace: json['stackTrace'] as String?,
+        context: json['context'] as String?,
+        fatal: json['fatal'] as bool? ?? false,
+        errorType: json['errorType'] as String? ?? 'unknown',
+      );
+
+  @override
+  String toString() => 'CrashReport[$errorType]: $error (${fatal ? "fatal" : "non-fatal"})';
 }

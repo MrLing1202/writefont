@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../generated/l10n/app_localizations.dart';
 import '../services/app_config_service.dart';
 import '../services/locale_service.dart';
@@ -57,6 +58,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final List<_ErrorLogEntry> _errorLogs = [];
   static const int _maxErrorLogs = 50;
 
+  // 用户反馈
+  final List<_FeedbackEntry> _feedbackList = [];
+  static const int _maxFeedbackEntries = 100;
+  static const String _feedbackStorageKey = 'user_feedback_entries';
+
+  // 反馈分类
+  static const Map<String, Map<String, dynamic>> _feedbackCategories = {
+    'bug': {'icon': '🐛', 'label': 'Bug 报告', 'priority': 1},
+    'feature': {'icon': '💡', 'label': '功能建议', 'priority': 2},
+    'ux': {'icon': '🎨', 'label': '体验改进', 'priority': 3},
+    'performance': {'icon': '⚡', 'label': '性能问题', 'priority': 4},
+    'other': {'icon': '📝', 'label': '其他', 'priority': 5},
+  };
+
   // 外观设置
   String _themeMode = AppConfigService.defaultThemeMode;
 
@@ -68,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadSettings();
+    _loadFeedbackEntries();
   }
 
   @override
@@ -456,6 +472,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ═══ 关于 ═══
                 _buildSectionHeader(l10n.about, Icons.info_outline),
                 _buildAboutCard(),
+                const SizedBox(height: 16),
+
+                // ═══ 用户反馈 ═══
+                _buildSectionHeader('用户反馈', Icons.feedback_outlined),
+                _buildFeedbackCard(),
                 const SizedBox(height: 32),
               ],
             ),
@@ -1137,6 +1158,313 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 用户反馈优化：反馈收集、分类、处理、统计
+  // ═══════════════════════════════════════════════════════════
+
+  /// 加载已保存的反馈条目
+  Future<void> _loadFeedbackEntries() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_feedbackStorageKey);
+      if (json != null && mounted) {
+        final list = jsonDecode(json) as List;
+        setState(() {
+          _feedbackList.clear();
+          _feedbackList.addAll(
+            list.map((e) => _FeedbackEntry.fromJson(e as Map<String, dynamic>)),
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('[Settings] 加载反馈失败: $e');
+    }
+  }
+
+  /// 保存反馈条目
+  Future<void> _saveFeedbackEntries() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_feedbackList.map((e) => e.toJson()).toList());
+      await prefs.setString(_feedbackStorageKey, json);
+    } catch (e) {
+      debugPrint('[Settings] 保存反馈失败: $e');
+    }
+  }
+
+  /// 显示反馈收集对话框
+  void _showFeedbackDialog() {
+    final TextEditingController contentController = TextEditingController();
+    String selectedCategory = 'bug';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          icon: const Icon(Icons.feedback, color: WFColors.primary, size: 36),
+          title: const Text('提交反馈'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('反馈类型', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _feedbackCategories.entries.map((entry) {
+                    final isSelected = selectedCategory == entry.key;
+                    return ChoiceChip(
+                      label: Text('${entry.value['icon']} ${entry.value['label']}'),
+                      selected: isSelected,
+                      selectedColor: WFColors.primary.withValues(alpha: 0.2),
+                      onSelected: (_) => setDialogState(() => selectedCategory = entry.key),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                const Text('反馈内容', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: contentController,
+                  maxLines: 5,
+                  decoration: InputDecoration(
+                    hintText: '请详细描述您的反馈...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final content = contentController.text.trim();
+                if (content.isEmpty) {
+                  WFSnackBar.error(context, '请输入反馈内容');
+                  return;
+                }
+                _submitFeedback(selectedCategory, content);
+                Navigator.pop(ctx);
+              },
+              child: const Text('提交'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 提交反馈
+  void _submitFeedback(String category, String content) {
+    final entry = _FeedbackEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      category: category,
+      content: content,
+      timestamp: DateTime.now(),
+      appVersion: 'v$_version',
+      status: 'submitted',
+    );
+
+    setState(() {
+      _feedbackList.insert(0, entry);
+      if (_feedbackList.length > _maxFeedbackEntries) {
+        _feedbackList.removeLast();
+      }
+    });
+
+    _saveFeedbackEntries();
+    WFSnackBar.show(context, '反馈已提交，感谢您的反馈！');
+    debugPrint('[Settings] 反馈已提交: $category - ${content.substring(0, content.length.clamp(0, 50))}');
+  }
+
+  /// 获取反馈统计数据
+  Map<String, dynamic> _getFeedbackStats() {
+    final categoryCount = <String, int>{};
+    for (final entry in _feedbackList) {
+      categoryCount[entry.category] = (categoryCount[entry.category] ?? 0) + 1;
+    }
+
+    final now = DateTime.now();
+    final last7d = _feedbackList.where((e) => now.difference(e.timestamp).inDays < 7).length;
+    final last30d = _feedbackList.where((e) => now.difference(e.timestamp).inDays < 30).length;
+
+    return {
+      'total': _feedbackList.length,
+      'categoryCount': categoryCount,
+      'last7d': last7d,
+      'last30d': last30d,
+    };
+  }
+
+  /// 显示反馈统计对话框
+  void _showFeedbackStatsDialog() {
+    final stats = _getFeedbackStats();
+    final categoryCount = stats['categoryCount'] as Map<String, int>;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.bar_chart, color: WFColors.primary, size: 36),
+        title: const Text('反馈统计'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStatRow('总反馈数', '${stats['total']}'),
+            _buildStatRow('最近7天', '${stats['last7d']}'),
+            _buildStatRow('最近30天', '${stats['last30d']}'),
+            const Divider(),
+            const Text('按类型统计', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            ...categoryCount.entries.map((e) {
+              final catInfo = _feedbackCategories[e.key];
+              return _buildStatRow(
+                '${catInfo?['icon'] ?? '📝'} ${catInfo?['label'] ?? e.key}',
+                '${e.value}',
+              );
+            }),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 13)),
+          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: WFColors.primary)),
+        ],
+      ),
+    );
+  }
+
+  /// 构建用户反馈卡片
+  Widget _buildFeedbackCard() {
+    return WFCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.edit_note, color: WFColors.primary),
+            title: const Text('提交反馈'),
+            subtitle: const Text('报告问题或提出建议'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showFeedbackDialog,
+          ),
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.analytics_outlined, color: WFColors.accent),
+            title: const Text('反馈统计'),
+            subtitle: Text('已提交 ${_feedbackList.length} 条反馈'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showFeedbackStatsDialog,
+          ),
+          if (_feedbackList.isNotEmpty) ...[
+            _buildDivider(),
+            ListTile(
+              leading: const Icon(Icons.history, color: WFColors.info),
+              title: const Text('反馈历史'),
+              subtitle: const Text('查看已提交的反馈'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _showFeedbackHistoryDialog,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 显示反馈历史对话框
+  void _showFeedbackHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('反馈历史'),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 400,
+          child: _feedbackList.isEmpty
+              ? const Center(child: Text('暂无反馈记录'))
+              : ListView.builder(
+                  itemCount: _feedbackList.length,
+                  itemBuilder: (ctx, i) {
+                    final entry = _feedbackList[i];
+                    final catInfo = _feedbackCategories[entry.category];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Text(catInfo?['icon'] ?? '📝', style: const TextStyle(fontSize: 24)),
+                        title: Text(
+                          entry.content,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          '${catInfo?['label'] ?? entry.category} · ${_formatFeedbackTime(entry.timestamp)}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18, color: WFColors.error),
+                          onPressed: () {
+                            setState(() => _feedbackList.removeAt(i));
+                            _saveFeedbackEntries();
+                            if (_feedbackList.isEmpty) Navigator.pop(ctx);
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          if (_feedbackList.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                setState(() => _feedbackList.clear());
+                _saveFeedbackEntries();
+                Navigator.pop(ctx);
+              },
+              child: const Text('清除全部', style: TextStyle(color: WFColors.error)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 格式化反馈时间
+  String _formatFeedbackTime(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
+    if (diff.inDays < 1) return '${diff.inHours}小时前';
+    if (diff.inDays < 7) return '${diff.inDays}天前';
+    return '${time.month}/${time.day}';
+  }
 }
 
 /// 错误日志条目数据类
@@ -1150,4 +1478,41 @@ class _ErrorLogEntry {
     required this.operation,
     required this.error,
   });
+}
+
+/// 用户反馈条目数据类
+class _FeedbackEntry {
+  final String id;
+  final String category;
+  final String content;
+  final DateTime timestamp;
+  final String appVersion;
+  final String status;
+
+  const _FeedbackEntry({
+    required this.id,
+    required this.category,
+    required this.content,
+    required this.timestamp,
+    required this.appVersion,
+    this.status = 'submitted',
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'category': category,
+        'content': content,
+        'timestamp': timestamp.toIso8601String(),
+        'appVersion': appVersion,
+        'status': status,
+      };
+
+  factory _FeedbackEntry.fromJson(Map<String, dynamic> json) => _FeedbackEntry(
+        id: json['id'] as String,
+        category: json['category'] as String,
+        content: json['content'] as String,
+        timestamp: DateTime.parse(json['timestamp'] as String),
+        appVersion: json['appVersion'] as String? ?? '',
+        status: json['status'] as String? ?? 'submitted',
+      );
 }

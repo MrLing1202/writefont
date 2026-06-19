@@ -962,6 +962,274 @@ class RecognitionService {
       _confidenceCache.remove(oldestKey);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 版本管理优化：版本检查、版本更新、版本回滚、版本历史
+  // ═══════════════════════════════════════════════════════════
+
+  /// 当前识别引擎版本
+  static const String _currentEngineVersion = 'v2.15.0';
+
+  /// 版本历史记录存储 key
+  static const String _prefKeyVersionHistory = 'recognition_version_history';
+
+  /// 版本配置存储 key
+  static const String _prefKeyEngineConfig = 'recognition_engine_config';
+
+  /// 最大版本历史记录数
+  static const int _maxVersionHistory = 20;
+
+  /// 获取当前引擎版本
+  static String get currentEngineVersion => _currentEngineVersion;
+
+  /// 检查引擎版本更新
+  ///
+  /// 返回包含版本信息的 Map：
+  /// - currentVersion: 当前版本
+  /// - latestVersion: 最新版本（从配置中读取）
+  /// - needsUpdate: 是否需要更新
+  /// - changelog: 更新日志
+  static Future<Map<String, dynamic>> checkVersion() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final configJson = prefs.getString(_prefKeyEngineConfig);
+
+      String latestVersion = _currentEngineVersion;
+      String changelog = '';
+
+      if (configJson != null) {
+        final config = jsonDecode(configJson) as Map<String, dynamic>;
+        latestVersion = config['latestVersion'] as String? ?? _currentEngineVersion;
+        changelog = config['changelog'] as String? ?? '';
+      }
+
+      final needsUpdate = _isNewerVersion(latestVersion, _currentEngineVersion);
+
+      return {
+        'currentVersion': _currentEngineVersion,
+        'latestVersion': latestVersion,
+        'needsUpdate': needsUpdate,
+        'changelog': changelog,
+        'checkedAt': DateTime.now().toIso8601String(),
+      };
+    } catch (e) {
+      _addDebugLog('system', '版本检查失败: $e');
+      return {
+        'currentVersion': _currentEngineVersion,
+        'latestVersion': _currentEngineVersion,
+        'needsUpdate': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// 比较版本号
+  ///
+  /// 返回 true 如果 v1 > v2
+  static bool _isNewerVersion(String v1, String v2) {
+    final parts1 = v1.replaceAll('v', '').split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final parts2 = v2.replaceAll('v', '').split('.').map((s) => int.tryParse(s) ?? 0).toList();
+
+    for (int i = 0; i < 3; i++) {
+      final p1 = i < parts1.length ? parts1[i] : 0;
+      final p2 = i < parts2.length ? parts2[i] : 0;
+      if (p1 > p2) return true;
+      if (p1 < p2) return false;
+    }
+    return false;
+  }
+
+  /// 更新引擎版本
+  ///
+  /// [newVersion] 新版本号
+  /// [changelog] 更新日志
+  /// 会记录版本历史并清理旧缓存
+  static Future<void> updateVersion(String newVersion, {String? changelog}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 记录版本历史
+      await _addVersionHistory(newVersion, changelog: changelog);
+
+      // 更新引擎配置
+      final config = {
+        'currentVersion': newVersion,
+        'latestVersion': newVersion,
+        'updatedAt': DateTime.now().toIso8601String(),
+        'changelog': changelog ?? '',
+      };
+      await prefs.setString(_prefKeyEngineConfig, jsonEncode(config));
+
+      // 版本更新时清理缓存，确保新版本逻辑生效
+      clearRecognitionCache();
+      clearCache();
+
+      _addDebugLog('system', '引擎版本已更新: $_currentEngineVersion -> $newVersion');
+      debugPrint('[RecognitionService] 引擎版本已更新: $newVersion');
+    } catch (e) {
+      _addDebugLog('system', '版本更新失败: $e');
+      debugPrint('[RecognitionService] 版本更新失败: $e');
+    }
+  }
+
+  /// 回滚到指定版本
+  ///
+  /// [targetVersion] 目标版本号
+  /// [reason] 回滚原因
+  static Future<bool> rollbackVersion(String targetVersion, {String? reason}) async {
+    try {
+      final history = await getVersionHistory();
+      final targetExists = history.any((h) => h['version'] == targetVersion);
+      if (!targetExists) {
+        _addDebugLog('system', '回滚失败: 目标版本 $targetVersion 不存在于历史记录中');
+        return false;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+
+      // 记录回滚事件
+      final rollbackEntry = {
+        'version': targetVersion,
+        'rollbackFrom': _currentEngineVersion,
+        'timestamp': DateTime.now().toIso8601String(),
+        'reason': reason ?? '用户手动回滚',
+        'isRollback': true,
+      };
+
+      // 更新版本历史
+      final historyJson = prefs.getString(_prefKeyVersionHistory);
+      List<Map<String, dynamic>> historyList = [];
+      if (historyJson != null) {
+        historyList = (jsonDecode(historyJson) as List).cast<Map<String, dynamic>>();
+      }
+      historyList.add(rollbackEntry);
+      while (historyList.length > _maxVersionHistory) {
+        historyList.removeAt(0);
+      }
+      await prefs.setString(_prefKeyVersionHistory, jsonEncode(historyList));
+
+      // 更新引擎配置为回滚版本
+      final config = {
+        'currentVersion': targetVersion,
+        'latestVersion': _currentEngineVersion,
+        'updatedAt': DateTime.now().toIso8601String(),
+        'rollbackFrom': _currentEngineVersion,
+        'rollbackReason': reason ?? '用户手动回滚',
+      };
+      await prefs.setString(_prefKeyEngineConfig, jsonEncode(config));
+
+      // 清理缓存
+      clearRecognitionCache();
+      clearCache();
+
+      _addDebugLog('system', '引擎版本已回滚: $_currentEngineVersion -> $targetVersion ($reason)');
+      debugPrint('[RecognitionService] 引擎版本已回滚: $targetVersion');
+      return true;
+    } catch (e) {
+      _addDebugLog('system', '版本回滚失败: $e');
+      debugPrint('[RecognitionService] 版本回滚失败: $e');
+      return false;
+    }
+  }
+
+  /// 添加版本历史记录
+  static Future<void> _addVersionHistory(String version, {String? changelog}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getString(_prefKeyVersionHistory);
+
+      List<Map<String, dynamic>> history = [];
+      if (historyJson != null) {
+        history = (jsonDecode(historyJson) as List).cast<Map<String, dynamic>>();
+      }
+
+      history.add({
+        'version': version,
+        'timestamp': DateTime.now().toIso8601String(),
+        'changelog': changelog ?? '',
+        'previousVersion': _currentEngineVersion,
+      });
+
+      // 限制历史记录数
+      while (history.length > _maxVersionHistory) {
+        history.removeAt(0);
+      }
+
+      await prefs.setString(_prefKeyVersionHistory, jsonEncode(history));
+    } catch (e) {
+      debugPrint('[RecognitionService] 保存版本历史失败: $e');
+    }
+  }
+
+  /// 获取版本历史记录
+  ///
+  /// 返回版本历史列表，按时间降序排列
+  static Future<List<Map<String, dynamic>>> getVersionHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getString(_prefKeyVersionHistory);
+      if (historyJson == null) return [];
+
+      final history = (jsonDecode(historyJson) as List).cast<Map<String, dynamic>>();
+      // 按时间降序排列
+      history.sort((a, b) => (b['timestamp'] as String).compareTo(a['timestamp'] as String));
+      return history;
+    } catch (e) {
+      debugPrint('[RecognitionService] 获取版本历史失败: $e');
+      return [];
+    }
+  }
+
+  /// 获取当前引擎配置
+  static Future<Map<String, dynamic>> getEngineConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final configJson = prefs.getString(_prefKeyEngineConfig);
+      if (configJson != null) {
+        return jsonDecode(configJson) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('[RecognitionService] 获取引擎配置失败: $e');
+    }
+    return {
+      'currentVersion': _currentEngineVersion,
+      'latestVersion': _currentEngineVersion,
+    };
+  }
+
+  /// 重置引擎到出厂版本
+  ///
+  /// 清除所有版本配置和历史，重置为当前内置版本
+  static Future<void> resetToFactoryVersion() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_prefKeyVersionHistory);
+      await prefs.remove(_prefKeyEngineConfig);
+      clearRecognitionCache();
+      clearCache();
+      _addDebugLog('system', '引擎已重置到出厂版本: $_currentEngineVersion');
+      debugPrint('[RecognitionService] 引擎已重置到出厂版本');
+    } catch (e) {
+      debugPrint('[RecognitionService] 重置失败: $e');
+    }
+  }
+
+  /// 导出版本管理数据为 JSON 字符串
+  static Future<String> exportVersionData() async {
+    final config = await getEngineConfig();
+    final history = await getVersionHistory();
+    final versionCheck = await checkVersion();
+
+    final data = {
+      'exportDate': DateTime.now().toIso8601String(),
+      'engineConfig': config,
+      'versionHistory': history,
+      'versionCheck': versionCheck,
+      'builtInVersion': _currentEngineVersion,
+    };
+
+    return const JsonEncoder.withIndent('  ').convert(data);
+  }
 }
 
 /// 云端认证错误（API Key 无效或过期）

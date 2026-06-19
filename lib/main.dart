@@ -1027,12 +1027,260 @@ class AppAnalytics {
     _performanceEvents.clear();
     _errorEvents.clear();
     _actionPath.clear();
+    _metricCollectors.clear();
   }
 
   /// 辅助方法：获取 Map 中值最大的 key
   static String? _getMaxKey(Map<String, int> map) {
     if (map.isEmpty) return null;
     return map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 性能监控优化：指标收集、报警、报告生成、优化建议
+  // ═══════════════════════════════════════════════════════════
+
+  /// 性能指标收集器
+  ///
+  /// 收集各类操作的性能指标（耗时、内存、频率等），
+  /// 用于性能报警和报告生成。
+  static final Map<String, _PerformanceMetricCollector> _metricCollectors = {};
+
+  /// 性能报警阈值配置
+  static final Map<String, double> _performanceThresholds = {
+    'page_transition': 500.0,    // 页面切换超过 500ms 报警
+    'saveProject': 2000.0,       // 保存项目超过 2s 报警
+    'loadProjects': 3000.0,      // 加载项目列表超过 3s 报警
+    'recognition': 5000.0,       // 字符识别超过 5s 报警
+  };
+
+  /// 性能报警回调列表
+  static final List<void Function(String metric, double value, double threshold)> _alertCallbacks = [];
+
+  /// 记录性能指标（增强版，含指标收集和报警检测）
+  ///
+  /// [metricName] 指标名称
+  /// [value] 指标值
+  /// [unit] 单位（默认 'ms'）
+  /// [metadata] 附加元数据
+  static void recordMetric(String metricName, double value,
+      {String unit = 'ms', Map<String, dynamic>? metadata}) {
+    // 收集指标
+    _metricCollectors.putIfAbsent(metricName, () => _PerformanceMetricCollector(metricName));
+    _metricCollectors[metricName]!.add(value);
+
+    // 同时记录到性能事件
+    trackPerformance(metricName, duration: Duration(microseconds: (value * 1000).toInt()), metadata: metadata);
+
+    // 检查是否触发报警
+    final threshold = _performanceThresholds[metricName];
+    if (threshold != null && value > threshold) {
+      _triggerPerformanceAlert(metricName, value, threshold);
+    }
+  }
+
+  /// 触发性能报警
+  static void _triggerPerformanceAlert(String metric, double value, double threshold) {
+    debugPrint('[Analytics] ⚠️ 性能报警: $metric = ${value.toStringAsFixed(1)}ms (阈值: ${threshold.toStringAsFixed(1)}ms)');
+    for (final callback in _alertCallbacks) {
+      try {
+        callback(metric, value, threshold);
+      } catch (_) {}
+    }
+  }
+
+  /// 添加性能报警回调
+  static void addPerformanceAlertCallback(
+      void Function(String metric, double value, double threshold) callback) {
+    _alertCallbacks.add(callback);
+  }
+
+  /// 移除性能报警回调
+  static void removePerformanceAlertCallback(
+      void Function(String metric, double value, double threshold) callback) {
+    _alertCallbacks.remove(callback);
+  }
+
+  /// 设置性能报警阈值
+  ///
+  /// [metricName] 指标名称
+  /// [thresholdMs] 阈值（毫秒）
+  static void setPerformanceThreshold(String metricName, double thresholdMs) {
+    _performanceThresholds[metricName] = thresholdMs;
+  }
+
+  /// 生成性能报告（增强版）
+  ///
+  /// 返回包含以下信息的完整性能报告：
+  /// - 各指标的统计数据（平均值、中位数、P95、P99、最大值）
+  /// - 性能报警历史
+  /// - 性能优化建议
+  /// - 资源使用情况
+  static Map<String, dynamic> generatePerformanceReport() {
+    final metricsReport = <String, dynamic>{};
+    for (final entry in _metricCollectors.entries) {
+      metricsReport[entry.key] = entry.value.getStats();
+    }
+
+    return {
+      'reportTime': DateTime.now().toIso8601String(),
+      'uptime': uptime?.inSeconds ?? 0,
+      'sessionCount': _sessionCount,
+      'metrics': metricsReport,
+      'thresholds': Map<String, double>.from(_performanceThresholds),
+      'optimizationSuggestions': getPerformanceOptimizationSuggestions(),
+      'recentPerformanceEvents': _performanceEvents.take(50).toList(),
+    };
+  }
+
+  /// 获取性能优化建议
+  ///
+  /// 根据当前性能数据自动分析并生成优化建议。
+  /// 返回建议列表，每条包含建议类型、描述和优先级。
+  static List<Map<String, dynamic>> getPerformanceOptimizationSuggestions() {
+    final suggestions = <Map<String, dynamic>>[];
+
+    // 检查页面切换性能
+    final pageTransitionCollector = _metricCollectors['page_transition'];
+    if (pageTransitionCollector != null) {
+      final stats = pageTransitionCollector.getStats();
+      final avgMs = stats['avg'] as double? ?? 0;
+      if (avgMs > 300) {
+        suggestions.add({
+          'type': 'page_transition',
+          'priority': 'high',
+          'description': '页面切换平均耗时 ${avgMs.toStringAsFixed(0)}ms，建议优化页面懒加载或减少首屏渲染复杂度',
+        });
+      }
+    }
+
+    // 检查保存性能
+    final saveCollector = _metricCollectors['saveProject'];
+    if (saveCollector != null) {
+      final stats = saveCollector.getStats();
+      final avgMs = stats['avg'] as double? ?? 0;
+      if (avgMs > 1000) {
+        suggestions.add({
+          'type': 'save_performance',
+          'priority': 'medium',
+          'description': '项目保存平均耗时 ${avgMs.toStringAsFixed(0)}ms，建议减少序列化数据量或异步保存',
+        });
+      }
+    }
+
+    // 检查加载性能
+    final loadCollector = _metricCollectors['loadProjects'];
+    if (loadCollector != null) {
+      final stats = loadCollector.getStats();
+      final avgMs = stats['avg'] as double? ?? 0;
+      if (avgMs > 2000) {
+        suggestions.add({
+          'type': 'load_performance',
+          'priority': 'high',
+          'description': '项目列表加载平均耗时 ${avgMs.toStringAsFixed(0)}ms，建议启用增量加载或优化缓存策略',
+        });
+      }
+    }
+
+    // 检查识别性能
+    final recognitionCollector = _metricCollectors['recognition'];
+    if (recognitionCollector != null) {
+      final stats = recognitionCollector.getStats();
+      final avgMs = stats['avg'] as double? ?? 0;
+      if (avgMs > 3000) {
+        suggestions.add({
+          'type': 'recognition_performance',
+          'priority': 'medium',
+          'description': '字符识别平均耗时 ${avgMs.toStringAsFixed(0)}ms，建议使用云端识别或减少预处理步骤',
+        });
+      }
+    }
+
+    // 检查错误率
+    if (_errorEvents.isNotEmpty) {
+      final recentErrors = _errorEvents.where((e) {
+        final ts = DateTime.tryParse(e['timestamp'] as String? ?? '');
+        if (ts == null) return false;
+        return DateTime.now().difference(ts).inHours < 24;
+      }).length;
+      if (recentErrors > 10) {
+        suggestions.add({
+          'type': 'error_rate',
+          'priority': 'critical',
+          'description': '过去24小时内发生 $recentErrors 次错误，建议检查错误日志并修复',
+        });
+      }
+    }
+
+    return suggestions;
+  }
+
+  /// 获取指定指标的统计信息
+  static Map<String, dynamic>? getMetricStats(String metricName) {
+    return _metricCollectors[metricName]?.getStats();
+  }
+
+  /// 获取所有已收集的指标名称列表
+  static List<String> getCollectedMetricNames() {
+    return _metricCollectors.keys.toList();
+  }
+
+  /// 清除指定指标的收集数据
+  static void clearMetricData(String metricName) {
+    _metricCollectors.remove(metricName);
+  }
+}
+
+/// 性能指标收集器
+///
+/// 统计单个性能指标的平均值、中位数、P95、P99、最大值等统计数据。
+class _PerformanceMetricCollector {
+  final String name;
+  final List<double> _values = [];
+  static const int _maxValues = 500;
+
+  _PerformanceMetricCollector(this.name);
+
+  /// 添加一个值
+  void add(double value) {
+    _values.add(value);
+    if (_values.length > _maxValues) {
+      _values.removeAt(0);
+    }
+  }
+
+  /// 获取统计数据
+  Map<String, dynamic> getStats() {
+    if (_values.isEmpty) {
+      return {
+        'name': name,
+        'count': 0,
+        'avg': 0.0,
+        'median': 0.0,
+        'p95': 0.0,
+        'p99': 0.0,
+        'max': 0.0,
+        'min': 0.0,
+      };
+    }
+
+    final sorted = List<double>.from(_values)..sort();
+    final sum = sorted.reduce((a, b) => a + b);
+    final avg = sum / sorted.length;
+    final median = sorted[sorted.length ~/ 2];
+    final p95Index = (sorted.length * 0.95).round().clamp(0, sorted.length - 1);
+    final p99Index = (sorted.length * 0.99).round().clamp(0, sorted.length - 1);
+
+    return {
+      'name': name,
+      'count': sorted.length,
+      'avg': avg,
+      'median': median,
+      'p95': sorted[p95Index],
+      'p99': sorted[p99Index],
+      'max': sorted.last,
+      'min': sorted.first,
+    };
   }
 }
 
