@@ -36,6 +36,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate Keystore
+        run: |
+          openssl req -x509 -newkey rsa:2048 -keyout /tmp/key.pem -out /tmp/cert.pem -days 10000 -nodes -subj "/CN=WriteFont/OU=Dev/O=WriteFont/L=Shanghai/ST=Shanghai/C=CN"
+          openssl pkcs12 -export -in /tmp/cert.pem -inkey /tmp/key.pem -out /tmp/release-key.p12 -name writefont -passout pass:writefont123
+          keytool -importkeystore -srckeystore /tmp/release-key.p12 -srcstoretype PKCS12 -destkeystore /tmp/release-key.jks -deststoretype JKS -srcstorepass writefont123 -deststorepass writefont123 -noprompt
+
       - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
 
