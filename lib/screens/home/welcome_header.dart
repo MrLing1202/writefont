@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../generated/l10n/app_localizations.dart';
 import '../../theme/app_theme.dart';
 
 /// 欢迎区域头部组件（渐变背景 + 统计数据）
@@ -17,7 +16,6 @@ class WelcomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
@@ -52,9 +50,9 @@ class WelcomeHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Text(
-            l10n.welcomeToApp,
-            style: const TextStyle(
+          const Text(
+            '欢迎使用手迹造字',
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -62,7 +60,7 @@ class WelcomeHeader extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            l10n.welcomeSubtitle,
+            '拍照生成你的专属手写字体',
             style: TextStyle(
               fontSize: 14,
               color: Colors.white.withValues(alpha: 0.8),
@@ -72,13 +70,13 @@ class WelcomeHeader extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStatItem('$savedProjectCount', l10n.createdProjects),
+              _buildStatItem('$savedProjectCount', '已创建项目'),
               Container(
                 width: 1,
                 height: 32,
                 color: Colors.white.withValues(alpha: 0.2),
               ),
-              _buildStatItem('$totalCharCount', l10n.recognizedChars),
+              _buildStatItem('$totalCharCount', '已识别字符'),
               Container(
                 width: 1,
                 height: 32,
@@ -86,7 +84,7 @@ class WelcomeHeader extends StatelessWidget {
               ),
               _buildStatItem(
                 lastActivityDesc.isNotEmpty ? lastActivityDesc : '-',
-                l10n.recentActivity,
+                '最近活动',
               ),
             ],
           ),

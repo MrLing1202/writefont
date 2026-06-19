@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../generated/l10n/app_localizations.dart';
 import '../models/project.dart';
 import '../theme/app_theme.dart';
 import 'font_preview_screen.dart';
@@ -1653,16 +1652,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// 根据时间差生成本地化的描述文本
   String _formatLastActivity(BuildContext context) {
     if (_lastActivityTime == null) return '-';
-    final l10n = AppLocalizations.of(context);
     final diff = DateTime.now().difference(_lastActivityTime!);
     if (diff.inMinutes < 1) {
-      return l10n.justNow;
+      return '刚刚';
     } else if (diff.inHours < 1) {
-      return l10n.minutesAgo(diff.inMinutes);
+      return '${diff.inMinutes} 分钟前';
     } else if (diff.inDays < 1) {
-      return l10n.hoursAgo(diff.inHours);
+      return '${diff.inHours} 小时前';
     } else if (diff.inDays < 30) {
-      return l10n.daysAgo(diff.inDays);
+      return '${diff.inDays} 天前';
     } else {
       return '${_lastActivityTime!.month}/${_lastActivityTime!.day}';
     }
@@ -1682,7 +1680,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     // ── 多设备适配：检测设备类型和方向 ──
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
@@ -1696,14 +1693,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     return Scaffold(
       appBar: WFAppBar(
-        title: l10n.appName,
+        title: '手迹造字',
         leading: IconButton( // 主题变更回调，用于从设置页返回时刷新主题
           icon: Badge(
             isLabelVisible: _savedProjectCount > 0,
             label: Text('$_savedProjectCount'),
             child: const Icon(Icons.folder_special),
           ),
-          tooltip: l10n.myFonts,
+          tooltip: '我的字体',
           onPressed: () async {
             await HomeActions.openProjectList(context);
             _loadProjectData();
@@ -1734,7 +1731,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: l10n.settings,
+            tooltip: '设置',
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -1816,12 +1813,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                   // ── 主要功能入口 ──
                   WFAnimations.fadeInSlide(
-                    WFActionCard(
+                    const WFActionCard(
                       icon: Icons.auto_awesome,
-                      title: l10n.oneClickGenerate,
-                      subtitle: l10n.oneClickGenerateDesc,
+                      title: '一键生成',
+                      subtitle: '拍照即生成，全自动无需手动操作',
                       color: WFColors.primary,
-                      onTap: () => HomeActions.quickCapture(context),
+                      onTap: HomeActions.quickCapture,
                     ),
                     delay: const Duration(milliseconds: 160),
                   ),
@@ -1830,8 +1827,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   WFAnimations.fadeInSlide(
                     WFActionCard(
                       icon: Icons.grid_on,
-                      title: l10n.standardCharset,
-                      subtitle: l10n.standardCharsetDesc,
+                      title: '标准字表造字',
+                      subtitle: '按40个常用字书写，AI自动识别匹配',
                       color: WFColors.info,
                       onTap: () {
                         Navigator.push(
@@ -1845,22 +1842,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 14),
 
                   WFAnimations.fadeInSlide(
-                    WFActionCard(
+                    const WFActionCard(
                       icon: Icons.bolt,
-                      title: l10n.quickExperience,
-                      subtitle: l10n.quickExperienceDesc,
+                      title: '快速体验',
+                      subtitle: '只需写10个字，快速体验造字',
                       color: WFColors.warning,
-                      onTap: () => HomeActions.startQuickMode(context),
+                      onTap: HomeActions.startQuickMode,
                     ),
                     delay: const Duration(milliseconds: 320),
                   ),
                   const SizedBox(height: 14),
 
                   WFAnimations.fadeInSlide(
-                    WFActionCard(
+                    const WFActionCard(
                       icon: Icons.camera_alt,
-                      title: l10n.freeCapture,
-                      subtitle: l10n.freeCaptureDesc,
+                      title: '自由拍照造字',
+                      subtitle: '任意手写内容，自由拍照识别',
+                      color: WFColors.success,
+                      onTap: HomeActions.openCapture,
+                    ),
+                    delay: const Duration(milliseconds: 400),
+                  ),
+                      subtitle: '任何手写内容，自由拍照识别',
                       color: WFColors.accent,
                       onTap: () => HomeActions.pickImages(context),
                     ),
@@ -1976,7 +1979,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                   // 底部提示
                   Text(
-                    l10n.recommendStandard,
+                    '推荐先练习标准字表',
                     style: TextStyle(
                       fontSize: 13,
                       color: WFColors.textSecondary.withValues(alpha: 0.7),
@@ -2004,7 +2007,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// 构建快速操作网格（适配平板和横屏）
   Widget _buildQuickActionsGrid(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth >= 600;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
@@ -2012,19 +2014,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final actions = [
       _QuickAction(
         icon: Icons.camera_alt,
-        label: l10n.freeCapture,
+        label: '自由拍照',
         color: WFColors.accent,
         onTap: () => HomeActions.pickImages(context),
       ),
       _QuickAction(
         icon: Icons.auto_awesome,
-        label: l10n.oneClickGenerate,
+        label: '一键生成',
         color: WFColors.primary,
         onTap: () => HomeActions.quickCapture(context),
       ),
       _QuickAction(
         icon: Icons.grid_on,
-        label: l10n.standardCharset,
+        label: '标准字表',
         color: WFColors.info,
         onTap: () => Navigator.push(
           context,
@@ -2033,7 +2035,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       _QuickAction(
         icon: Icons.folder,
-        label: l10n.myFonts,
+        label: '我的字体',
         color: WFColors.success,
         onTap: () async {
           await HomeActions.openProjectList(context);
@@ -2118,10 +2120,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// 构建使用统计卡片（含无障碍语义标注）
   Widget _buildUsageStatsCard(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    
     return Semantics(
-      label: '${l10n.createdProjects}: $_savedProjectCount, ${l10n.recognizedChars}: $_totalCharCount',
+      label: '已创建项目: $_savedProjectCount, 已识别字符: $_totalCharCount',
       child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -2159,7 +2159,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: _buildStatItem(
                   context,
                   icon: Icons.folder,
-                  label: l10n.createdProjects,
+                  label: '已创建项目',
                   value: _savedProjectCount.toString(),
                   color: WFColors.info,
                 ),
@@ -2168,7 +2168,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: _buildStatItem(
                   context,
                   icon: Icons.text_fields,
-                  label: l10n.recognizedChars,
+                  label: '已识别字符',
                   value: _totalCharCount.toString(),
                   color: WFColors.success,
                 ),
@@ -2177,7 +2177,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: _buildStatItem(
                   context,
                   icon: Icons.access_time,
-                  label: l10n.recentActivity,
+                  label: '最近活动',
                   value: _formatLastActivity(context),
                   color: WFColors.warning,
                 ),
@@ -2602,26 +2602,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// 构建新手引导遮罩
   Widget _buildOnboardingOverlay(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    
     final steps = [
       {
-        'title': l10n.welcomeToApp,
+        'title': '欢迎使用手迹造字',
         'desc': '让我们快速了解主要功能',
         'icon': Icons.waving_hand,
       },
       {
-        'title': l10n.oneClickGenerate,
-        'desc': l10n.oneClickGenerateDesc,
+        'title': '一键生成',
+        'desc': '拍照后自动生成字体',
         'icon': Icons.auto_awesome,
       },
       {
-        'title': l10n.standardCharset,
-        'desc': l10n.standardCharsetDesc,
+        'title': '标准字表',
+        'desc': '书写40个常用汉字，AI自动识别',
         'icon': Icons.grid_on,
       },
       {
-        'title': l10n.settings,
+        'title': '设置',
         'desc': '自定义主题、语言和更多设置',
         'icon': Icons.settings,
       },
@@ -2673,7 +2671,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   TextButton(
                     onPressed: _completeOnboarding,
                     child: Text(
-                      l10n.skip,
+                      '跳过',
                       style: const TextStyle(color: WFColors.textSecondary),
                     ),
                   ),
@@ -2704,8 +2702,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                     child: Text(
                       _onboardingStep < steps.length - 1
-                          ? l10n.nextStep
-                          : l10n.done,
+                          ? '下一步'
+                          : '完成',
                     ),
                   ),
                 ],

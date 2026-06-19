@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../generated/l10n/app_localizations.dart';
 import 'home_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -74,7 +73,6 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: WFColors.bgPrimary,
@@ -90,7 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ? TextButton(
                         onPressed: _completeOnboarding,
                         child: Text(
-                          l10n.skip,
+                          '跳过',
                           style: TextStyle(
                             color: WFColors.textSecondary,
                             fontSize: 16,
@@ -109,24 +107,24 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                   setState(() => _currentPage = index);
                 },
                 children: [
-                  _buildWelcomePage(colorScheme, l10n),
+                  _buildWelcomePage(colorScheme),
                   _buildStepPage(
                     colorScheme,
                     icon: Icons.camera_alt,
-                    stepLabel: l10n.onboardingStep1,
-                    title: l10n.onboardingStep1Title,
-                    description: l10n.onboardingStep1Desc,
-                    mockChild: _buildCaptureMock(colorScheme, l10n),
+                    stepLabel: '第1步',
+                    title: '拍照上传',
+                    description: '在纸上写下指定的汉字，用手机拍下手写字迹',
+                    mockChild: _buildCaptureMock(colorScheme),
                   ),
                   _buildStepPage(
                     colorScheme,
                     icon: Icons.edit_note,
-                    stepLabel: l10n.onboardingStep2,
-                    title: l10n.onboardingStep2Title,
-                    description: l10n.onboardingStep2Desc,
-                    mockChild: _buildEditMock(colorScheme, l10n),
+                    stepLabel: '第2步',
+                    title: '检查书写',
+                    description: 'AI自动识别每个字符，检查并修正不准确的地方',
+                    mockChild: _buildEditMock(colorScheme),
                   ),
-                  _buildFinalPage(colorScheme, l10n),
+                  _buildFinalPage(colorScheme),
                 ],
               ),
             ),
@@ -140,7 +138,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     TextButton.icon(
                       onPressed: _prevPage,
                       icon: const Icon(Icons.arrow_back, size: 18),
-                      label: Text(l10n.prevStep),
+                      label: const Text('上一步'),
                     )
                   else
                     const SizedBox(width: 100),
@@ -170,7 +168,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     TextButton.icon(
                       onPressed: _nextPage,
                       icon: const Icon(Icons.arrow_forward, size: 18),
-                      label: Text(l10n.nextStep),
+                      label: const Text('下一步'),
                     )
                   else
                     const SizedBox(width: 100),
@@ -186,9 +184,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // ────────────────────────────────────────────
   // 第1页：欢迎
   // ────────────────────────────────────────────
-  Widget _buildWelcomePage(ColorScheme colorScheme, AppLocalizations l10n) {
+  Widget _buildWelcomePage(ColorScheme colorScheme) {
     return _FadeInWrapper(
-      key: ValueKey('welcome'),
+      key: const ValueKey('welcome'),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
@@ -219,7 +217,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             const SizedBox(height: 40),
             Text(
-              l10n.onboardingWelcome,
+              '用你的笔迹，创造你的字体',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 28,
@@ -230,7 +228,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              l10n.onboardingWelcomeDesc,
+              '只需3步，把你的手写变成专属字体',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 17,
@@ -239,7 +237,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             const SizedBox(height: 48),
             WFPrimaryButton(
-              text: l10n.start,
+              text: '开始',
               onPressed: _nextPage,
             ),
           ],
@@ -315,9 +313,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // ────────────────────────────────────────────
   // 第4页：生成字体（最终页）
   // ────────────────────────────────────────────
-  Widget _buildFinalPage(ColorScheme colorScheme, AppLocalizations l10n) {
+  Widget _buildFinalPage(ColorScheme colorScheme) {
     return _FadeInWrapper(
-      key: ValueKey('final'),
+      key: const ValueKey('final'),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: Column(
@@ -330,7 +328,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                l10n.onboardingStep3,
+                '第3步',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -342,7 +340,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             Icon(Icons.auto_awesome, size: 48, color: WFColors.primary),
             const SizedBox(height: 20),
             Text(
-              l10n.onboardingStep3Title,
+              '一键生成',
               style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
@@ -351,7 +349,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              l10n.onboardingStep3Desc,
+              'AI根据你的笔迹风格，\n自动生成6763个常用汉字',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
@@ -361,7 +359,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             ),
             const SizedBox(height: 48),
             WFPrimaryButton(
-              text: l10n.onboardingStartBtn,
+              text: '立即开始造字！',
               icon: Icons.rocket_launch,
               onPressed: _completeOnboarding,
             ),
@@ -376,7 +374,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   // ────────────────────────────────────────────
 
   /// 拍照模拟图
-  Widget _buildCaptureMock(ColorScheme colorScheme, AppLocalizations l10n) {
+  Widget _buildCaptureMock(ColorScheme colorScheme) {
     return Container(
       width: 240,
       padding: const EdgeInsets.all(20),
@@ -415,7 +413,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Icon(Icons.camera_alt, size: 20, color: WFColors.primary),
               const SizedBox(width: 6),
               Text(
-                l10n.captureUpload,
+                '拍照上传',
                 style: TextStyle(
                   fontSize: 14,
                   color: WFColors.primary,
@@ -430,7 +428,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 
   /// 编辑器模拟图
-  Widget _buildEditMock(ColorScheme colorScheme, AppLocalizations l10n) {
+  Widget _buildEditMock(ColorScheme colorScheme) {
     return Container(
       width: 240,
       padding: const EdgeInsets.all(16),
@@ -478,7 +476,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               Icon(Icons.check_circle, size: 18, color: WFColors.success),
               const SizedBox(width: 6),
               Text(
-                l10n.aiRecognizeAndFix,
+                'AI识别 + 手动修正',
                 style: TextStyle(
                   fontSize: 13,
                   color: WFColors.textSecondary,
@@ -504,20 +502,24 @@ class _FadeInWrapper extends StatefulWidget {
 
 class _FadeInWrapperState extends State<_FadeInWrapper>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 600),
-  );
-  late final Animation<double> _opacity =
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-  late final Animation<Offset> _slide = Tween<Offset>(
-    begin: const Offset(0, 0.05),
-    end: Offset.zero,
-  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+  late AnimationController _controller;
+  late Animation<double> _opacity;
+  late Animation<Offset> _slide;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _opacity = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+    _slide = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
+        .animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
     _controller.forward();
   }
 

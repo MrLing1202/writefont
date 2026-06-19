@@ -2,11 +2,8 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io' show Platform;
-import 'generated/l10n/app_localizations.dart';
-import 'services/locale_service.dart';
 import 'models/project.dart';
 import 'screens/ai_font_generator_screen.dart';
 import 'screens/home_screen.dart';
@@ -3485,8 +3482,6 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -3518,25 +3513,25 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           selectedFontSize: 12,
           unselectedFontSize: 10,
           items: [
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.home_outlined),
-              activeIcon: const Icon(Icons.home),
-              label: l10n.appName,
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: '手迹造字',
             ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.folder_outlined),
-              activeIcon: const Icon(Icons.folder),
-              label: l10n.myFonts,
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.folder_outlined),
+              activeIcon: Icon(Icons.folder),
+              label: '我的字体',
             ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.tips_and_updates_outlined),
-              activeIcon: const Icon(Icons.tips_and_updates),
-              label: l10n.writingTips,
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.tips_and_updates_outlined),
+              activeIcon: Icon(Icons.tips_and_updates),
+              label: '书写提示',
             ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.settings_outlined),
-              activeIcon: const Icon(Icons.settings),
-              label: l10n.settings,
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.settings_outlined),
+              activeIcon: Icon(Icons.settings),
+              label: '设置',
             ),
           ],
         ),
@@ -4887,7 +4882,6 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   String _themeModeStr = AppConfigService.defaultThemeMode;
   bool _onboardingSeen = false;
   bool _onboardingChecked = false;
-  Locale _locale = const Locale('zh');
   bool _useBottomNav = true; // 是否使用底部导航栏
   bool _isAppInForeground = true; // 电池优化：追踪应用前后台状态
 
@@ -4920,7 +4914,6 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadThemeMode();
-    _loadLocale();
     _checkOnboarding();
     _loadNavigationPreference();
     _loadAccessibilitySettings();
@@ -5021,20 +5014,6 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     final themeMode = await AppConfigService.instance.getThemeMode();
     if (mounted) {
       setState(() => _themeModeStr = themeMode);
-    }
-  }
-
-  /// 加载语言设置
-  Future<void> _loadLocale() async {
-    final localeService = LocaleService.instance;
-    await localeService.init();
-    localeService.addListener(() {
-      if (mounted) {
-        setState(() => _locale = localeService.locale);
-      }
-    });
-    if (mounted) {
-      setState(() => _locale = localeService.locale);
     }
   }
 
@@ -5450,22 +5429,6 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     return MaterialApp(
       title: '手迹造字 WriteFont',
       debugShowCheckedModeBanner: false,
-      locale: _locale,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [
-        Locale('zh'),
-        Locale('en'),
-        Locale('ja'),
-        Locale('ko'),
-        Locale('fr'),
-        Locale('de'),
-        Locale('es'),
-      ],
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
       themeMode: _themeMode,
