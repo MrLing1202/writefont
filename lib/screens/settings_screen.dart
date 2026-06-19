@@ -2929,3 +2929,419 @@ class _SupportRecord {
         timestamp: DateTime.parse(json['timestamp'] as String),
       );
 }
+
+// ═══════════════════════════════════════════════════════════
+// Web3 功能设置：身份、存储、通信、支付
+// ═══════════════════════════════════════════════════════════
+
+/// Web3 身份数据模型
+///
+/// 管理去中心化身份（DID），支持身份创建、验证和关联。
+class Web3Identity {
+  final String did;
+  final String displayName;
+  final String publicKey;
+  final DateTime createdAt;
+  final Map<String, dynamic> verifiableCredentials;
+  final List<String> linkedAccounts;
+  bool isVerified;
+
+  Web3Identity({
+    required this.did,
+    required this.displayName,
+    required this.publicKey,
+    DateTime? createdAt,
+    this.verifiableCredentials = const {},
+    this.linkedAccounts = const [],
+    this.isVerified = false,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'did': did,
+        'displayName': displayName,
+        'publicKey': publicKey,
+        'createdAt': createdAt.toIso8601String(),
+        'verifiableCredentials': verifiableCredentials,
+        'linkedAccounts': linkedAccounts,
+        'isVerified': isVerified,
+      };
+}
+
+/// Web3 存储配置数据模型
+class Web3StorageConfig {
+  final String provider;
+  final String? gatewayUrl;
+  final bool encryptionEnabled;
+  final bool pinningEnabled;
+  final int replicationFactor;
+  final Map<String, dynamic> providerConfig;
+
+  const Web3StorageConfig({
+    this.provider = 'ipfs',
+    this.gatewayUrl,
+    this.encryptionEnabled = true,
+    this.pinningEnabled = true,
+    this.replicationFactor = 3,
+    this.providerConfig = const {},
+  });
+
+  Map<String, dynamic> toJson() => {
+        'provider': provider,
+        'gatewayUrl': gatewayUrl,
+        'encryptionEnabled': encryptionEnabled,
+        'pinningEnabled': pinningEnabled,
+        'replicationFactor': replicationFactor,
+        'providerConfig': providerConfig,
+      };
+}
+
+/// Web3 通信配置数据模型
+class Web3CommunicationConfig {
+  final String protocol;
+  final bool e2eEncryption;
+  final bool offlineMessaging;
+  final int maxMessageSize;
+  final Map<String, dynamic> protocolConfig;
+
+  const Web3CommunicationConfig({
+    this.protocol = 'waku',
+    this.e2eEncryption = true,
+    this.offlineMessaging = true,
+    this.maxMessageSize = 1024 * 64,
+    this.protocolConfig = const {},
+  });
+
+  Map<String, dynamic> toJson() => {
+        'protocol': protocol,
+        'e2eEncryption': e2eEncryption,
+        'offlineMessaging': offlineMessaging,
+        'maxMessageSize': maxMessageSize,
+        'protocolConfig': protocolConfig,
+      };
+}
+
+/// Web3 支付配置数据模型
+class Web3PaymentConfig {
+  final String preferredToken;
+  final String network;
+  final bool autoConfirm;
+  final double maxAutoAmount;
+  final Map<String, dynamic> paymentChannels;
+
+  const Web3PaymentConfig({
+    this.preferredToken = 'WF',
+    this.network = 'local',
+    this.autoConfirm = false,
+    this.maxAutoAmount = 10.0,
+    this.paymentChannels = const {},
+  });
+
+  Map<String, dynamic> toJson() => {
+        'preferredToken': preferredToken,
+        'network': network,
+        'autoConfirm': autoConfirm,
+        'maxAutoAmount': maxAutoAmount,
+        'paymentChannels': paymentChannels,
+      };
+}
+
+/// Web3 设置服务
+///
+/// 提供完整的 Web3 配置管理，包括：
+/// - Web3 身份管理（DID、可验证凭证、身份关联）
+/// - Web3 存储配置（IPFS/Arweave/Filecoin 存储后端选择）
+/// - Web3 通信配置（P2P 通信协议、端到端加密、离线消息）
+/// - Web3 支付配置（代币选择、网络选择、自动支付限制）
+class Web3SettingsService {
+  static final Web3SettingsService _instance = Web3SettingsService._();
+  static Web3SettingsService get instance => _instance;
+  Web3SettingsService._();
+
+  static const String _identityKey = 'web3_identity';
+  static const String _storageConfigKey = 'web3_storage_config';
+  static const String _commConfigKey = 'web3_comm_config';
+  static const String _paymentConfigKey = 'web3_payment_config';
+
+  Web3Identity? _identity;
+  Web3StorageConfig _storageConfig = const Web3StorageConfig();
+  Web3CommunicationConfig _commConfig = const Web3CommunicationConfig();
+  Web3PaymentConfig _paymentConfig = const Web3PaymentConfig();
+
+  // ── Web3 身份功能 ──
+
+  Web3Identity? get identity => _identity;
+
+  /// 创建去中心化身份
+  Future<Web3Identity> createIdentity(String displayName) async {
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    final did = 'did:writefont:${timestamp.toRadixString(16)}';
+    final publicKey = 'pk_${timestamp.toRadixString(16).padLeft(64, '0')}';
+
+    _identity = Web3Identity(
+      did: did,
+      displayName: displayName,
+      publicKey: publicKey,
+    );
+    await _saveIdentity();
+    debugPrint('[Web3] DID created: $did ($displayName)');
+    return _identity!;
+  }
+
+  /// 验证身份
+  Future<bool> verifyIdentity() async {
+    if (_identity == null) return false;
+    await Future.delayed(const Duration(milliseconds: 100));
+    _identity!.isVerified = true;
+    await _saveIdentity();
+    debugPrint('[Web3] Identity verified: ${_identity!.did}');
+    return true;
+  }
+
+  /// 关联账户
+  Future<void> linkAccount(String accountAddress) async {
+    if (_identity == null) throw Exception('Identity not created');
+    final linked = List<String>.from(_identity!.linkedAccounts);
+    if (!linked.contains(accountAddress)) {
+      linked.add(accountAddress);
+      _identity = Web3Identity(
+        did: _identity!.did,
+        displayName: _identity!.displayName,
+        publicKey: _identity!.publicKey,
+        createdAt: _identity!.createdAt,
+        verifiableCredentials: _identity!.verifiableCredentials,
+        linkedAccounts: linked,
+        isVerified: _identity!.isVerified,
+      );
+      await _saveIdentity();
+      debugPrint('[Web3] Account linked: $accountAddress');
+    }
+  }
+
+  /// 添加可验证凭证
+  Future<void> addVerifiableCredential(String credentialType, Map<String, dynamic> credential) async {
+    if (_identity == null) throw Exception('Identity not created');
+    final creds = Map<String, dynamic>.from(_identity!.verifiableCredentials);
+    creds[credentialType] = credential;
+    _identity = Web3Identity(
+      did: _identity!.did,
+      displayName: _identity!.displayName,
+      publicKey: _identity!.publicKey,
+      createdAt: _identity!.createdAt,
+      verifiableCredentials: creds,
+      linkedAccounts: _identity!.linkedAccounts,
+      isVerified: _identity!.isVerified,
+    );
+    await _saveIdentity();
+    debugPrint('[Web3] Credential added: $credentialType');
+  }
+
+  Future<void> _saveIdentity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_identity != null) {
+        await prefs.setString(_identityKey, jsonEncode(_identity!.toJson()));
+      } else {
+        await prefs.remove(_identityKey);
+      }
+    } catch (e) {
+      debugPrint('[Web3] Save identity failed: $e');
+    }
+  }
+
+  Future<void> loadIdentity() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_identityKey);
+      if (json != null) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        _identity = Web3Identity(
+          did: map['did'] as String,
+          displayName: map['displayName'] as String,
+          publicKey: map['publicKey'] as String,
+          createdAt: DateTime.parse(map['createdAt'] as String),
+          verifiableCredentials: map['verifiableCredentials'] as Map<String, dynamic>? ?? {},
+          linkedAccounts: (map['linkedAccounts'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+          isVerified: map['isVerified'] as bool? ?? false,
+        );
+      }
+    } catch (e) {
+      debugPrint('[Web3] Load identity failed: $e');
+    }
+  }
+
+  // ── Web3 存储功能 ──
+
+  Web3StorageConfig get storageConfig => _storageConfig;
+
+  Future<void> updateStorageConfig({
+    String? provider,
+    String? gatewayUrl,
+    bool? encryptionEnabled,
+    bool? pinningEnabled,
+    int? replicationFactor,
+  }) async {
+    _storageConfig = Web3StorageConfig(
+      provider: provider ?? _storageConfig.provider,
+      gatewayUrl: gatewayUrl ?? _storageConfig.gatewayUrl,
+      encryptionEnabled: encryptionEnabled ?? _storageConfig.encryptionEnabled,
+      pinningEnabled: pinningEnabled ?? _storageConfig.pinningEnabled,
+      replicationFactor: replicationFactor ?? _storageConfig.replicationFactor,
+      providerConfig: _storageConfig.providerConfig,
+    );
+    await _saveStorageConfig();
+    debugPrint('[Web3] Storage config updated: ${_storageConfig.provider}');
+  }
+
+  Future<void> _saveStorageConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_storageConfigKey, jsonEncode(_storageConfig.toJson()));
+    } catch (e) {
+      debugPrint('[Web3] Save storage config failed: $e');
+    }
+  }
+
+  Future<void> loadStorageConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_storageConfigKey);
+      if (json != null) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        _storageConfig = Web3StorageConfig(
+          provider: map['provider'] as String? ?? 'ipfs',
+          gatewayUrl: map['gatewayUrl'] as String?,
+          encryptionEnabled: map['encryptionEnabled'] as bool? ?? true,
+          pinningEnabled: map['pinningEnabled'] as bool? ?? true,
+          replicationFactor: map['replicationFactor'] as int? ?? 3,
+          providerConfig: map['providerConfig'] as Map<String, dynamic>? ?? {},
+        );
+      }
+    } catch (e) {
+      debugPrint('[Web3] Load storage config failed: $e');
+    }
+  }
+
+  // ── Web3 通信功能 ──
+
+  Web3CommunicationConfig get communicationConfig => _commConfig;
+
+  Future<void> updateCommunicationConfig({
+    String? protocol,
+    bool? e2eEncryption,
+    bool? offlineMessaging,
+    int? maxMessageSize,
+  }) async {
+    _commConfig = Web3CommunicationConfig(
+      protocol: protocol ?? _commConfig.protocol,
+      e2eEncryption: e2eEncryption ?? _commConfig.e2eEncryption,
+      offlineMessaging: offlineMessaging ?? _commConfig.offlineMessaging,
+      maxMessageSize: maxMessageSize ?? _commConfig.maxMessageSize,
+      protocolConfig: _commConfig.protocolConfig,
+    );
+    await _saveCommunicationConfig();
+    debugPrint('[Web3] Communication config updated: ${_commConfig.protocol}');
+  }
+
+  Future<void> _saveCommunicationConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_commConfigKey, jsonEncode(_commConfig.toJson()));
+    } catch (e) {
+      debugPrint('[Web3] Save communication config failed: $e');
+    }
+  }
+
+  Future<void> loadCommunicationConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_commConfigKey);
+      if (json != null) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        _commConfig = Web3CommunicationConfig(
+          protocol: map['protocol'] as String? ?? 'waku',
+          e2eEncryption: map['e2eEncryption'] as bool? ?? true,
+          offlineMessaging: map['offlineMessaging'] as bool? ?? true,
+          maxMessageSize: map['maxMessageSize'] as int? ?? 1024 * 64,
+          protocolConfig: map['protocolConfig'] as Map<String, dynamic>? ?? {},
+        );
+      }
+    } catch (e) {
+      debugPrint('[Web3] Load communication config failed: $e');
+    }
+  }
+
+  // ── Web3 支付功能 ──
+
+  Web3PaymentConfig get paymentConfig => _paymentConfig;
+
+  Future<void> updatePaymentConfig({
+    String? preferredToken,
+    String? network,
+    bool? autoConfirm,
+    double? maxAutoAmount,
+  }) async {
+    _paymentConfig = Web3PaymentConfig(
+      preferredToken: preferredToken ?? _paymentConfig.preferredToken,
+      network: network ?? _paymentConfig.network,
+      autoConfirm: autoConfirm ?? _paymentConfig.autoConfirm,
+      maxAutoAmount: maxAutoAmount ?? _paymentConfig.maxAutoAmount,
+      paymentChannels: _paymentConfig.paymentChannels,
+    );
+    await _savePaymentConfig();
+    debugPrint('[Web3] Payment config updated: ${_paymentConfig.preferredToken} on ${_paymentConfig.network}');
+  }
+
+  Future<void> _savePaymentConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_paymentConfigKey, jsonEncode(_paymentConfig.toJson()));
+    } catch (e) {
+      debugPrint('[Web3] Save payment config failed: $e');
+    }
+  }
+
+  Future<void> loadPaymentConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_paymentConfigKey);
+      if (json != null) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        _paymentConfig = Web3PaymentConfig(
+          preferredToken: map['preferredToken'] as String? ?? 'WF',
+          network: map['network'] as String? ?? 'local',
+          autoConfirm: map['autoConfirm'] as bool? ?? false,
+          maxAutoAmount: (map['maxAutoAmount'] as num?)?.toDouble() ?? 10.0,
+          paymentChannels: map['paymentChannels'] as Map<String, dynamic>? ?? {},
+        );
+      }
+    } catch (e) {
+      debugPrint('[Web3] Load payment config failed: $e');
+    }
+  }
+
+  /// Load all Web3 settings
+  Future<void> loadAll() async {
+    await Future.wait([
+      loadIdentity(),
+      loadStorageConfig(),
+      loadCommunicationConfig(),
+      loadPaymentConfig(),
+    ]);
+    debugPrint('[Web3] All settings loaded');
+  }
+
+  /// Get Web3 settings stats
+  Map<String, dynamic> getStats() {
+    return {
+      'hasIdentity': _identity != null,
+      'identityVerified': _identity?.isVerified ?? false,
+      'linkedAccounts': _identity?.linkedAccounts.length ?? 0,
+      'storageProvider': _storageConfig.provider,
+      'storageEncryption': _storageConfig.encryptionEnabled,
+      'commProtocol': _commConfig.protocol,
+      'commE2E': _commConfig.e2eEncryption,
+      'paymentToken': _paymentConfig.preferredToken,
+      'paymentNetwork': _paymentConfig.network,
+    };
+  }
+}

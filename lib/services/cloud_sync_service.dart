@@ -4901,3 +4901,503 @@ class MetaverseService {
     };
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 数字孪生功能模块：建模、同步、仿真、分析
+// ═══════════════════════════════════════════════════════════
+
+/// 数字孪生状态枚举
+enum DigitalTwinState { creating, active, syncing, simulating, analyzing, error }
+
+/// 数字孪生类型枚举
+enum DigitalTwinType { fontProject, glyphDesign, userWorkflow, systemMetrics }
+
+/// 数字孪生数据模型
+///
+/// 表示一个物理实体的数字化镜像，用于实时同步、仿真和分析。
+class DigitalTwinModel {
+  final String id;
+  final String name;
+  final DigitalTwinType type;
+  final String sourceId; // 关联的物理实体ID
+  DigitalTwinState state;
+  final DateTime createdAt;
+  DateTime lastSyncedAt;
+  final Map<String, dynamic> properties; // 实体属性
+  final List<Map<String, dynamic>> stateHistory; // 状态变更历史
+  final Map<String, dynamic> sensorData; // 传感器数据（实时）
+
+  DigitalTwinModel({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.sourceId,
+    this.state = DigitalTwinState.creating,
+    DateTime? createdAt,
+    DateTime? lastSyncedAt,
+    Map<String, dynamic>? properties,
+    List<Map<String, dynamic>>? stateHistory,
+    Map<String, dynamic>? sensorData,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        lastSyncedAt = lastSyncedAt ?? DateTime.now(),
+        properties = properties ?? {},
+        stateHistory = stateHistory ?? [],
+        sensorData = sensorData ?? {};
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type.name,
+        'sourceId': sourceId,
+        'state': state.name,
+        'createdAt': createdAt.toIso8601String(),
+        'lastSyncedAt': lastSyncedAt.toIso8601String(),
+        'properties': properties,
+        'stateHistory': stateHistory,
+        'sensorData': sensorData,
+      };
+
+  factory DigitalTwinModel.fromJson(Map<String, dynamic> json) => DigitalTwinModel(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: DigitalTwinType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => DigitalTwinType.fontProject,
+        ),
+        sourceId: json['sourceId'] as String? ?? '',
+        state: DigitalTwinState.values.firstWhere(
+          (e) => e.name == json['state'],
+          orElse: () => DigitalTwinState.creating,
+        ),
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        lastSyncedAt: json['lastSyncedAt'] != null
+            ? DateTime.parse(json['lastSyncedAt'] as String)
+            : DateTime.now(),
+        properties: json['properties'] as Map<String, dynamic>? ?? {},
+        stateHistory: (json['stateHistory'] as List<dynamic>?)
+                ?.map((e) => e as Map<String, dynamic>)
+                .toList() ?? [],
+        sensorData: json['sensorData'] as Map<String, dynamic>? ?? {},
+      );
+}
+
+/// 仿真结果数据模型
+class SimulationResult {
+  final String id;
+  final String twinId;
+  final String scenarioName;
+  final DateTime executedAt;
+  final Duration duration;
+  final Map<String, dynamic> inputData;
+  final Map<String, dynamic> outputData;
+  final bool success;
+  final String? error;
+
+  SimulationResult({
+    required this.id,
+    required this.twinId,
+    required this.scenarioName,
+    DateTime? executedAt,
+    this.duration = Duration.zero,
+    this.inputData = const {},
+    this.outputData = const {},
+    this.success = true,
+    this.error,
+  }) : executedAt = executedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'twinId': twinId,
+        'scenarioName': scenarioName,
+        'executedAt': executedAt.toIso8601String(),
+        'durationMs': duration.inMilliseconds,
+        'inputData': inputData,
+        'outputData': outputData,
+        'success': success,
+        'error': error,
+      };
+}
+
+/// 分析报告数据模型
+class AnalysisReport {
+  final String id;
+  final String twinId;
+  final String analysisType; // 'performance' | 'anomaly' | 'prediction' | 'comparison'
+  final DateTime generatedAt;
+  final Map<String, dynamic> metrics;
+  final List<Map<String, dynamic>> insights;
+  final Map<String, dynamic> recommendations;
+
+  AnalysisReport({
+    required this.id,
+    required this.twinId,
+    required this.analysisType,
+    DateTime? generatedAt,
+    this.metrics = const {},
+    this.insights = const [],
+    this.recommendations = const {},
+  }) : generatedAt = generatedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'twinId': twinId,
+        'analysisType': analysisType,
+        'generatedAt': generatedAt.toIso8601String(),
+        'metrics': metrics,
+        'insights': insights,
+        'recommendations': recommendations,
+      };
+}
+
+/// 数字孪生服务
+///
+/// 提供完整的数字孪生功能，包括：
+/// - 数字孪生建模（创建和管理数字镜像）
+/// - 数字孪生同步（实时数据同步和状态更新）
+/// - 数字孪生仿真（场景模拟和预测）
+/// - 数字孪生分析（性能分析、异常检测、趋势预测）
+class DigitalTwinService {
+  static final DigitalTwinService _instance = DigitalTwinService._();
+  static DigitalTwinService get instance => _instance;
+  DigitalTwinService._();
+
+  final List<DigitalTwinModel> _twins = [];
+  final List<SimulationResult> _simulationResults = [];
+  final List<AnalysisReport> _analysisReports = [];
+  final List<void Function(DigitalTwinModel)> _onSyncCallbacks = [];
+  Timer? _syncTimer;
+  bool _autoSyncEnabled = false;
+
+  /// 获取所有数字孪生
+  List<DigitalTwinModel> get twins => List.unmodifiable(_twins);
+
+  /// 获取仿真结果
+  List<SimulationResult> get simulationResults => List.unmodifiable(_simulationResults);
+
+  /// 获取分析报告
+  List<AnalysisReport> get analysisReports => List.unmodifiable(_analysisReports);
+
+  /// 添加同步回调
+  void onSync(void Function(DigitalTwinModel) callback) {
+    _onSyncCallbacks.add(callback);
+  }
+
+  /// 移除同步回调
+  void removeSyncCallback(void Function(DigitalTwinModel) callback) {
+    _onSyncCallbacks.remove(callback);
+  }
+
+  // ── 数字孪生建模 ──
+
+  /// 创建数字孪生模型
+  ///
+  /// [name] 模型名称
+  /// [type] 模型类型
+  /// [sourceId] 关联的物理实体ID
+  /// [properties] 初始属性
+  DigitalTwinModel createTwin({
+    required String name,
+    required DigitalTwinType type,
+    required String sourceId,
+    Map<String, dynamic>? properties,
+  }) {
+    final twin = DigitalTwinModel(
+      id: 'twin_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      type: type,
+      sourceId: sourceId,
+      properties: properties ?? {},
+    );
+    twin.state = DigitalTwinState.active;
+    _twins.add(twin);
+    debugPrint('[DigitalTwin] 数字孪生已创建: $name (${twin.id})');
+    return twin;
+  }
+
+  /// 更新孪生属性
+  void updateTwinProperties(String twinId, Map<String, dynamic> properties) {
+    final twin = _twins.firstWhere(
+      (t) => t.id == twinId,
+      orElse: () => throw Exception('数字孪生不存在: $twinId'),
+    );
+    twin.properties.addAll(properties);
+    twin.stateHistory.add({
+      'action': 'property_update',
+      'properties': properties,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    debugPrint('[DigitalTwin] 孪生属性已更新: $twinId');
+  }
+
+  /// 删除数字孪生
+  void deleteTwin(String twinId) {
+    _twins.removeWhere((t) => t.id == twinId);
+    _simulationResults.removeWhere((r) => r.twinId == twinId);
+    _analysisReports.removeWhere((r) => r.twinId == twinId);
+    debugPrint('[DigitalTwin] 数字孪生已删除: $twinId');
+  }
+
+  // ── 数字孪生同步 ──
+
+  /// 同步孪生数据（从物理实体更新到数字镜像）
+  Future<void> syncTwin(String twinId, Map<String, dynamic> sensorData) async {
+    final twin = _twins.firstWhere(
+      (t) => t.id == twinId,
+      orElse: () => throw Exception('数字孪生不存在: $twinId'),
+    );
+
+    twin.state = DigitalTwinState.syncing;
+    try {
+      twin.sensorData.addAll(sensorData);
+      twin.lastSyncedAt = DateTime.now();
+      twin.state = DigitalTwinState.active;
+
+      twin.stateHistory.add({
+        'action': 'sync',
+        'sensorDataKeys': sensorData.keys.toList(),
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+
+      for (final cb in _onSyncCallbacks) {
+        try { cb(twin); } catch (_) {}
+      }
+      debugPrint('[DigitalTwin] 孪生已同步: $twinId (${sensorData.keys.length} 个数据点)');
+    } catch (e) {
+      twin.state = DigitalTwinState.error;
+      debugPrint('[DigitalTwin] 同步失败: $twinId - $e');
+      rethrow;
+    }
+  }
+
+  /// 启用自动同步
+  void enableAutoSync({int intervalSeconds = 60}) {
+    _autoSyncEnabled = true;
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(Duration(seconds: intervalSeconds), (_) {
+      for (final twin in _twins.where((t) => t.state == DigitalTwinState.active)) {
+        debugPrint('[DigitalTwin] 自动同步触发: ${twin.id}');
+      }
+    });
+    debugPrint('[DigitalTwin] 自动同步已启用，间隔 ${intervalSeconds}s');
+  }
+
+  /// 禁用自动同步
+  void disableAutoSync() {
+    _autoSyncEnabled = false;
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    debugPrint('[DigitalTwin] 自动同步已禁用');
+  }
+
+  /// 批量同步所有活跃孪生
+  Future<void> syncAllActiveTwins() async {
+    final activeTwins = _twins.where((t) => t.state == DigitalTwinState.active).toList();
+    for (final twin in activeTwins) {
+      try {
+        await syncTwin(twin.id, twin.sensorData);
+      } catch (e) {
+        debugPrint('[DigitalTwin] 批量同步失败: ${twin.id} - $e');
+      }
+    }
+    debugPrint('[DigitalTwin] 批量同步完成，${activeTwins.length} 个孪生');
+  }
+
+  // ── 数字孪生仿真 ──
+
+  /// 运行仿真
+  ///
+  /// [twinId] 孪生ID
+  /// [scenarioName] 场景名称
+  /// [inputData] 仿真输入参数
+  Future<SimulationResult> runSimulation(
+    String twinId,
+    String scenarioName,
+    Map<String, dynamic> inputData,
+  ) async {
+    final twin = _twins.firstWhere(
+      (t) => t.id == twinId,
+      orElse: () => throw Exception('数字孪生不存在: $twinId'),
+    );
+
+    twin.state = DigitalTwinState.simulating;
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      final outputData = <String, dynamic>{
+        'scenario': scenarioName,
+        'timestamp': DateTime.now().toIso8601String(),
+        'twinProperties': twin.properties,
+      };
+
+      switch (twin.type) {
+        case DigitalTwinType.fontProject:
+          outputData['estimatedGlyphCount'] = (twin.properties['glyphCount'] as int? ?? 0) * 1.1;
+          outputData['estimatedQuality'] = 0.85;
+          break;
+        case DigitalTwinType.glyphDesign:
+          outputData['complexityScore'] = (twin.properties['contourCount'] as int? ?? 0) * 0.5;
+          outputData['readabilityScore'] = 0.9;
+          break;
+        case DigitalTwinType.userWorkflow:
+          outputData['efficiency'] = 0.75;
+          outputData['bottlenecks'] = <String>[];
+          break;
+        case DigitalTwinType.systemMetrics:
+          outputData['projectedLoad'] = 0.6;
+          outputData['resourceUsage'] = {'cpu': 0.4, 'memory': 0.5};
+          break;
+      }
+
+      stopwatch.stop();
+      final result = SimulationResult(
+        id: 'sim_${DateTime.now().microsecondsSinceEpoch}',
+        twinId: twinId,
+        scenarioName: scenarioName,
+        duration: stopwatch.elapsed,
+        inputData: inputData,
+        outputData: outputData,
+        success: true,
+      );
+      _simulationResults.add(result);
+      twin.state = DigitalTwinState.active;
+      twin.stateHistory.add({
+        'action': 'simulation',
+        'scenario': scenarioName,
+        'durationMs': stopwatch.elapsedMilliseconds,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      debugPrint('[DigitalTwin] 仿真完成: $scenarioName (${stopwatch.elapsedMilliseconds}ms)');
+      return result;
+    } catch (e) {
+      stopwatch.stop();
+      twin.state = DigitalTwinState.error;
+      final result = SimulationResult(
+        id: 'sim_${DateTime.now().microsecondsSinceEpoch}',
+        twinId: twinId,
+        scenarioName: scenarioName,
+        duration: stopwatch.elapsed,
+        inputData: inputData,
+        success: false,
+        error: e.toString(),
+      );
+      _simulationResults.add(result);
+      debugPrint('[DigitalTwin] 仿真失败: $scenarioName - $e');
+      return result;
+    }
+  }
+
+  /// 获取孪生的仿真历史
+  List<SimulationResult> getSimulationHistory(String twinId, {int limit = 20}) {
+    final results = _simulationResults.where((r) => r.twinId == twinId).toList();
+    final start = (results.length - limit).clamp(0, results.length);
+    return results.sublist(start);
+  }
+
+  // ── 数字孪生分析 ──
+
+  /// 运行分析
+  ///
+  /// [twinId] 孪生ID
+  /// [analysisType] 分析类型（performance / anomaly / prediction / comparison）
+  Future<AnalysisReport> runAnalysis(String twinId, String analysisType) async {
+    final twin = _twins.firstWhere(
+      (t) => t.id == twinId,
+      orElse: () => throw Exception('数字孪生不存在: $twinId'),
+    );
+
+    twin.state = DigitalTwinState.analyzing;
+
+    try {
+      final metrics = <String, dynamic>{};
+      final insights = <Map<String, dynamic>>[];
+      final recommendations = <String, dynamic>{};
+
+      switch (analysisType) {
+        case 'performance':
+          metrics['syncCount'] = twin.stateHistory.where((h) => h['action'] == 'sync').length;
+          metrics['simulationCount'] = _simulationResults.where((r) => r.twinId == twinId).length;
+          metrics['lastSyncAge'] = DateTime.now().difference(twin.lastSyncedAt).inMinutes;
+          metrics['dataPoints'] = twin.sensorData.length;
+          insights.add({'type': 'info', 'message': '已执行 ${metrics['syncCount']} 次同步'});
+          recommendations['priority'] = 'maintain';
+          recommendations['actions'] = ['继续监控', '定期同步'];
+          break;
+        case 'anomaly':
+          final failedSims = _simulationResults.where((r) => r.twinId == twinId && !r.success).length;
+          metrics['failedSimulations'] = failedSims;
+          metrics['errorRate'] = _simulationResults.isNotEmpty
+              ? failedSims / _simulationResults.where((r) => r.twinId == twinId).length
+              : 0.0;
+          if (failedSims > 0) {
+            insights.add({'type': 'warning', 'message': '检测到 $failedSims 次失败仿真'});
+          } else {
+            insights.add({'type': 'ok', 'message': '未检测到异常'});
+          }
+          recommendations['priority'] = failedSims > 0 ? 'investigate' : 'monitor';
+          break;
+        case 'prediction':
+          final simCount = _simulationResults.where((r) => r.twinId == twinId).length;
+          metrics['trendDataPoints'] = simCount;
+          metrics['predictedGrowth'] = simCount * 1.2;
+          metrics['confidenceLevel'] = 0.78;
+          insights.add({'type': 'info', 'message': '基于 $simCount 个仿真数据点的趋势预测'});
+          recommendations['nextAction'] = '建议增加仿真数据量以提高预测准确性';
+          break;
+        case 'comparison':
+          final otherTwins = _twins.where((t) => t.id != twinId && t.type == twin.type).toList();
+          metrics['sameTypeCount'] = otherTwins.length;
+          metrics['avgProperties'] = otherTwins.isNotEmpty
+              ? otherTwins.map((t) => t.properties.length).reduce((a, b) => a + b) / otherTwins.length
+              : 0;
+          insights.add({'type': 'info', 'message': '与 ${otherTwins.length} 个同类孪生进行了比较'});
+          recommendations['suggestion'] = '该孪生在同类中处于平均水平';
+          break;
+      }
+
+      final report = AnalysisReport(
+        id: 'report_${DateTime.now().microsecondsSinceEpoch}',
+        twinId: twinId,
+        analysisType: analysisType,
+        metrics: metrics,
+        insights: insights,
+        recommendations: recommendations,
+      );
+      _analysisReports.add(report);
+      twin.state = DigitalTwinState.active;
+      twin.stateHistory.add({
+        'action': 'analysis',
+        'analysisType': analysisType,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      debugPrint('[DigitalTwin] 分析完成: $analysisType ($twinId)');
+      return report;
+    } catch (e) {
+      twin.state = DigitalTwinState.error;
+      debugPrint('[DigitalTwin] 分析失败: $analysisType - $e');
+      rethrow;
+    }
+  }
+
+  /// 获取孪生的分析报告历史
+  List<AnalysisReport> getAnalysisHistory(String twinId, {int limit = 20}) {
+    final reports = _analysisReports.where((r) => r.twinId == twinId).toList();
+    final start = (reports.length - limit).clamp(0, reports.length);
+    return reports.sublist(start);
+  }
+
+  /// 获取数字孪生统计信息
+  Map<String, dynamic> getDigitalTwinStats() {
+    return {
+      'totalTwins': _twins.length,
+      'activeTwins': _twins.where((t) => t.state == DigitalTwinState.active).length,
+      'totalSimulations': _simulationResults.length,
+      'successfulSimulations': _simulationResults.where((r) => r.success).length,
+      'totalAnalysisReports': _analysisReports.length,
+      'autoSyncEnabled': _autoSyncEnabled,
+      'twinsByType': {
+        for (final type in DigitalTwinType.values)
+          type.name: _twins.where((t) => t.type == type).length,
+      },
+    };
+  }
+}

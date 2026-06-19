@@ -4191,3 +4191,575 @@ class EdgeIntelligenceService {
     };
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 去中心化应用（DApp）功能模块：浏览器、交互、钱包、治理
+// ═══════════════════════════════════════════════════════════
+
+/// DApp 状态枚举
+enum DAppState { discovered, connected, disconnected, error }
+
+/// DApp 类型枚举
+enum DAppType { fontMarketplace, collaboration, storage, analytics, governance, other }
+
+/// 钱包状态枚举
+enum WalletState { locked, unlocked, connecting }
+
+/// 治理提案状态枚举
+enum ProposalStatus { draft, active, passed, rejected, executed }
+
+/// DApp 信息数据模型
+class DAppInfo {
+  final String id;
+  final String name;
+  final String description;
+  final String url;
+  final DAppType type;
+  final String iconUrl;
+  final String version;
+  final List<String> permissions;
+  final DateTime discoveredAt;
+  DAppState state;
+  DateTime? lastConnectedAt;
+
+  DAppInfo({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.url,
+    this.type = DAppType.other,
+    this.iconUrl = '',
+    this.version = '1.0.0',
+    this.permissions = const [],
+    DateTime? discoveredAt,
+    this.state = DAppState.discovered,
+    this.lastConnectedAt,
+  }) : discoveredAt = discoveredAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'url': url,
+        'type': type.name,
+        'iconUrl': iconUrl,
+        'version': version,
+        'permissions': permissions,
+        'discoveredAt': discoveredAt.toIso8601String(),
+        'state': state.name,
+        'lastConnectedAt': lastConnectedAt?.toIso8601String(),
+      };
+}
+
+/// DApp 交互记录数据模型
+class DAppInteraction {
+  final String id;
+  final String dappId;
+  final String action; // 'connect' | 'call' | 'sign' | 'disconnect'
+  final DateTime timestamp;
+  final Map<String, dynamic> requestData;
+  final Map<String, dynamic>? responseData;
+  final bool success;
+  final String? error;
+
+  DAppInteraction({
+    required this.id,
+    required this.dappId,
+    required this.action,
+    DateTime? timestamp,
+    this.requestData = const {},
+    this.responseData,
+    this.success = true,
+    this.error,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'dappId': dappId,
+        'action': action,
+        'timestamp': timestamp.toIso8601String(),
+        'requestData': requestData,
+        'responseData': responseData,
+        'success': success,
+        'error': error,
+      };
+}
+
+/// 钱包账户数据模型
+class WalletAccount {
+  final String address;
+  final String label;
+  final double balance;
+  final String network; // 'mainnet' | 'testnet' | 'local'
+  final DateTime createdAt;
+  final Map<String, dynamic> metadata;
+
+  WalletAccount({
+    required this.address,
+    this.label = '',
+    this.balance = 0.0,
+    this.network = 'local',
+    DateTime? createdAt,
+    this.metadata = const {},
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'address': address,
+        'label': label,
+        'balance': balance,
+        'network': network,
+        'createdAt': createdAt.toIso8601String(),
+        'metadata': metadata,
+      };
+}
+
+/// 钱包交易记录
+class WalletTransaction {
+  final String id;
+  final String fromAddress;
+  final String toAddress;
+  final double amount;
+  final String token; // 'WF' | 'ETH' | 'USDT' 等
+  final DateTime timestamp;
+  final String? txHash;
+  final bool confirmed;
+
+  WalletTransaction({
+    required this.id,
+    required this.fromAddress,
+    required this.toAddress,
+    required this.amount,
+    this.token = 'WF',
+    DateTime? timestamp,
+    this.txHash,
+    this.confirmed = true,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'fromAddress': fromAddress,
+        'toAddress': toAddress,
+        'amount': amount,
+        'token': token,
+        'timestamp': timestamp.toIso8601String(),
+        'txHash': txHash,
+        'confirmed': confirmed,
+      };
+}
+
+/// 治理提案数据模型
+class GovernanceProposal {
+  final String id;
+  final String title;
+  final String description;
+  final String proposerAddress;
+  final DateTime createdAt;
+  final DateTime? votingDeadline;
+  ProposalStatus status;
+  final Map<String, int> votes; // 'for' | 'against' | 'abstain' -> count
+  final List<String> voters; // 已投票的地址
+  final Map<String, dynamic> executionParams;
+
+  GovernanceProposal({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.proposerAddress,
+    DateTime? createdAt,
+    this.votingDeadline,
+    this.status = ProposalStatus.draft,
+    Map<String, int>? votes,
+    List<String>? voters,
+    this.executionParams = const {},
+  })  : createdAt = createdAt ?? DateTime.now(),
+        votes = votes ?? {'for': 0, 'against': 0, 'abstain': 0},
+        voters = voters ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'proposerAddress': proposerAddress,
+        'createdAt': createdAt.toIso8601String(),
+        'votingDeadline': votingDeadline?.toIso8601String(),
+        'status': status.name,
+        'votes': votes,
+        'voters': voters,
+        'executionParams': executionParams,
+      };
+}
+
+/// 去中心化应用服务
+///
+/// 提供完整的 DApp 功能，包括：
+/// - DApp 浏览器（发现、连接、管理 DApp）
+/// - DApp 交互（调用合约、签名消息、发送交易）
+/// - DApp 钱包（账户管理、余额查询、交易记录）
+/// - DApp 治理（提案创建、投票、提案执行）
+class DAppService {
+  static final DAppService _instance = DAppService._();
+  static DAppService get instance => _instance;
+  DAppService._();
+
+  final List<DAppInfo> _dapps = [];
+  final List<DAppInteraction> _interactions = [];
+  final List<WalletAccount> _accounts = [];
+  final List<WalletTransaction> _transactions = [];
+  final List<GovernanceProposal> _proposals = [];
+  WalletState _walletState = WalletState.locked;
+
+  // ── DApp 浏览器功能 ──
+
+  /// 获取已发现的 DApp 列表
+  List<DAppInfo> get dapps => List.unmodifiable(_dapps);
+
+  /// 获取已连接的 DApp 列表
+  List<DAppInfo> get connectedDapps =>
+      _dapps.where((d) => d.state == DAppState.connected).toList();
+
+  /// 发现并注册 DApp
+  ///
+  /// [name] DApp 名称
+  /// [url] DApp URL
+  /// [description] 描述
+  /// [type] DApp 类型
+  DAppInfo discoverDApp({
+    required String name,
+    required String url,
+    String description = '',
+    DAppType type = DAppType.other,
+  }) {
+    // 检查是否已存在
+    final existing = _dapps.where((d) => d.url == url).toList();
+    if (existing.isNotEmpty) {
+      debugPrint('[DApp] DApp 已存在: $name ($url)');
+      return existing.first;
+    }
+
+    final dapp = DAppInfo(
+      id: 'dapp_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      description: description,
+      url: url,
+      type: type,
+    );
+    _dapps.add(dapp);
+    debugPrint('[DApp] DApp 已发现: $name ($url)');
+    return dapp;
+  }
+
+  /// 连接 DApp
+  ///
+  /// [dappId] DApp ID
+  /// [walletAddress] 连接的钱包地址
+  Future<DAppInfo> connectDApp(String dappId, String walletAddress) async {
+    final dapp = _dapps.firstWhere(
+      (d) => d.id == dappId,
+      orElse: () => throw Exception('DApp 不存在: $dappId'),
+    );
+
+    dapp.state = DAppState.connected;
+    dapp.lastConnectedAt = DateTime.now();
+
+    _recordInteraction(dappId, 'connect', {'walletAddress': walletAddress});
+
+    debugPrint('[DApp] 已连接: ${dapp.name}');
+    return dapp;
+  }
+
+  /// 断开 DApp 连接
+  void disconnectDApp(String dappId) {
+    final dapp = _dapps.firstWhere(
+      (d) => d.id == dappId,
+      orElse: () => throw Exception('DApp 不存在: $dappId'),
+    );
+    dapp.state = DAppState.disconnected;
+    _recordInteraction(dappId, 'disconnect', {});
+    debugPrint('[DApp] 已断开: ${dapp.name}');
+  }
+
+  /// 删除 DApp
+  void removeDApp(String dappId) {
+    _dapps.removeWhere((d) => d.id == dappId);
+    debugPrint('[DApp] DApp 已删除: $dappId');
+  }
+
+  // ── DApp 交互功能 ──
+
+  /// 获取交互历史
+  List<DAppInteraction> get interactions => List.unmodifiable(_interactions);
+
+  /// 调用 DApp 合约方法
+  ///
+  /// [dappId] DApp ID
+  /// [method] 调用的方法名
+  /// [params] 参数
+  Future<Map<String, dynamic>> callDAppMethod(
+    String dappId,
+    String method,
+    Map<String, dynamic> params,
+  ) async {
+    final dapp = _dapps.firstWhere(
+      (d) => d.id == dappId,
+      orElse: () => throw Exception('DApp 不存在: $dappId'),
+    );
+
+    if (dapp.state != DAppState.connected) {
+      throw Exception('DApp 未连接: ${dapp.name}');
+    }
+
+    // 模拟方法调用
+    await Future.delayed(const Duration(milliseconds: 50));
+    final response = {
+      'method': method,
+      'params': params,
+      'result': 'success',
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    _recordInteraction(dappId, 'call', {'method': method, ...params}, response);
+
+    debugPrint('[DApp] 方法调用: ${dapp.name}.$method');
+    return response;
+  }
+
+  /// 签名消息
+  ///
+  /// [dappId] DApp ID
+  /// [message] 待签名消息
+  /// [signerAddress] 签名者地址
+  Future<String> signMessage(String dappId, String message, String signerAddress) async {
+    // 模拟签名
+    await Future.delayed(const Duration(milliseconds: 30));
+    final signature = '0x${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+
+    _recordInteraction(dappId, 'sign', {
+      'message': message,
+      'signer': signerAddress,
+    }, {'signature': signature});
+
+    debugPrint('[DApp] 消息已签名: $dappId');
+    return signature;
+  }
+
+  /// 记录交互
+  void _recordInteraction(
+    String dappId,
+    String action,
+    Map<String, dynamic> request, [
+    Map<String, dynamic>? response,
+  ]) {
+    _interactions.add(DAppInteraction(
+      id: 'interact_${DateTime.now().microsecondsSinceEpoch}',
+      dappId: dappId,
+      action: action,
+      requestData: request,
+      responseData: response,
+      success: true,
+    ));
+    // 限制记录数量
+    while (_interactions.length > 500) {
+      _interactions.removeAt(0);
+    }
+  }
+
+  // ── DApp 钱包功能 ──
+
+  /// 获取钱包状态
+  WalletState get walletState => _walletState;
+
+  /// 获取所有账户
+  List<WalletAccount> get accounts => List.unmodifiable(_accounts);
+
+  /// 获取所有交易记录
+  List<WalletTransaction> get walletTransactions => List.unmodifiable(_transactions);
+
+  /// 创建钱包账户
+  ///
+  /// [label] 账户标签
+  /// [network] 网络
+  WalletAccount createAccount({String label = '', String network = 'local'}) {
+    final address = '0x${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(40, '0')}';
+    final account = WalletAccount(
+      address: address,
+      label: label.isEmpty ? 'Account ${_accounts.length + 1}' : label,
+      network: network,
+      balance: 100.0, // 初始余额
+    );
+    _accounts.add(account);
+    debugPrint('[DApp] 钱包账户已创建: ${account.label} ($address)');
+    return account;
+  }
+
+  /// 解锁钱包
+  void unlockWallet() {
+    _walletState = WalletState.unlocked;
+    debugPrint('[DApp] 钱包已解锁');
+  }
+
+  /// 锁定钱包
+  void lockWallet() {
+    _walletState = WalletState.locked;
+    debugPrint('[DApp] 钱包已锁定');
+  }
+
+  /// 获取账户余额
+  double getBalance(String address) {
+    final account = _accounts.firstWhere(
+      (a) => a.address == address,
+      orElse: () => throw Exception('账户不存在: $address'),
+    );
+    return account.balance;
+  }
+
+  /// 发送交易
+  ///
+  /// [fromAddress] 发送方地址
+  /// [toAddress] 接收方地址
+  /// [amount] 金额
+  /// [token] 代币类型
+  Future<WalletTransaction> sendTransaction({
+    required String fromAddress,
+    required String toAddress,
+    required double amount,
+    String token = 'WF',
+  }) async {
+    if (_walletState != WalletState.unlocked) {
+      throw Exception('钱包未解锁');
+    }
+
+    final fromAccount = _accounts.firstWhere(
+      (a) => a.address == fromAddress,
+      orElse: () => throw Exception('发送方账户不存在'),
+    );
+
+    if (fromAccount.balance < amount) {
+      throw Exception('余额不足');
+    }
+
+    // 模拟交易
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    final txHash = '0x${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(64, '0')}';
+    final tx = WalletTransaction(
+      id: 'tx_${DateTime.now().microsecondsSinceEpoch}',
+      fromAddress: fromAddress,
+      toAddress: toAddress,
+      amount: amount,
+      token: token,
+      txHash: txHash,
+    );
+    _transactions.add(tx);
+
+    debugPrint('[DApp] 交易已发送: $fromAddress -> $toAddress ($amount $token)');
+    return tx;
+  }
+
+  /// 获取指定账户的交易历史
+  List<WalletTransaction> getAccountTransactions(String address, {int limit = 50}) {
+    final txs = _transactions
+        .where((t) => t.fromAddress == address || t.toAddress == address)
+        .toList();
+    final start = (txs.length - limit).clamp(0, txs.length);
+    return txs.sublist(start);
+  }
+
+  // ── DApp 治理功能 ──
+
+  /// 获取所有提案
+  List<GovernanceProposal> get proposals => List.unmodifiable(_proposals);
+
+  /// 创建治理提案
+  ///
+  /// [title] 提案标题
+  /// [description] 提案描述
+  /// [proposerAddress] 提案者地址
+  /// [votingDeadline] 投票截止时间
+  GovernanceProposal createProposal({
+    required String title,
+    required String description,
+    required String proposerAddress,
+    DateTime? votingDeadline,
+  }) {
+    final proposal = GovernanceProposal(
+      id: 'prop_${DateTime.now().microsecondsSinceEpoch}',
+      title: title,
+      description: description,
+      proposerAddress: proposerAddress,
+      votingDeadline: votingDeadline ?? DateTime.now().add(const Duration(days: 7)),
+    );
+    _proposals.add(proposal);
+    debugPrint('[DApp] 治理提案已创建: $title');
+    return proposal;
+  }
+
+  /// 对提案投票
+  ///
+  /// [proposalId] 提案ID
+  /// [voterAddress] 投票者地址
+  /// [vote] 投票选项（'for' | 'against' | 'abstain'）
+  void vote(String proposalId, String voterAddress, String vote) {
+    final proposal = _proposals.firstWhere(
+      (p) => p.id == proposalId,
+      orElse: () => throw Exception('提案不存在: $proposalId'),
+    );
+
+    if (proposal.voters.contains(voterAddress)) {
+      throw Exception('该地址已投票');
+    }
+
+    if (proposal.status != ProposalStatus.active) {
+      // 自动激活提案
+      proposal.status = ProposalStatus.active;
+    }
+
+    proposal.votes[vote] = (proposal.votes[vote] ?? 0) + 1;
+    proposal.voters.add(voterAddress);
+    debugPrint('[DApp] 投票成功: $proposalId ($vote)');
+  }
+
+  /// 执行提案
+  ///
+  /// [proposalId] 提案ID
+  void executeProposal(String proposalId) {
+    final proposal = _proposals.firstWhere(
+      (p) => p.id == proposalId,
+      orElse: () => throw Exception('提案不存在: $proposalId'),
+    );
+
+    final forVotes = proposal.votes['for'] ?? 0;
+    final againstVotes = proposal.votes['against'] ?? 0;
+
+    if (forVotes > againstVotes) {
+      proposal.status = ProposalStatus.passed;
+      // 延迟模拟执行
+      Future.delayed(const Duration(milliseconds: 100), () {
+        proposal.status = ProposalStatus.executed;
+        debugPrint('[DApp] 提案已执行: ${proposal.title}');
+      });
+    } else {
+      proposal.status = ProposalStatus.rejected;
+      debugPrint('[DApp] 提案被拒绝: ${proposal.title}');
+    }
+  }
+
+  /// 获取活跃提案列表
+  List<GovernanceProposal> getActiveProposals() {
+    return _proposals.where((p) => p.status == ProposalStatus.active).toList();
+  }
+
+  /// 获取 DApp 服务统计信息
+  Map<String, dynamic> getDAppStats() {
+    return {
+      'totalDApps': _dapps.length,
+      'connectedDApps': connectedDapps.length,
+      'totalInteractions': _interactions.length,
+      'walletState': _walletState.name,
+      'totalAccounts': _accounts.length,
+      'totalTransactions': _transactions.length,
+      'totalProposals': _proposals.length,
+      'activeProposals': _proposals.where((p) => p.status == ProposalStatus.active).length,
+      'passedProposals': _proposals.where((p) => p.status == ProposalStatus.passed || p.status == ProposalStatus.executed).length,
+    };
+  }
+}

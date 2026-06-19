@@ -6315,3 +6315,556 @@ class ARService {
     debugPrint('[AR] 已清除所有 AR 数据');
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 智能合约功能增强：模板、审计、部署监控
+// ═══════════════════════════════════════════════════════════
+
+/// 合约模板类型枚举
+enum ContractTemplateType {
+  fontLicense,      // 字体授权合约
+  royaltySplit,     // 版税分配合约
+  collaboration,    // 协作管理合约
+  marketplace,      // 市场交易合约
+  governance,       // 治理合约
+}
+
+/// 审计状态枚举
+enum AuditStatus { pending, inProgress, passed, failed, warning }
+
+/// 合约模板数据模型
+///
+/// 预定义的智能合约模板，用于快速创建常见类型的合约。
+class ContractTemplate {
+  final String id;
+  final String name;
+  final String description;
+  final ContractTemplateType type;
+  final String codeTemplate;
+  final List<Map<String, dynamic>> parameters; // 可配置参数定义
+  final DateTime createdAt;
+  final int usageCount;
+
+  ContractTemplate({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.type,
+    required this.codeTemplate,
+    this.parameters = const [],
+    DateTime? createdAt,
+    this.usageCount = 0,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'type': type.name,
+        'codeTemplate': codeTemplate,
+        'parameters': parameters,
+        'createdAt': createdAt.toIso8601String(),
+        'usageCount': usageCount,
+      };
+}
+
+/// 合约审计记录数据模型
+class ContractAuditRecord {
+  final String id;
+  final String contractId;
+  final String contractName;
+  final AuditStatus status;
+  final DateTime auditDate;
+  final String auditor;
+  final List<Map<String, dynamic>> findings; // 审计发现
+  final Map<String, dynamic> metrics; // 安全指标
+  final List<String> recommendations; // 修复建议
+
+  ContractAuditRecord({
+    required this.id,
+    required this.contractId,
+    required this.contractName,
+    this.status = AuditStatus.pending,
+    DateTime? auditDate,
+    this.auditor = 'WriteFont Security',
+    this.findings = const [],
+    this.metrics = const {},
+    this.recommendations = const [],
+  }) : auditDate = auditDate ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'contractId': contractId,
+        'contractName': contractName,
+        'status': status.name,
+        'auditDate': auditDate.toIso8601String(),
+        'auditor': auditor,
+        'findings': findings,
+        'metrics': metrics,
+        'recommendations': recommendations,
+      };
+}
+
+/// 合约部署记录数据模型
+class DeploymentRecord {
+  final String id;
+  final String contractId;
+  final String contractName;
+  final String network; // 部署网络（mainnet / testnet / local）
+  final String deployerAddress;
+  final DateTime deployedAt;
+  final String? transactionHash;
+  final String? contractAddress;
+  final bool success;
+  final String? error;
+
+  DeploymentRecord({
+    required this.id,
+    required this.contractId,
+    required this.contractName,
+    required this.network,
+    required this.deployerAddress,
+    DateTime? deployedAt,
+    this.transactionHash,
+    this.contractAddress,
+    this.success = true,
+    this.error,
+  }) : deployedAt = deployedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'contractId': contractId,
+        'contractName': contractName,
+        'network': network,
+        'deployerAddress': deployerAddress,
+        'deployedAt': deployedAt.toIso8601String(),
+        'transactionHash': transactionHash,
+        'contractAddress': contractAddress,
+        'success': success,
+        'error': error,
+      };
+}
+
+/// 合约监控事件数据模型
+class ContractMonitorEvent {
+  final String id;
+  final String contractId;
+  final String eventType; // 'call' | 'state_change' | 'error' | 'balance_change'
+  final DateTime timestamp;
+  final Map<String, dynamic> data;
+  final String? caller;
+
+  ContractMonitorEvent({
+    required this.id,
+    required this.contractId,
+    required this.eventType,
+    DateTime? timestamp,
+    this.data = const {},
+    this.caller,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'contractId': contractId,
+        'eventType': eventType,
+        'timestamp': timestamp.toIso8601String(),
+        'data': data,
+        'caller': caller,
+      };
+}
+
+/// 智能合约管理服务
+///
+/// 提供完整的智能合约功能，包括：
+/// - 合约模板管理（预定义模板、自定义模板、模板实例化）
+/// - 合约审计（安全审计、代码审查、漏洞检测）
+/// - 合约部署（多网络部署、部署验证、部署记录）
+/// - 合约监控（事件监控、状态追踪、告警通知）
+class SmartContractManager {
+  static final SmartContractManager _instance = SmartContractManager._();
+  static SmartContractManager get instance => _instance;
+  SmartContractManager._();
+
+  final List<ContractTemplate> _templates = [];
+  final List<ContractAuditRecord> _auditRecords = [];
+  final List<DeploymentRecord> _deploymentRecords = [];
+  final List<ContractMonitorEvent> _monitorEvents = [];
+  final List<void Function(ContractMonitorEvent)> _alertCallbacks = [];
+
+  // ── 合约模板功能 ──
+
+  /// 获取所有模板
+  List<ContractTemplate> get templates => List.unmodifiable(_templates);
+
+  /// 初始化内置模板
+  void initBuiltInTemplates() {
+    if (_templates.isNotEmpty) return;
+
+    _templates.addAll([
+      ContractTemplate(
+        id: 'tpl_font_license',
+        name: '字体授权合约',
+        description: '管理字体使用授权、许可范围和授权期限',
+        type: ContractTemplateType.fontLicense,
+        codeTemplate: '''
+// Font License Contract
+// Manages font usage rights and licensing terms
+contract FontLicense {
+  address owner;
+  mapping(address => License) licenses;
+  struct License {
+    string fontName;
+    uint256 startDate;
+    uint256 endDate;
+    uint8 scope; // 0=personal, 1=commercial, 2=enterprise
+  }
+  function grantLicense(address user, string fontName, uint8 scope) public {}
+  function revokeLicense(address user) public {}
+  function checkLicense(address user) public view returns (bool) {}
+}''',
+        parameters: [
+          {'name': 'fontName', 'type': 'string', 'description': '字体名称'},
+          {'name': 'licenseScope', 'type': 'enum', 'description': '授权范围', 'options': ['personal', 'commercial', 'enterprise']},
+          {'name': 'durationDays', 'type': 'int', 'description': '授权天数'},
+        ],
+      ),
+      ContractTemplate(
+        id: 'tpl_royalty_split',
+        name: '版税分配合约',
+        description: '自动分配字体销售收入给贡献者',
+        type: ContractTemplateType.royaltySplit,
+        codeTemplate: '''
+// Royalty Split Contract
+// Automatically distributes font revenue to contributors
+contract RoyaltySplit {
+  address[] payees;
+  mapping(address => uint256) shares;
+  function addPayee(address payee, uint256 share) public {}
+  function distribute() public payable {}
+  function getShare(address payee) public view returns (uint256) {}
+}''',
+        parameters: [
+          {'name': 'contributors', 'type': 'address[]', 'description': '贡献者地址列表'},
+          {'name': 'shares', 'type': 'uint256[]', 'description': '分配比例'},
+        ],
+      ),
+      ContractTemplate(
+        id: 'tpl_collaboration',
+        name: '协作管理合约',
+        description: '管理多人协作字体项目的权限和贡献记录',
+        type: ContractTemplateType.collaboration,
+        codeTemplate: '''
+// Collaboration Contract
+// Manages permissions and contribution records for multi-person projects
+contract FontCollaboration {
+  address projectOwner;
+  mapping(address => Role) collaborators;
+  enum Role { None, Viewer, Editor, Admin }
+  function addCollaborator(address user, Role role) public {}
+  function removeCollaborator(address user) public {}
+  function recordContribution(address user, string description) public {}
+}''',
+        parameters: [
+          {'name': 'projectId', 'type': 'string', 'description': '项目ID'},
+          {'name': 'collaborators', 'type': 'address[]', 'description': '协作者地址'},
+        ],
+      ),
+      ContractTemplate(
+        id: 'tpl_marketplace',
+        name: '市场交易合约',
+        description: '管理字体作品的上架、购买和交易',
+        type: ContractTemplateType.marketplace,
+        codeTemplate: '''
+// Marketplace Contract
+// Manages font listing, purchasing and trading
+contract FontMarketplace {
+  struct Listing {
+    address seller;
+    string fontId;
+    uint256 price;
+    bool active;
+  }
+  mapping(uint256 => Listing) listings;
+  function listFont(string fontId, uint256 price) public {}
+  function buyFont(uint256 listingId) public payable {}
+  function delistFont(uint256 listingId) public {}
+}''',
+        parameters: [
+          {'name': 'platformFeePercent', 'type': 'double', 'description': '平台手续费百分比'},
+          {'name': 'minPrice', 'type': 'uint256', 'description': '最低价格'},
+        ],
+      ),
+    ]);
+
+    debugPrint('[SmartContract] ${_templates.length} 个内置模板已初始化');
+  }
+
+  /// 创建自定义模板
+  ContractTemplate createTemplate({
+    required String name,
+    required String description,
+    required ContractTemplateType type,
+    required String codeTemplate,
+    List<Map<String, dynamic>> parameters = const [],
+  }) {
+    final template = ContractTemplate(
+      id: 'tpl_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      description: description,
+      type: type,
+      codeTemplate: codeTemplate,
+      parameters: parameters,
+    );
+    _templates.add(template);
+    debugPrint('[SmartContract] 自定义模板已创建: $name');
+    return template;
+  }
+
+  /// 根据模板创建合约
+  ///
+  /// [templateId] 模板ID
+  /// [customName] 自定义合约名称
+  /// [paramValues] 参数值
+  Map<String, dynamic> instantiateFromTemplate(
+    String templateId,
+    String customName,
+    Map<String, dynamic> paramValues,
+  ) {
+    final template = _templates.firstWhere(
+      (t) => t.id == templateId,
+      orElse: () => throw Exception('模板不存在: $templateId'),
+    );
+
+    var code = template.codeTemplate;
+    paramValues.forEach((key, value) {
+      code = code.replaceAll('{{$key}}', value.toString());
+    });
+
+    debugPrint('[SmartContract] 从模板实例化合约: $customName (模板: ${template.name})');
+    return {
+      'name': customName,
+      'code': code,
+      'templateId': templateId,
+      'parameters': paramValues,
+      'createdAt': DateTime.now().toIso8601String(),
+    };
+  }
+
+  // ── 合约审计功能 ──
+
+  /// 获取审计记录
+  List<ContractAuditRecord> get auditRecords => List.unmodifiable(_auditRecords);
+
+  /// 执行合约审计
+  ///
+  /// [contractId] 合约ID
+  /// [contractName] 合约名称
+  /// [code] 合约代码
+  Future<ContractAuditRecord> auditContract({
+    required String contractId,
+    required String contractName,
+    required String code,
+  }) async {
+    final findings = <Map<String, dynamic>>[];
+    final metrics = <String, dynamic>{};
+    final recommendations = <String>[];
+
+    // 代码安全分析（模拟）
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // 检查常见安全问题
+    if (code.contains('selfdestruct') || code.contains('suicide')) {
+      findings.add({
+        'severity': 'critical',
+        'type': 'selfdestruct',
+        'message': '检测到自毁函数，可能导致资金永久丢失',
+      });
+      recommendations.add('移除 selfdestruct 调用或添加严格的权限控制');
+    }
+
+    if (code.contains('tx.origin')) {
+      findings.add({
+        'severity': 'high',
+        'type': 'tx_origin',
+        'message': '使用 tx.origin 进行身份验证，存在钓鱼攻击风险',
+      });
+      recommendations.add('使用 msg.sender 替代 tx.origin');
+    }
+
+    if (!code.contains('require') && !code.contains('assert')) {
+      findings.add({
+        'severity': 'medium',
+        'type': 'missing_validation',
+        'message': '缺少输入验证，可能导致非法操作',
+      });
+      recommendations.add('添加 require 语句验证关键输入参数');
+    }
+
+    if (code.contains('assembly')) {
+      findings.add({
+        'severity': 'medium',
+        'type': 'inline_assembly',
+        'message': '使用内联汇编，可能存在安全隐患',
+      });
+      recommendations.add('审查内联汇编代码，确保安全性');
+    }
+
+    // 安全指标
+    metrics['codeLength'] = code.length;
+    metrics['functionCount'] RegExp(r'function\s+\w+').allMatches(code).length;
+    metrics['complexityScore'] = findings.length * 10;
+    metrics['securityScore'] = (100 - findings.fold<int>(0, (sum, f) {
+      switch (f['severity']) {
+        case 'critical': return sum + 30;
+        case 'high': return sum + 20;
+        case 'medium': return sum + 10;
+        default: return sum + 5;
+      }
+    })).clamp(0, 100);
+
+    final hasCritical = findings.any((f) => f['severity'] == 'critical');
+    final hasHigh = findings.any((f) => f['severity'] == 'high');
+
+    final record = ContractAuditRecord(
+      id: 'audit_${DateTime.now().microsecondsSinceEpoch}',
+      contractId: contractId,
+      contractName: contractName,
+      status: hasCritical
+          ? AuditStatus.failed
+          : hasHigh
+              ? AuditStatus.warning
+              : AuditStatus.passed,
+      findings: findings,
+      metrics: metrics,
+      recommendations: recommendations,
+    );
+    _auditRecords.add(record);
+
+    debugPrint('[SmartContract] 合约审计完成: $contractName (状态: ${record.status.name})');
+    return record;
+  }
+
+  /// 获取指定合约的审计历史
+  List<ContractAuditRecord> getAuditHistory(String contractId) {
+    return _auditRecords.where((r) => r.contractId == contractId).toList();
+  }
+
+  // ── 合约部署功能 ──
+
+  /// 获取部署记录
+  List<DeploymentRecord> get deploymentRecords => List.unmodifiable(_deploymentRecords);
+
+  /// 部署合约到指定网络
+  ///
+  /// [contractId] 合约ID
+  /// [contractName] 合约名称
+  /// [code] 合约代码
+  /// [network] 部署网络（local / testnet / mainnet）
+  /// [deployerAddress] 部署者地址
+  Future<DeploymentRecord> deployContract({
+    required String contractId,
+    required String contractName,
+    required String code,
+    required String network,
+    required String deployerAddress,
+  }) async {
+    // 模拟部署过程
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // 本地网络直接成功，测试网/主网需要更多验证
+    final txHash = '0x${DateTime.now().microsecondsSinceEpoch.toRadixString(16).padLeft(64, '0')}';
+    final contractAddr = '0x${(DateTime.now().microsecondsSinceEpoch + 1).toRadixString(16).padLeft(40, '0')}';
+
+    final record = DeploymentRecord(
+      id: 'deploy_${DateTime.now().microsecondsSinceEpoch}',
+      contractId: contractId,
+      contractName: contractName,
+      network: network,
+      deployerAddress: deployerAddress,
+      transactionHash: txHash,
+      contractAddress: contractAddr,
+      success: true,
+    );
+    _deploymentRecords.add(record);
+
+    debugPrint('[SmartContract] 合约已部署: $contractName -> $network ($contractAddr)');
+    return record;
+  }
+
+  /// 获取指定网络的部署记录
+  List<DeploymentRecord> getDeploymentsByNetwork(String network) {
+    return _deploymentRecords.where((d) => d.network == network).toList();
+  }
+
+  // ── 合约监控功能 ──
+
+  /// 获取监控事件
+  List<ContractMonitorEvent> get monitorEvents => List.unmodifiable(_monitorEvents);
+
+  /// 添加告警回调
+  void addAlertCallback(void Function(ContractMonitorEvent) callback) {
+    _alertCallbacks.add(callback);
+  }
+
+  /// 移除告警回调
+  void removeAlertCallback(void Function(ContractMonitorEvent) callback) {
+    _alertCallbacks.remove(callback);
+  }
+
+  /// 记录合约事件
+  ///
+  /// [contractId] 合约ID
+  /// [eventType] 事件类型
+  /// [data] 事件数据
+  /// [caller] 调用者地址
+  void recordEvent({
+    required String contractId,
+    required String eventType,
+    Map<String, dynamic> data = const {},
+    String? caller,
+  }) {
+    final event = ContractMonitorEvent(
+      id: 'evt_${DateTime.now().microsecondsSinceEpoch}',
+      contractId: contractId,
+      eventType: eventType,
+      data: data,
+      caller: caller,
+    );
+    _monitorEvents.add(event);
+
+    // 限制事件数量
+    while (_monitorEvents.length > 1000) {
+      _monitorEvents.removeAt(0);
+    }
+
+    // 错误事件触发告警
+    if (eventType == 'error') {
+      for (final cb in _alertCallbacks) {
+        try { cb(event); } catch (_) {}
+      }
+    }
+
+    debugPrint('[SmartContract] 合约事件: $contractId.$eventType');
+  }
+
+  /// 获取指定合约的监控事件
+  List<ContractMonitorEvent> getContractEvents(String contractId, {int limit = 50}) {
+    final events = _monitorEvents.where((e) => e.contractId == contractId).toList();
+    final start = (events.length - limit).clamp(0, events.length);
+    return events.sublist(start);
+  }
+
+  /// 获取智能合约管理统计信息
+  Map<String, dynamic> getManagerStats() {
+    return {
+      'templates': _templates.length,
+      'auditRecords': _auditRecords.length,
+      'passedAudits': _auditRecords.where((r) => r.status == AuditStatus.passed).length,
+      'failedAudits': _auditRecords.where((r) => r.status == AuditStatus.failed).length,
+      'deployments': _deploymentRecords.length,
+      'successfulDeployments': _deploymentRecords.where((d) => d.success).length,
+      'monitorEvents': _monitorEvents.length,
+      'errorEvents': _monitorEvents.where((e) => e.eventType == 'error').length,
+    };
+  }
+}

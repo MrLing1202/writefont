@@ -37,7 +37,6 @@
     "placeholders": {
       "count": {
         "type": "int",
-        "format": "decimal"
       }
     }
   },
@@ -57,7 +56,6 @@
     "placeholders": {
       "count": {
         "type": "int",
-        "format": "decimal"
       }
     }
   },
@@ -66,7 +64,6 @@
     "placeholders": {
       "count": {
         "type": "int",
-        "format": "decimal"
       }
     }
   },
@@ -75,7 +72,6 @@
     "placeholders": {
       "count": {
         "type": "int",
-        "format": "decimal"
       }
     }
   },
