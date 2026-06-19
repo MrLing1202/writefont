@@ -74,7 +74,7 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
   final blackRatio = ImageProcessor._blackPixelRatio(adaptiveResult);
   if (blackRatio > 0.80 || blackRatio < 0.01) {
     if ((threshold - 0.5).abs() < 0.001) {
-      final otsuT = ImageProcessor._otsuThreshold(blurred);
+      final otsuT = ImageProcessor.otsuThreshold(blurred);
       binary = ImageProcessor._binarize(blurred, otsuT / 255.0, invertColors);
     } else {
       binary = ImageProcessor._binarize(blurred, threshold, invertColors);
@@ -340,7 +340,7 @@ class ImageProcessor {
       debugPrint('segmentCharacters: 自适应阈值结果异常 (black=${(blackRatio*100).toStringAsFixed(1)}%), 回退全局阈值');
       // Use Otsu auto-threshold when threshold is the default 0.5
       if ((params.threshold - 0.5).abs() < 0.001) {
-        final otsuT = _otsuThreshold(blurred);
+        final otsuT = otsuThreshold(blurred);
         binary = _binarize(blurred, otsuT / 255.0, params.invertColors);
         debugPrint('segmentCharacters: 使用 Otsu 自动阈值 ${otsuT}');
       } else {
@@ -643,7 +643,7 @@ class ImageProcessor {
 
   /// Otsu's method: find the optimal threshold that maximizes inter-class variance.
   /// Returns threshold as 0-255 value.
-  static int _otsuThreshold(img.Image gray) {
+  static int otsuThreshold(img.Image gray) {
     final histogram = List.filled(256, 0);
     final total = gray.width * gray.height;
     for (int y = 0; y < gray.height; y++) {
