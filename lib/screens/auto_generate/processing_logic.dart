@@ -48,9 +48,21 @@ Map<String, String> mapProcessingError(String errorStr) {
       'message': '云端识别认证失败：API Key 无效或已过期。\n请到「设置 → 云端识别配置」中重新填写 API Key，或切换为本地识别。',
       'status': '认证失败',
     };
+  } else if (errorStr.contains('TimeoutException') ||
+      errorStr.contains('timeout') ||
+      errorStr.contains('超时')) {
+    return {
+      'message': '请求超时，服务器响应时间过长。\n请检查网络状况后重试，或切换到本地识别（无需网络）。',
+      'status': '请求超时',
+    };
+  } else if (errorStr.contains('429') || errorStr.contains('rate') ||
+      errorStr.contains('限流') || errorStr.contains('too many')) {
+    return {
+      'message': '云端识别请求频率过高，已被限流。\n请稍等片刻后重试，或切换到本地识别。',
+      'status': '请求限流',
+    };
   } else if (errorStr.contains('CloudNetworkException') ||
       errorStr.contains('SocketException') ||
-      errorStr.contains('TimeoutException') ||
       errorStr.contains('网络连接失败') ||
       errorStr.contains('Connection')) {
     return {

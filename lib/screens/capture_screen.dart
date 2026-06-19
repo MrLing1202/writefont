@@ -111,10 +111,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final total = _selectedImages.length;
       final List<Uint8List> imageBytes = [];
-      for (final file in _selectedImages) {
-        final bytes = await File(file.path).readAsBytes();
+      for (int i = 0; i < total; i++) {
+        final bytes = await File(_selectedImages[i].path).readAsBytes();
         imageBytes.add(bytes);
+        // 显示读取进度
+        if (mounted && total > 1) {
+          WFSnackBar.show(context, '正在读取图片 ${i + 1}/$total...');
+        }
       }
 
       if (mounted) {
@@ -147,7 +152,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
     });
   }
 
-  /// 批量从相册选择
+  /// 批量从相册选择（并行检测质量）
   Future<void> _pickMultiFromGallery() async {
     try {
       final photos = await _picker.pickMultiImage(
@@ -156,15 +161,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
         imageQuality: 95,
       );
       if (photos.isNotEmpty) {
-        int poorCount = 0;
-        for (final photo in photos) {
-          try {
-            final quality = await detectImageQuality(photo.path);
-            if (quality.level == QualityLevel.poor) poorCount++;
-          } catch (_) {
-            // 单张检测失败不影响整体添加
-          }
-        }
+        // 并行检测所有图片质量
+        final qualityResults = await Future.wait(
+          photos.map((photo) async {
+            try {
+              return await detectImageQuality(photo.path);
+            } catch (_) {
+              return null;
+            }
+          }),
+        );
+
+        final poorCount = qualityResults
+            .where((q) => q != null && q.level == QualityLevel.poor)
+            .length;
 
         setState(() {
           _selectedImages.addAll(photos);

@@ -90,8 +90,9 @@ class TtfBuilder {
     }
     totalSize = offset;
 
-    // Write the file
+    // Write the file（使用 Uint8List 视图进行批量写入优化）
     final data = ByteData(totalSize);
+    final dataBytes = data.buffer.asUint8List();
     int pos = 0;
 
     // Write offset table (header)
@@ -112,25 +113,27 @@ class TtfBuilder {
 
     // Write table directory
     for (final info in tableInfos) {
-      // Tag (4 bytes ASCII)
+      // Tag (4 bytes ASCII) — 批量写入
       final tag = info.tag.padRight(4).substring(0, 4);
-      for (int i = 0; i < 4; i++) {
-        data.setUint8(pos++, tag.codeUnitAt(i));
-      }
+      dataBytes[pos] = tag.codeUnitAt(0);
+      dataBytes[pos + 1] = tag.codeUnitAt(1);
+      dataBytes[pos + 2] = tag.codeUnitAt(2);
+      dataBytes[pos + 3] = tag.codeUnitAt(3);
+      pos += 4;
       data.setUint32(pos, _checksum(_tables[info.tag]!)); pos += 4; // checksum
       data.setUint32(pos, info.offset); pos += 4; // offset
       data.setUint32(pos, info.length); pos += 4; // length
     }
 
-    // Write table data
+    // Write table data（批量写入，减少逐字节调用开销）
     for (final info in tableInfos) {
       final tableData = _tables[info.tag]!;
-      for (int i = 0; i < tableData.length; i++) {
-        data.setUint8(pos++, tableData[i]);
-      }
+      // 批量复制表数据
+      dataBytes.setRange(pos, pos + tableData.length, tableData);
+      pos += tableData.length;
       // Pad to 4-byte boundary
       while (pos % 4 != 0 && pos < totalSize) {
-        data.setUint8(pos++, 0);
+        dataBytes[pos++] = 0;
       }
     }
 
@@ -168,16 +171,21 @@ class TtfBuilder {
     for (final glyph in glyphs) {
       if (glyph.contours.isEmpty) continue;
 
+      // 收集所有轮廓点坐标，用 List.generate 批量处理
+      final allPoints = glyph.contours
+          .expand((c) => c.points)
+          .toList(growable: false);
+
+      if (allPoints.isEmpty) continue;
+
       // 从轮廓点计算精确边界框
-      int xMin = 99999, yMin = 99999, xMax = -99999, yMax = -99999;
-      for (final contour in glyph.contours) {
-        for (final p in contour.points) {
-          if (p.x < xMin) xMin = p.x;
-          if (p.y < yMin) yMin = p.y;
-          if (p.x > xMax) xMax = p.x;
-          if (p.y > yMax) yMax = p.y;
-        }
-      }
+      final xs = List.generate(allPoints.length, (i) => allPoints[i].x);
+      final ys = List.generate(allPoints.length, (i) => allPoints[i].y);
+      final xMin = xs.reduce((a, b) => a < b ? a : b);
+      final yMin = ys.reduce((a, b) => a < b ? a : b);
+      final xMax = xs.reduce((a, b) => a > b ? a : b);
+      final yMax = ys.reduce((a, b) => a > b ? a : b);
+
       glyph.xMin = xMin;
       glyph.yMin = yMin;
       glyph.xMax = xMax;
@@ -186,13 +194,9 @@ class TtfBuilder {
       glyph.leftSideBearing = xMin;
 
       // 根据实际轮廓计算 advanceWidth
-      // 如果轮廓数据存在且 advanceWidth 为默认值，则基于轮廓宽度 + 边距计算
       final contourWidth = xMax - xMin;
       if (contourWidth > 0) {
-        // advanceWidth = 轮廓宽度 + 左侧起始边距 + 右侧留白
-        // 使用 xMin 作为左侧起始，右侧留白为轮廓宽度的 15%
         final computedWidth = (xMin + contourWidth + contourWidth * 0.15).round();
-        // 仅当默认值不合理时才覆盖（默认值 <= 0 或远大于计算值的 2 倍）
         if (glyph.advanceWidth <= 0 || glyph.advanceWidth > computedWidth * 2) {
           glyph.advanceWidth = computedWidth.clamp(200, unitsPerEm);
         }

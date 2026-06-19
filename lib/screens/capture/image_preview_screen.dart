@@ -141,16 +141,16 @@ class ImagePreviewScreen extends StatelessWidget {
                     color: textColor.withValues(alpha: 0.7),
                   ),
                 ),
-                if (quality.level == QualityLevel.poor) ...[
+                if (quality.suggestions.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    '建议重新拍摄以获得更好的识别效果',
+                  ...quality.suggestions.map((s) => Text(
+                    '💡 $s',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: textColor,
                     ),
-                  ),
+                  )),
                 ],
               ],
             ),
