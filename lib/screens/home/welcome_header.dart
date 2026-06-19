@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../theme/app_theme.dart';
 
 /// 欢迎区域头部组件（渐变背景 + 统计数据）
@@ -16,6 +17,7 @@ class WelcomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
@@ -36,7 +38,6 @@ class WelcomeHeader extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // 图标
           Container(
             width: 72,
             height: 72,
@@ -51,9 +52,9 @@ class WelcomeHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            '欢迎使用手迹造字',
-            style: TextStyle(
+          Text(
+            l10n.welcomeToApp,
+            style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -61,24 +62,23 @@ class WelcomeHeader extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '拍照生成你的专属手写字体',
+            l10n.welcomeSubtitle,
             style: TextStyle(
               fontSize: 14,
               color: Colors.white.withValues(alpha: 0.8),
             ),
           ),
           const SizedBox(height: 20),
-          // 统计栏
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStatItem('$savedProjectCount', '已创建项目'),
+              _buildStatItem('$savedProjectCount', l10n.createdProjects),
               Container(
                 width: 1,
                 height: 32,
                 color: Colors.white.withValues(alpha: 0.2),
               ),
-              _buildStatItem('$totalCharCount', '已识别字符'),
+              _buildStatItem('$totalCharCount', l10n.recognizedChars),
               Container(
                 width: 1,
                 height: 32,
@@ -86,7 +86,7 @@ class WelcomeHeader extends StatelessWidget {
               ),
               _buildStatItem(
                 lastActivityDesc.isNotEmpty ? lastActivityDesc : '-',
-                '最近活动',
+                l10n.recentActivity,
               ),
             ],
           ),

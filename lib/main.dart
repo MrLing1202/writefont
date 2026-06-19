@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'generated/l10n/app_localizations.dart';
+import 'services/locale_service.dart';
 import 'models/project.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -33,6 +36,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
   String _themeModeStr = AppConfigService.defaultThemeMode;
   bool _onboardingSeen = false;
   bool _onboardingChecked = false;
+  Locale _locale = const Locale('zh');
 
   /// SharedPreferences 缓存，避免重复同步 I/O
   static SharedPreferences? _prefsCache;
@@ -52,6 +56,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadThemeMode();
+    _loadLocale();
     _checkOnboarding();
     // 3秒兜底：如果 _checkOnboarding 还没完成，强制标记为已检查，避免永久 loading
     Future.delayed(const Duration(seconds: 3), () {
@@ -103,6 +108,20 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     final themeMode = await AppConfigService.instance.getThemeMode();
     if (mounted) {
       setState(() => _themeModeStr = themeMode);
+    }
+  }
+
+  /// 加载语言设置
+  Future<void> _loadLocale() async {
+    final localeService = LocaleService.instance;
+    await localeService.init();
+    localeService.addListener(() {
+      if (mounted) {
+        setState(() => _locale = localeService.locale);
+      }
+    });
+    if (mounted) {
+      setState(() => _locale = localeService.locale);
     }
   }
 
@@ -337,6 +356,18 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
     return MaterialApp(
       title: '手迹造字 WriteFont',
       debugShowCheckedModeBanner: false,
+      locale: _locale,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('zh'),
+        Locale('en'),
+        Locale('ja'),
+      ],
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
       themeMode: _themeMode,

@@ -1,7 +1,7 @@
 name: writefont
 description: 手迹造字 - 拍照生成手写字体的工具
 publish_to: 'none'
-version: 2.0.3+22
+version: 2.0.4+23
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -59,6 +59,11 @@ dependencies:
   # Open URLs (GitHub link)
   url_launcher: ^6.2.0
 
+  # Localization
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.19.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -67,6 +72,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
+  generate: true
+
   assets:
     - assets/

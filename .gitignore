@@ -11,6 +11,9 @@ build/
 *.apk
 *.aab
 
+# Generated localization files — must be committed for builds
+# lib/generated/l10n/
+
 # Security: prevent accidental key leaks
 .env
 .env.*

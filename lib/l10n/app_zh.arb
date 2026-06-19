@@ -1,0 +1,210 @@
+{
+  "@@locale": "zh",
+  "appName": "手迹造字",
+  "appTitle": "手迹造字 WriteFont",
+
+  "settings": "设置",
+  "cancel": "取消",
+  "confirm": "确认",
+  "close": "关闭",
+  "save": "保存",
+  "delete": "删除",
+  "retry": "重试",
+  "back": "返回",
+  "start": "开始",
+  "done": "完成",
+  "skip": "跳过",
+  "nextStep": "下一步",
+  "prevStep": "上一步",
+  "resetToDefault": "重置为默认值",
+
+  "welcomeToApp": "欢迎使用手迹造字",
+  "welcomeSubtitle": "拍照生成你的专属手写字体",
+  "createdProjects": "已创建项目",
+  "recognizedChars": "已识别字符",
+  "recentActivity": "最近活动",
+  "oneClickGenerate": "一键生成",
+  "oneClickGenerateDesc": "拍照即生成，全自动无需手动操作",
+  "standardCharset": "标准字表造字",
+  "standardCharsetDesc": "按40个常用字书写，AI自动识别匹配",
+  "quickExperience": "快速体验",
+  "quickExperienceDesc": "只需写10个字，快速体验造字",
+  "freeCapture": "自由拍照造字",
+  "freeCaptureDesc": "任意手写内容，自由拍照识别",
+  "myFonts": "我的字体",
+  "myFontsSaved": "已保存 {count} 个字体项目",
+  "@myFontsSaved": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "myFontsDesc": "查看和管理已保存的字体项目",
+  "charOverview": "字符总览",
+  "charOverviewDesc": "查看造字进度",
+  "fontPreview": "字体预览",
+  "fontPreviewDesc": "输入文字查看手迹效果",
+  "enhancedPreview": "增强预览",
+  "enhancedPreviewDesc": "多字号 · 多场景 · 实时对比",
+  "styleTransfer": "风格迁移",
+  "styleTransferDesc": "AI 智能字体风格转换",
+  "recommendStandard": "推荐使用标准字表，生成效果更好",
+  "justNow": "刚刚",
+  "minutesAgo": "{count} 分钟前",
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "hoursAgo": "{count} 小时前",
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "daysAgo": "{count} 天前",
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+
+  "onboardingWelcome": "用你的笔迹，创造你的字体",
+  "onboardingWelcomeDesc": "只需3步，把你的手写变成专属字体",
+  "onboardingStep1": "第1步",
+  "onboardingStep1Title": "拍照上传",
+  "onboardingStep1Desc": "在纸上写下指定的汉字，用手机拍下手写字迹",
+  "onboardingStep2": "第2步",
+  "onboardingStep2Title": "检查书写",
+  "onboardingStep2Desc": "AI自动识别每个字符，检查并修正不准确的地方",
+  "onboardingStep3": "第3步",
+  "onboardingStep3Title": "一键生成",
+  "onboardingStep3Desc": "AI根据你的笔迹风格，\n自动生成6763个常用汉字",
+  "onboardingStartBtn": "立即开始造字！",
+  "aiRecognizeAndFix": "AI识别 + 手动修正",
+  "captureUpload": "拍照上传",
+
+  "appearance": "外观",
+  "recognitionSettings": "识别设置",
+  "fontGeneration": "字体生成",
+  "storage": "存储",
+  "cloudSync": "云同步",
+  "about": "关于",
+
+  "lightMode": "浅色",
+  "darkMode": "深色",
+  "followSystem": "跟随系统",
+  "appearanceChanged": "外观已切换为{mode}",
+  "@appearanceChanged": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+
+  "language": "语言",
+  "languageDesc": "切换应用显示语言",
+  "chinese": "中文",
+  "english": "English",
+  "japanese": "日本語",
+  "languageChanged": "语言已切换为{language}",
+  "@languageChanged": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+
+  "localRecognition": "本地识别",
+  "localRecognitionDesc": "离线识别，无需网络，免费使用",
+  "cloudRecognition": "云端 DeepSeek-OCR",
+  "cloudRecognitionDesc": "更高精度，需要网络和 API Key",
+  "cloudConfig": "云端配置",
+  "cloudConfigDesc": "API 地址、Key、模型",
+  "switchedToLocal": "已切换到本地识别",
+  "switchedToCloud": "已切换到云端识别",
+
+  "threshold": "阈值",
+  "thresholdDesc": "控制二值化分割点，值越大笔画越粗",
+  "contrast": "对比度",
+  "contrastDesc": "增强手写图片对比度，照片较淡时增大此值",
+  "smoothness": "平滑度",
+  "smoothnessDesc": "控制轮廓平滑程度，值越大笔画越圆润",
+  "strokeWidth": "笔画宽度",
+  "strokeWidthDesc": "输出字体的基础笔画粗细",
+  "paramsReset": "参数已重置为默认值",
+
+  "exportSettings": "导出设置",
+  "exportSettingsDesc": "将当前设置导出为 JSON 文件",
+  "importSettings": "导入设置",
+  "importSettingsDesc": "从 JSON 文件恢复设置",
+  "clearTempFiles": "清除临时文件",
+  "clearTempFilesDesc": "清除识别和处理过程中产生的临时图片",
+  "tempFilesCleared": "临时文件已清除",
+  "clearFailed": "清除失败: {error}",
+  "@clearFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsExported": "设置已导出",
+  "exportFailed": "导出失败: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsImported": "设置已导入",
+  "importFailed": "导入失败: {error}",
+  "@importFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "invalidSettingsFile": "无效的设置文件",
+  "selectSettingsFile": "选择 WriteFont 设置文件",
+  "settingsBackupSubject": "WriteFont 设置备份",
+  "settingsBackupText": "WriteFont 设置文件",
+
+  "cloudSyncDesc": "多设备同步和备份",
+
+  "version": "版本",
+  "openSourceLicense": "开源协议",
+  "viewSourceCode": "查看源代码",
+  "cannotOpenLink": "无法打开链接",
+
+  "processing": "处理中...",
+  "generating": "生成中...",
+  "loading": "加载中...",
+  "networkError": "网络错误，请检查网络连接",
+  "unknownError": "未知错误",
+
+  "projectList": "项目列表",
+  "fontPreviewTitle": "字体预览",
+  "characterEdit": "字符编辑",
+  "captureTitle": "拍照",
+  "batchProcessing": "批量处理",
+  "ocrSettings": "OCR 设置",
+  "writingTips": "书写提示",
+  "charsetGuide": "字表指南",
+  "autoGenerate": "自动识别"
+}

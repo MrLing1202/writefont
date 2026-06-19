@@ -1,0 +1,210 @@
+{
+  "@@locale": "en",
+  "appName": "WriteFont",
+  "appTitle": "WriteFont",
+
+  "settings": "Settings",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "close": "Close",
+  "save": "Save",
+  "delete": "Delete",
+  "retry": "Retry",
+  "back": "Back",
+  "start": "Start",
+  "done": "Done",
+  "skip": "Skip",
+  "nextStep": "Next",
+  "prevStep": "Previous",
+  "resetToDefault": "Reset to Default",
+
+  "welcomeToApp": "Welcome to WriteFont",
+  "welcomeSubtitle": "Turn your handwriting into a custom font",
+  "createdProjects": "Projects",
+  "recognizedChars": "Characters",
+  "recentActivity": "Recent",
+  "oneClickGenerate": "One-Click Generate",
+  "oneClickGenerateDesc": "Take a photo and generate automatically",
+  "standardCharset": "Standard Charset",
+  "standardCharsetDesc": "Write 40 common characters, AI auto-recognition",
+  "quickExperience": "Quick Try",
+  "quickExperienceDesc": "Write just 10 characters to try",
+  "freeCapture": "Free Capture",
+  "freeCaptureDesc": "Any handwritten content, free photo recognition",
+  "myFonts": "My Fonts",
+  "myFontsSaved": "{count} font projects saved",
+  "@myFontsSaved": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "myFontsDesc": "View and manage saved font projects",
+  "charOverview": "Character Overview",
+  "charOverviewDesc": "Check font progress",
+  "fontPreview": "Font Preview",
+  "fontPreviewDesc": "Input text to preview handwriting",
+  "enhancedPreview": "Enhanced Preview",
+  "enhancedPreviewDesc": "Multi-size · Multi-template · Real-time comparison",
+  "styleTransfer": "Style Transfer",
+  "styleTransferDesc": "AI-powered font style transformation",
+  "recommendStandard": "Standard charset recommended for better results",
+  "justNow": "Just now",
+  "minutesAgo": "{count} min ago",
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "hoursAgo": "{count} hours ago",
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+  "daysAgo": "{count} days ago",
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "format": "decimal"
+      }
+    }
+  },
+
+  "onboardingWelcome": "Create Your Font with Your Handwriting",
+  "onboardingWelcomeDesc": "Turn your handwriting into a custom font in 3 steps",
+  "onboardingStep1": "Step 1",
+  "onboardingStep1Title": "Take a Photo",
+  "onboardingStep1Desc": "Write the specified characters on paper, then capture with your camera",
+  "onboardingStep2": "Step 2",
+  "onboardingStep2Title": "Review Writing",
+  "onboardingStep2Desc": "AI auto-recognizes each character, review and correct as needed",
+  "onboardingStep3": "Step 3",
+  "onboardingStep3Title": "One-Click Generate",
+  "onboardingStep3Desc": "AI generates 6763 common Chinese characters\nbased on your handwriting style",
+  "onboardingStartBtn": "Start Now!",
+  "aiRecognizeAndFix": "AI Recognition + Manual Correction",
+  "captureUpload": "Capture",
+
+  "appearance": "Appearance",
+  "recognitionSettings": "Recognition",
+  "fontGeneration": "Font Generation",
+  "storage": "Storage",
+  "cloudSync": "Cloud Sync",
+  "about": "About",
+
+  "lightMode": "Light",
+  "darkMode": "Dark",
+  "followSystem": "System Default",
+  "appearanceChanged": "Appearance changed to {mode}",
+  "@appearanceChanged": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+
+  "language": "Language",
+  "languageDesc": "Change app display language",
+  "chinese": "中文",
+  "english": "English",
+  "japanese": "日本語",
+  "languageChanged": "Language changed to {language}",
+  "@languageChanged": {
+    "placeholders": {
+      "language": {
+        "type": "String"
+      }
+    }
+  },
+
+  "localRecognition": "Local Recognition",
+  "localRecognitionDesc": "Offline recognition, no network needed, free to use",
+  "cloudRecognition": "Cloud DeepSeek-OCR",
+  "cloudRecognitionDesc": "Higher accuracy, requires network and API Key",
+  "cloudConfig": "Cloud Configuration",
+  "cloudConfigDesc": "API URL, Key, Model",
+  "switchedToLocal": "Switched to local recognition",
+  "switchedToCloud": "Switched to cloud recognition",
+
+  "threshold": "Threshold",
+  "thresholdDesc": "Controls binarization cutoff, higher value = thicker strokes",
+  "contrast": "Contrast",
+  "contrastDesc": "Enhance contrast for lighter handwriting photos",
+  "smoothness": "Smoothness",
+  "smoothnessDesc": "Controls outline smoothness, higher = rounder strokes",
+  "strokeWidth": "Stroke Width",
+  "strokeWidthDesc": "Base stroke thickness for output font",
+  "paramsReset": "Parameters reset to defaults",
+
+  "exportSettings": "Export Settings",
+  "exportSettingsDesc": "Export current settings as JSON file",
+  "importSettings": "Import Settings",
+  "importSettingsDesc": "Restore settings from JSON file",
+  "clearTempFiles": "Clear Temporary Files",
+  "clearTempFilesDesc": "Clear temp images from recognition and processing",
+  "tempFilesCleared": "Temporary files cleared",
+  "clearFailed": "Clear failed: {error}",
+  "@clearFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsExported": "Settings exported",
+  "exportFailed": "Export failed: {error}",
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsImported": "Settings imported",
+  "importFailed": "Import failed: {error}",
+  "@importFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "invalidSettingsFile": "Invalid settings file",
+  "selectSettingsFile": "Select WriteFont settings file",
+  "settingsBackupSubject": "WriteFont Settings Backup",
+  "settingsBackupText": "WriteFont settings file",
+
+  "cloudSyncDesc": "Multi-device sync and backup",
+
+  "version": "Version",
+  "openSourceLicense": "Open Source License",
+  "viewSourceCode": "View Source Code",
+  "cannotOpenLink": "Cannot open link",
+
+  "processing": "Processing...",
+  "generating": "Generating...",
+  "loading": "Loading...",
+  "networkError": "Network error, please check your connection",
+  "unknownError": "Unknown error",
+
+  "projectList": "Project List",
+  "fontPreviewTitle": "Font Preview",
+  "characterEdit": "Character Edit",
+  "captureTitle": "Capture",
+  "batchProcessing": "Batch Processing",
+  "ocrSettings": "OCR Settings",
+  "writingTips": "Writing Tips",
+  "charsetGuide": "Charset Guide",
+  "autoGenerate": "Auto Generate"
+}
