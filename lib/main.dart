@@ -232,7 +232,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         seedColor: WFColors.primary,
         brightness: Brightness.dark,
       ).copyWith(
-        primary: const WFColors.darkPrimary, // 深色模式下用浅色主色
+        primary: WFColors.darkPrimary, // 深色模式下用浅色主色
         error: WFColors.error,
       ),
       scaffoldBackgroundColor: WFColors.bgDark,
@@ -251,7 +251,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: const WFColors.darkSurface,
+        color: WFColors.darkSurface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -259,7 +259,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const WFColors.darkPrimary,
+          backgroundColor: WFColors.darkPrimary,
           foregroundColor: WFColors.bgDark,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
@@ -274,7 +274,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const WFColors.darkSurface,
+        fillColor: WFColors.darkSurface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
@@ -292,7 +292,7 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
       ),
       dialogTheme: DialogThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: const WFColors.darkSurface,
+        backgroundColor: WFColors.darkSurface,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: const TextStyle(
           fontSize: 20,
@@ -308,14 +308,14 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         contentTextStyle: const TextStyle(fontSize: 14),
-        backgroundColor: const WFColors.darkSurface,
+        backgroundColor: WFColors.darkSurface,
         actionTextColor: WFColors.accentLight,
       ),
       bottomSheetTheme: BottomSheetThemeData(
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        backgroundColor: const WFColors.darkSurface,
+        backgroundColor: WFColors.darkSurface,
         surfaceTintColor: Colors.transparent,
         modalBarrierColor: Colors.black.withValues(alpha: 0.6),
       ),
