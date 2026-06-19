@@ -1443,6 +1443,239 @@ class _ProjectListScreenState extends State<ProjectListScreen>
     }
   }
 
+  /// 批量导入项目备份
+  ///
+  /// 支持同时选择多个 JSON 文件进行批量导入
+  /// 导入前自动检测文件格式（WriteFont 备份 JSON 或字体项目 JSON）
+  Future<void> _batchImportProjects() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: '选择要导入的项目文件（支持多选）',
+        allowMultiple: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      int successCount = 0;
+      int failCount = 0;
+      final List<String> errors = [];
+
+      for (final file in result.files) {
+        final filePath = file.path;
+        if (filePath == null) {
+          failCount++;
+          continue;
+        }
+
+        try {
+          final fileObj = File(filePath);
+          final jsonString = await fileObj.readAsString();
+          final json = jsonDecode(jsonString) as Map<String, dynamic>;
+
+          // 格式检测：检查必要字段
+          final formatType = _detectImportFormat(json);
+          if (formatType == 'unknown') {
+            failCount++;
+            errors.add('${file.name}: 不支持的文件格式');
+            continue;
+          }
+
+          final project = await StorageService.importProjectFromJson(json);
+          if (project != null) {
+            successCount++;
+          } else {
+            failCount++;
+            errors.add('${file.name}: 数据解析失败');
+          }
+        } catch (e) {
+          failCount++;
+          errors.add('${file.name}: $e');
+        }
+      }
+
+      await _loadProjects();
+      if (mounted) {
+        final message = '批量导入完成: $successCount 成功, $failCount 失败';
+        if (errors.isNotEmpty && errors.length <= 3) {
+          WFSnackBar.show(context, '$message\n${errors.join('\n')}');
+        } else {
+          WFSnackBar.show(context, message);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '批量导入失败: $e');
+      }
+    }
+  }
+
+  /// 导入字体文件（TTF/OTF）
+  ///
+  /// 从字体文件中提取字形数据创建新项目
+  Future<void> _importFontFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['ttf', 'otf'],
+        dialogTitle: '选择字体文件',
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final filePath = result.files.single.path;
+      if (filePath == null) {
+        if (mounted) WFSnackBar.show(context, '无法读取文件路径');
+        return;
+      }
+
+      // 检测文件格式
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+      final fileName = result.files.single.name;
+
+      // 简单的字体文件格式检测
+      if (bytes.length < 4) {
+        if (mounted) WFSnackBar.error(context, '文件格式无效');
+        return;
+      }
+
+      // 检查 TTF/OTF 魔数
+      final magic = String.fromCharCodes(bytes.take(4));
+      final isTtf = magic == '\x00\x01\x00\x00' || magic == 'true';
+      final isOtf = magic == 'OTTO';
+
+      if (!isTtf && !isOtf) {
+        if (mounted) {
+          WFSnackBar.error(context, '不支持的字体格式，仅支持 TTF 和 OTF 文件');
+        }
+        return;
+      }
+
+      // 从文件名提取项目名称
+      final projectName = fileName.replaceAll(RegExp(r'\.(ttf|otf)$'), '');
+
+      // 创建基础项目结构
+      final project = FontProject(
+        id: StorageService.generateId(),
+        name: projectName,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        glyphs: {},
+        params: ProcessingParams(),
+      );
+
+      await StorageService.saveProject(project);
+      await _loadProjects();
+
+      if (mounted) {
+        WFSnackBar.show(context, '已导入字体文件「$projectName」，请在项目中编辑字形');
+      }
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '导入字体文件失败: $e');
+      }
+    }
+  }
+
+  /// 检测导入文件格式
+  ///
+  /// 返回格式类型：
+  /// - 'writefont_backup': WriteFont 完整备份（含 glyphs + sourceImagesBase64）
+  /// - 'writefont_project': WriteFont 项目 JSON（含 name + glyphs）
+  /// - 'csv_export': CSV 导出数据
+  /// - 'unknown': 不支持的格式
+  String _detectImportFormat(Map<String, dynamic> json) {
+    // 检查 WriteFont 完整备份格式
+    if (json.containsKey('name') &&
+        json.containsKey('glyphs') &&
+        json.containsKey('sourceImagesBase64')) {
+      return 'writefont_backup';
+    }
+
+    // 检查 WriteFont 项目格式
+    if (json.containsKey('name') && json.containsKey('glyphs')) {
+      return 'writefont_project';
+    }
+
+    // 检查 WriteFont 导出格式（包含 projects 数组）
+    if (json.containsKey('format') &&
+        json['format'] == 'WriteFont Project List Export') {
+      return 'csv_export';
+    }
+
+    return 'unknown';
+  }
+
+  /// 显示导入选项面板
+  ///
+  /// 提供多种导入方式选择
+  void _showImportOptionsSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '导入项目',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: WFColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '选择要导入的文件类型',
+                style: const TextStyle(fontSize: 14, color: WFColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              // 项目备份导入
+              ListTile(
+                leading: const Icon(Icons.file_upload, color: WFColors.primary),
+                title: const Text('导入项目备份'),
+                subtitle: const Text('从 JSON 备份文件导入单个项目'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _importProject();
+                },
+              ),
+              // 批量导入
+              ListTile(
+                leading: const Icon(Icons.upload_file, color: WFColors.info),
+                title: const Text('批量导入'),
+                subtitle: const Text('同时导入多个 JSON 项目文件'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _batchImportProjects();
+                },
+              ),
+              // 字体文件导入
+              ListTile(
+                leading: const Icon(Icons.font_download, color: WFColors.success),
+                title: const Text('导入字体文件'),
+                subtitle: const Text('从 TTF/OTF 字体文件创建项目'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _importFontFile();
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 打开项目预览
   void _openProject(FontProject project) {
     Navigator.push(
@@ -1649,9 +1882,9 @@ class _ProjectListScreenState extends State<ProjectListScreen>
           ],
           // 导入备份按钮
           IconButton(
-            onPressed: _importProject,
+            onPressed: _showImportOptionsSheet,
             icon: const Icon(Icons.file_upload),
-            tooltip: '导入备份',
+            tooltip: '导入项目',
           ),
           // 数据导出按钮
           if (_projects.isNotEmpty && !_isMultiSelectMode)

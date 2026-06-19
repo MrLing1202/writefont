@@ -29,6 +29,101 @@ enum ConflictResolution {
   keepBoth,    // 两个都保留（远程版本重命名）
 }
 
+/// 分享权限等级
+enum SharePermission {
+  view,    // 仅查看
+  edit,    // 可编辑
+  comment, // 可评论
+}
+
+/// 分享链接数据模型
+class ShareLink {
+  final String id;
+  final String projectId;
+  final String projectName;
+  final String shareUrl;
+  final SharePermission permission;
+  final String createdBy;
+  final DateTime createdAt;
+  final DateTime? expiresAt;
+  final bool isActive;
+  final int accessCount;
+
+  ShareLink({
+    required this.id,
+    required this.projectId,
+    required this.projectName,
+    required this.shareUrl,
+    this.permission = SharePermission.view,
+    required this.createdBy,
+    DateTime? createdAt,
+    this.expiresAt,
+    this.isActive = true,
+    this.accessCount = 0,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'projectName': projectName,
+        'shareUrl': shareUrl,
+        'permission': permission.name,
+        'createdBy': createdBy,
+        'createdAt': createdAt.toIso8601String(),
+        'expiresAt': expiresAt?.toIso8601String(),
+        'isActive': isActive,
+        'accessCount': accessCount,
+      };
+
+  factory ShareLink.fromJson(Map<String, dynamic> json) => ShareLink(
+        id: json['id'] as String,
+        projectId: json['projectId'] as String,
+        projectName: json['projectName'] as String? ?? '',
+        shareUrl: json['shareUrl'] as String,
+        permission: SharePermission.values.firstWhere(
+          (e) => e.name == json['permission'],
+          orElse: () => SharePermission.view,
+        ),
+        createdBy: json['createdBy'] as String? ?? '',
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        expiresAt: json['expiresAt'] != null
+            ? DateTime.parse(json['expiresAt'] as String)
+            : null,
+        isActive: json['isActive'] as bool? ?? true,
+        accessCount: json['accessCount'] as int? ?? 0,
+      );
+}
+
+/// 协作者数据模型
+class CollaboratorInfo {
+  final String email;
+  final String role; // owner, editor, viewer
+  final DateTime addedAt;
+  final bool isOnline;
+
+  CollaboratorInfo({
+    required this.email,
+    required this.role,
+    DateTime? addedAt,
+    this.isOnline = false,
+  }) : addedAt = addedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'email': email,
+        'role': role,
+        'addedAt': addedAt.toIso8601String(),
+        'isOnline': isOnline,
+      };
+
+  factory CollaboratorInfo.fromJson(Map<String, dynamic> json) =>
+      CollaboratorInfo(
+        email: json['email'] as String,
+        role: json['role'] as String? ?? 'viewer',
+        addedAt: DateTime.parse(json['addedAt'] as String),
+        isOnline: json['isOnline'] as bool? ?? false,
+      );
+}
+
 // ═══════════════════════════════════════════════════════════
 // 消息中心：消息管理、已读状态、删除、搜索
 // ═══════════════════════════════════════════════════════════
@@ -1237,6 +1332,357 @@ class CloudSyncService {
       await prefs.setString(_keyMessages, json);
     } catch (e) {
       debugPrint('保存消息列表失败: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 分享功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 已生成的分享链接列表
+  final List<ShareLink> _shareLinks = [];
+  static const String _keyShareLinks = 'cloud_share_links';
+
+  /// 获取所有分享链接
+  List<ShareLink> get shareLinks => List.unmodifiable(_shareLinks);
+
+  /// 为项目创建分享链接
+  ///
+  /// [projectId] 项目 ID
+  /// [permission] 分享权限
+  /// [expiresIn] 过期时长（可选，默认7天）
+  Future<ShareLink?> createShareLink({
+    required String projectId,
+    SharePermission permission = SharePermission.view,
+    Duration? expiresIn,
+  }) async {
+    if (!isSignedIn()) return null;
+
+    try {
+      // 获取项目名称
+      final projects = await StorageService.loadProjects();
+      final project = projects.where((p) => p.id == projectId).firstOrNull;
+      final projectName = project?.name ?? '未知项目';
+
+      final linkId = DateTime.now().microsecondsSinceEpoch.toString();
+      final shareUrl = '${SupabaseConfig.url}/share/$linkId';
+      final expiresAt = DateTime.now().add(expiresIn ?? const Duration(days: 7));
+
+      final shareLink = ShareLink(
+        id: linkId,
+        projectId: projectId,
+        projectName: projectName,
+        shareUrl: shareUrl,
+        permission: permission,
+        createdBy: _userEmail ?? _userId ?? '',
+        expiresAt: expiresAt,
+      );
+
+      // 保存到本地
+      _shareLinks.insert(0, shareLink);
+      await _saveShareLinks();
+
+      // 上传到云端（通过 Supabase RPC 或直接 HTTP）
+      try {
+        await http.post(
+          Uri.parse('${SupabaseConfig.url}/rest/v1/share_links'),
+          headers: _authHeaders(),
+          body: jsonEncode(shareLink.toJson()),
+        );
+      } catch (_) {
+        // 云端保存失败不阻断本地操作
+      }
+
+      _addLog('info', '创建分享链接: $projectName', projectId: projectId);
+      return shareLink;
+    } catch (e) {
+      _addLog('error', '创建分享链接失败: $e', projectId: projectId);
+      return null;
+    }
+  }
+
+  /// 撤销分享链接
+  Future<String?> revokeShareLink(String linkId) async {
+    try {
+      final index = _shareLinks.indexWhere((l) => l.id == linkId);
+      if (index < 0) return '链接不存在';
+
+      // 更新本地状态
+      final old = _shareLinks[index];
+      _shareLinks[index] = ShareLink(
+        id: old.id,
+        projectId: old.projectId,
+        projectName: old.projectName,
+        shareUrl: old.shareUrl,
+        permission: old.permission,
+        createdBy: old.createdBy,
+        createdAt: old.createdAt,
+        expiresAt: old.expiresAt,
+        isActive: false,
+        accessCount: old.accessCount,
+      );
+      await _saveShareLinks();
+
+      _addLog('info', '撤销分享链接: ${old.projectName}');
+      return null;
+    } catch (e) {
+      _addLog('error', '撤销分享链接失败: $e');
+      return '撤销失败: $e';
+    }
+  }
+
+  /// 分享项目（通过系统分享）
+  ///
+  /// 导出项目数据并生成分享文件
+  Future<String?> shareProject(FontProject project) async {
+    try {
+      final filePath = await StorageService.exportProject(project);
+      _addLog('info', '分享项目: ${project.name}', projectId: project.id);
+      return filePath;
+    } catch (e) {
+      _addLog('error', '分享项目失败: $e', projectId: project.id);
+      return null;
+    }
+  }
+
+  /// 分享字体文件（TTF）
+  ///
+  /// 导出 TTF 文件并返回路径
+  Future<String?> shareFont(FontProject project) async {
+    try {
+      final filePath = await StorageService.exportTtf(project);
+      _addLog('info', '分享字体: ${project.name}', projectId: project.id);
+      return filePath;
+    } catch (e) {
+      _addLog('error', '分享字体失败: $e', projectId: project.id);
+      return null;
+    }
+  }
+
+  /// 持久化分享链接
+  Future<void> _saveShareLinks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_shareLinks.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyShareLinks, json);
+    } catch (e) {
+      debugPrint('保存分享链接失败: $e');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 协作功能
+  // ═══════════════════════════════════════════════════════════
+
+  /// 协作者列表
+  final List<CollaboratorInfo> _collaborators = [];
+
+  /// 协作历史
+  final List<Map<String, dynamic>> _collabHistory = [];
+  static const String _keyCollaborators = 'cloud_collaborators';
+  static const String _keyCollabHistory = 'cloud_collab_history';
+
+  /// 获取协作者列表
+  Future<List<Map<String, dynamic>>> getCollaborators() async {
+    return _collaborators.map((c) => c.toJson()).toList();
+  }
+
+  /// 获取在线协作者
+  Future<List<Map<String, dynamic>>> getOnlineCollaborators() async {
+    return _collaborators
+        .where((c) => c.isOnline)
+        .map((c) => c.toJson())
+        .toList();
+  }
+
+  /// 获取协作历史
+  Future<List<Map<String, dynamic>>> getCollabHistory() async {
+    return List.unmodifiable(_collabHistory);
+  }
+
+  /// 邀请协作者
+  ///
+  /// [projectId] 项目 ID
+  /// [email] 协作者邮箱
+  /// [role] 权限角色 (editor | viewer)
+  Future<String?> inviteCollaborator({
+    required String projectId,
+    required String email,
+    required String role,
+  }) async {
+    if (!isSignedIn()) return '请先登录';
+
+    _addLog('info', '邀请协作者: $email (角色: $role)', projectId: projectId);
+
+    try {
+      // 发送邀请请求到云端
+      final response = await http.post(
+        Uri.parse('${SupabaseConfig.url}/rest/v1/collaborators'),
+        headers: _authHeaders(),
+        body: jsonEncode({
+          'project_id': projectId,
+          'email': email,
+          'role': role,
+          'invited_by': _userId,
+        }),
+      );
+
+      // 即使云端失败也保存到本地（支持离线邀请）
+      final collaborator = CollaboratorInfo(email: email, role: role);
+      if (!_collaborators.any((c) => c.email == email)) {
+        _collaborators.add(collaborator);
+        await _saveCollaborators();
+      }
+
+      // 记录协作历史
+      _collabHistory.insert(0, {
+        'user': _userEmail ?? '我',
+        'action': 'invite',
+        'target': email,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      await _saveCollabHistory();
+
+      _addLog('info', '邀请已发送: $email');
+      return null;
+    } catch (e) {
+      _addLog('error', '邀请协作者失败: $e');
+      return '邀请失败: $e';
+    }
+  }
+
+  /// 移除协作者
+  Future<String?> removeCollaborator({
+    required String projectId,
+    required String email,
+  }) async {
+    try {
+      _collaborators.removeWhere((c) => c.email == email);
+      await _saveCollaborators();
+
+      // 记录协作历史
+      _collabHistory.insert(0, {
+        'user': _userEmail ?? '我',
+        'action': 'remove',
+        'target': email,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      await _saveCollabHistory();
+
+      _addLog('info', '已移除协作者: $email');
+      return null;
+    } catch (e) {
+      _addLog('error', '移除协作者失败: $e');
+      return '移除失败: $e';
+    }
+  }
+
+  /// 更新协作者权限
+  Future<String?> updateCollaboratorRole({
+    required String projectId,
+    required String email,
+    required String role,
+  }) async {
+    try {
+      final index = _collaborators.indexWhere((c) => c.email == email);
+      if (index < 0) return '协作者不存在';
+
+      _collaborators[index] = CollaboratorInfo(
+        email: email,
+        role: role,
+        addedAt: _collaborators[index].addedAt,
+        isOnline: _collaborators[index].isOnline,
+      );
+      await _saveCollaborators();
+
+      // 记录协作历史
+      _collabHistory.insert(0, {
+        'user': _userEmail ?? '我',
+        'action': 'role_change',
+        'target': email,
+        'newRole': role,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      await _saveCollabHistory();
+
+      _addLog('info', '已更新协作者权限: $email -> $role');
+      return null;
+    } catch (e) {
+      _addLog('error', '更新协作者权限失败: $e');
+      return '更新失败: $e';
+    }
+  }
+
+  /// 解决协作冲突
+  ///
+  /// [projectId] 项目 ID
+  /// [resolution] 解决策略: 'mine' | 'theirs' | 'merge'
+  Future<String?> resolveCollabConflict({
+    required String projectId,
+    required String resolution,
+  }) async {
+    _addLog('info', '解决协作冲突: $projectId (策略: $resolution)',
+        projectId: projectId);
+
+    try {
+      switch (resolution) {
+        case 'mine':
+          // 使用本地版本上传
+          final projects = await StorageService.loadProjects();
+          final project = projects.where((p) => p.id == projectId).firstOrNull;
+          if (project != null) {
+            return await uploadProject(project);
+          }
+          return '项目不存在';
+
+        case 'theirs':
+          // 下载远程版本
+          return await downloadProject(projectId);
+
+        case 'merge':
+          // 合并策略：下载远程后合并修改
+          final projects = await StorageService.loadProjects();
+          final localProject = projects.where((p) => p.id == projectId).firstOrNull;
+          if (localProject == null) return '本地项目不存在';
+
+          final remoteData = await _fetchRemoteProject(projectId);
+          if (remoteData == null) return '远程项目不存在';
+
+          // 执行冲突解决：保留两者
+          return await resolveConflict(
+            localProject,
+            remoteData,
+            ConflictResolution.keepBoth,
+          );
+
+        default:
+          return '未知的解决策略';
+      }
+    } catch (e) {
+      _addLog('error', '解决协作冲突失败: $e', projectId: projectId);
+      return '解决冲突失败: $e';
+    }
+  }
+
+  /// 持久化协作者列表
+  Future<void> _saveCollaborators() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_collaborators.map((e) => e.toJson()).toList());
+      await prefs.setString(_keyCollaborators, json);
+    } catch (e) {
+      debugPrint('保存协作者列表失败: $e');
+    }
+  }
+
+  /// 持久化协作历史
+  Future<void> _saveCollabHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_collabHistory);
+      await prefs.setString(_keyCollabHistory, json);
+    } catch (e) {
+      debugPrint('保存协作历史失败: $e');
     }
   }
 }

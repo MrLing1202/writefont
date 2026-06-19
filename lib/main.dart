@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io' show Platform;
 import 'generated/l10n/app_localizations.dart';
 import 'services/locale_service.dart';
 import 'models/project.dart';
@@ -1035,6 +1036,328 @@ class AppAnalytics {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// 兼容性服务：旧版本兼容、设备兼容、系统兼容、格式兼容
+// ═══════════════════════════════════════════════════════════
+
+/// 兼容性服务
+///
+/// 功能：
+/// - 旧版本数据迁移与兼容
+/// - 不同设备屏幕适配
+/// - 不同系统版本兼容
+/// - 不同文件格式兼容
+class CompatibilityService {
+  static final CompatibilityService _instance = CompatibilityService._();
+  static CompatibilityService get instance => _instance;
+  CompatibilityService._();
+
+  /// 当前应用版本
+  static const String currentVersion = 'v2.14.0';
+
+  /// 支持的最低数据版本
+  static const String minSupportedVersion = 'v1.0.0';
+
+  /// SharedPreferences key
+  static const String _keyAppVersion = 'app_version';
+  static const String _keyMigrationVersion = 'data_migration_version';
+
+  /// 初始化兼容性检查
+  ///
+  /// 在应用启动时调用，执行必要的数据迁移
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedVersion = prefs.getString(_keyAppVersion);
+
+      if (savedVersion == null) {
+        // 首次安装
+        await prefs.setString(_keyAppVersion, currentVersion);
+        debugPrint('[Compatibility] 首次安装，版本: $currentVersion');
+      } else if (_isNewerVersion(currentVersion, savedVersion)) {
+        // 版本升级
+        debugPrint('[Compatibility] 版本升级: $savedVersion -> $currentVersion');
+        await _performDataMigration(savedVersion, currentVersion);
+        await prefs.setString(_keyAppVersion, currentVersion);
+      }
+
+      // 检查系统兼容性
+      _checkSystemCompatibility();
+    } catch (e) {
+      debugPrint('[Compatibility] 兼容性初始化失败: $e');
+    }
+  }
+
+  /// 比较版本号
+  ///
+  /// 返回 true 如果 v1 > v2
+  bool _isNewerVersion(String v1, String v2) {
+    final parts1 = v1.replaceAll('v', '').split('.').map(int.parse).toList();
+    final parts2 = v2.replaceAll('v', '').split('.').map(int.parse).toList();
+
+    for (int i = 0; i < 3; i++) {
+      final p1 = i < parts1.length ? parts1[i] : 0;
+      final p2 = i < parts2.length ? parts2[i] : 0;
+      if (p1 > p2) return true;
+      if (p1 < p2) return false;
+    }
+    return false;
+  }
+
+  /// 执行数据迁移
+  ///
+  /// 处理不同版本之间的数据格式变化
+  Future<void> _performDataMigration(String fromVersion, String toVersion) async {
+    final prefs = await SharedPreferences.getInstance();
+    final migrationVersion = prefs.getString(_keyMigrationVersion) ?? 'v0.0.0';
+
+    // v2.0.0: 项目数据结构升级
+    if (_isNewerVersion('v2.0.0', migrationVersion)) {
+      debugPrint('[Compatibility] 执行 v2.0.0 数据迁移');
+      await _migrateToV2();
+      await prefs.setString(_keyMigrationVersion, 'v2.0.0');
+    }
+
+    // v2.10.0: 新增元数据字段
+    if (_isNewerVersion('v2.10.0', migrationVersion)) {
+      debugPrint('[Compatibility] 执行 v2.10.0 数据迁移');
+      await _migrateToV210();
+      await prefs.setString(_keyMigrationVersion, 'v2.10.0');
+    }
+
+    // v2.14.0: 当前版本迁移
+    if (_isNewerVersion('v2.14.0', migrationVersion)) {
+      debugPrint('[Compatibility] 执行 v2.14.0 数据迁移');
+      await _migrateToV214();
+      await prefs.setString(_keyMigrationVersion, 'v2.14.0');
+    }
+  }
+
+  /// v2.0.0 数据迁移：项目结构升级
+  Future<void> _migrateToV2() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // 确保项目列表格式兼容
+      final projectsJson = prefs.getString('projects');
+      if (projectsJson != null) {
+        // 解析并验证格式
+        final data = jsonDecode(projectsJson);
+        if (data is List) {
+          // 格式正确，无需迁移
+        } else if (data is Map) {
+          // 旧格式：转换为列表
+          final projects = (data as Map<String, dynamic>).values.toList();
+          await prefs.setString('projects', jsonEncode(projects));
+        }
+      }
+      debugPrint('[Compatibility] v2.0.0 迁移完成');
+    } catch (e) {
+      debugPrint('[Compatibility] v2.0.0 迁移失败: $e');
+    }
+  }
+
+  /// v2.10.0 数据迁移：新增元数据字段
+  Future<void> _migrateToV210() async {
+    try {
+      // 确保所有项目都有 updatedAt 字段
+      final prefs = await SharedPreferences.getInstance();
+      final projectsJson = prefs.getString('projects');
+      if (projectsJson != null) {
+        final data = jsonDecode(projectsJson) as List;
+        bool modified = false;
+        for (final project in data) {
+          if (project is Map<String, dynamic>) {
+            if (!project.containsKey('updatedAt')) {
+              project['updatedAt'] = DateTime.now().toIso8601String();
+              modified = true;
+            }
+          }
+        }
+        if (modified) {
+          await prefs.setString('projects', jsonEncode(data));
+        }
+      }
+      debugPrint('[Compatibility] v2.10.0 迁移完成');
+    } catch (e) {
+      debugPrint('[Compatibility] v2.10.0 迁移失败: $e');
+    }
+  }
+
+  /// v2.14.0 数据迁移：协作功能兼容
+  Future<void> _migrateToV214() async {
+    try {
+      // 初始化协作相关的存储 key
+      final prefs = await SharedPreferences.getInstance();
+      if (!prefs.containsKey('cloud_collaborators')) {
+        await prefs.setString('cloud_collaborators', '[]');
+      }
+      if (!prefs.containsKey('cloud_collab_history')) {
+        await prefs.setString('cloud_collab_history', '[]');
+      }
+      if (!prefs.containsKey('cloud_share_links')) {
+        await prefs.setString('cloud_share_links', '[]');
+      }
+      debugPrint('[Compatibility] v2.14.0 迁移完成');
+    } catch (e) {
+      debugPrint('[Compatibility] v2.14.0 迁移失败: $e');
+    }
+  }
+
+  /// 检查系统兼容性
+  void _checkSystemCompatibility() {
+    try {
+      final info = getDeviceInfo();
+      debugPrint('[Compatibility] 设备信息: $info');
+
+      // 检查系统版本
+      if (Platform.isIOS) {
+        final version = info['osVersion'] ?? '0.0';
+        final majorVersion = double.tryParse(version.split('.').first) ?? 0;
+        if (majorVersion < 12) {
+          debugPrint('[Compatibility] 警告: iOS 版本过低 ($version)，部分功能可能不可用');
+        }
+      } else if (Platform.isAndroid) {
+        final sdkInt = int.tryParse(info['sdkInt'] ?? '0') ?? 0;
+        if (sdkInt < 21) {
+          debugPrint('[Compatibility] 警告: Android SDK 过低 ($sdkInt)，部分功能可能不可用');
+        }
+      }
+    } catch (e) {
+      debugPrint('[Compatibility] 系统兼容性检查失败: $e');
+    }
+  }
+
+  /// 获取设备信息
+  ///
+  /// 返回设备平台、系统版本等信息
+  Map<String, String> getDeviceInfo() {
+    final info = <String, String>{
+      'platform': Platform.operatingSystem,
+      'osVersion': Platform.operatingSystemVersion,
+    };
+    return info;
+  }
+
+  /// 检查设备是否为平板
+  ///
+  /// 基于屏幕尺寸和设备类型判断
+  bool isTablet(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final shortestSide = mediaQuery.size.shortestSide;
+    return shortestSide >= 600;
+  }
+
+  /// 检查设备是否为桌面
+  bool isDesktop() {
+    return Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+  }
+
+  /// 获取适配后的内边距
+  ///
+  /// 根据设备类型返回合适的内边距
+  EdgeInsets getAdaptivePadding(BuildContext context) {
+    if (isTablet(context)) {
+      return const EdgeInsets.symmetric(horizontal: 32, vertical: 24);
+    } else if (isDesktop()) {
+      return const EdgeInsets.symmetric(horizontal: 48, vertical: 32);
+    }
+    return const EdgeInsets.symmetric(horizontal: 16, vertical: 16);
+  }
+
+  /// 获取适配后的字体大小
+  ///
+  /// 根据设备类型返回合适的字体大小
+  double getAdaptiveFontSize(BuildContext context, double baseFontSize) {
+    if (isTablet(context)) {
+      return baseFontSize * 1.1;
+    } else if (isDesktop()) {
+      return baseFontSize * 1.0;
+    }
+    return baseFontSize;
+  }
+
+  /// 检查文件格式兼容性
+  ///
+  /// 验证导入文件是否为支持的格式
+  bool isSupportedFileFormat(String fileName, List<int> bytes) {
+    final extension = fileName.split('.').last.toLowerCase();
+
+    switch (extension) {
+      case 'json':
+        // 检查是否为有效 JSON
+        try {
+          final str = String.fromCharCodes(bytes);
+          jsonDecode(str);
+          return true;
+        } catch (_) {
+          return false;
+        }
+
+      case 'ttf':
+        // 检查 TTF 魔数
+        if (bytes.length >= 4) {
+          return (bytes[0] == 0x00 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00) ||
+                 (String.fromCharCodes(bytes.take(4)) == 'true');
+        }
+        return false;
+
+      case 'otf':
+        // 检查 OTF 魔数
+        if (bytes.length >= 4) {
+          return String.fromCharCodes(bytes.take(4)) == 'OTTO';
+        }
+        return false;
+
+      case 'woff':
+        // 检查 WOFF 魔数
+        if (bytes.length >= 4) {
+          return String.fromCharCodes(bytes.take(4)) == 'wOFF';
+        }
+        return false;
+
+      default:
+        return false;
+    }
+  }
+
+  /// 格式兼容性：将旧版本数据格式转换为当前版本
+  ///
+  /// 处理不同来源的数据格式差异
+  Map<String, dynamic> normalizeProjectData(Map<String, dynamic> raw) {
+    final result = Map<String, dynamic>.from(raw);
+
+    // 确保必要字段存在
+    result['id'] = result['id'] ?? DateTime.now().microsecondsSinceEpoch.toString();
+    result['name'] = result['name'] ?? '未命名项目';
+    result['createdAt'] = result['createdAt'] ?? DateTime.now().toIso8601String();
+    result['updatedAt'] = result['updatedAt'] ?? DateTime.now().toIso8601String();
+    result['glyphs'] = result['glyphs'] ?? {};
+    result['params'] = result['params'] ?? {};
+
+    // 处理旧版本字段名变化
+    if (result.containsKey('characters') && !result.containsKey('glyphs')) {
+      result['glyphs'] = result['characters'];
+      result.remove('characters');
+    }
+
+    if (result.containsKey('settings') && !result.containsKey('params')) {
+      result['params'] = result['settings'];
+      result.remove('settings');
+    }
+
+    // 处理日期格式兼容
+    for (final key in ['createdAt', 'updatedAt']) {
+      final value = result[key];
+      if (value is int) {
+        // 旧版本可能使用时间戳
+        result[key] = DateTime.fromMillisecondsSinceEpoch(value).toIso8601String();
+      }
+    }
+
+    return result;
+  }
+}
+
 /// 应用主导航页面 - 包含底部导航栏和页面状态保持
 class MainNavigationPage extends StatefulWidget {
   final VoidCallback? onThemeChanged;
@@ -1127,6 +1450,7 @@ void main() async {
   AppAnalytics.init(); // 初始化分析服务
   await NotificationService.instance.init(); // 初始化通知服务
   await CategoryService.instance.init(); // 初始化分类服务
+  await CompatibilityService.instance.init(); // 初始化兼容性服务
   FlutterError.onError = (details) {
     AppAnalytics.trackError(
       details.exceptionAsString(),
