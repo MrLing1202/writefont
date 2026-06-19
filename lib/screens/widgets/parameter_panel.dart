@@ -2,14 +2,19 @@ import 'package:flutter/material.dart';
 import '../../models/project.dart';
 
 /// 参数调节面板 — 阈值、腐蚀、膨胀、平滑度、对比度、反转颜色
+/// 支持参数预设快速切换
 class ParameterPanel extends StatelessWidget {
   final ProcessingParams params;
   final ValueChanged<ProcessingParams> onChanged;
+  final List<String>? presets; // 预设名称列表
+  final ValueChanged<String>? onPresetSelected; // 预设选中回调
 
   const ParameterPanel({
     super.key,
     required this.params,
     required this.onChanged,
+    this.presets,
+    this.onPresetSelected,
   });
 
   @override
@@ -53,6 +58,27 @@ class ParameterPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
+          // 预设选择行
+          if (presets != null && presets!.isNotEmpty && onPresetSelected != null) ...[
+            SizedBox(
+              height: 32,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: presets!.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                itemBuilder: (context, index) {
+                  final name = presets![index];
+                  return ActionChip(
+                    label: Text(name, style: const TextStyle(fontSize: 12)),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    onPressed: () => onPresetSelected!(name),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
 
           // Threshold
           _buildSlider(

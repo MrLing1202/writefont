@@ -23,6 +23,77 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
   final Set<int> selectedCells = {};
   Timer? debounceTimer;
 
+  // 参数历史栈（撤销/重做支持）
+  final List<ProcessingParams> _undoStack = [];
+  final List<ProcessingParams> _redoStack = [];
+  static const int _maxHistorySize = 20;
+
+  // 参数预设
+  static const Map<String, ProcessingParams> _presets = {
+    '默认': ProcessingParams(),
+    '粗笔': ProcessingParams(
+      threshold: 0.45, strokeWidth: 1.5, smoothness: 0.2,
+      erosion: 0, dilation: 2, contrast: 1.2,
+    ),
+    '细笔': ProcessingParams(
+      threshold: 0.55, strokeWidth: 0.8, smoothness: 0.4,
+      erosion: 2, dilation: 0, contrast: 1.5,
+    ),
+    '铅笔': ProcessingParams(
+      threshold: 0.6, strokeWidth: 0.7, smoothness: 0.5,
+      erosion: 1, dilation: 0, contrast: 2.0,
+    ),
+    '马克笔': ProcessingParams(
+      threshold: 0.4, strokeWidth: 2.0, smoothness: 0.1,
+      erosion: 0, dilation: 3, contrast: 1.0,
+    ),
+  };
+
+  /// 获取预设名称列表
+  List<String> get presetNames => _presets.keys.toList();
+
+  /// 应用预设
+  void applyPreset(String name) {
+    final preset = _presets[name];
+    if (preset != null) {
+      onParamsChanged(preset);
+    }
+  }
+
+  /// 是否可以撤销
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  /// 是否可以重做
+  bool get canRedo => _redoStack.isNotEmpty;
+
+  /// 撤销参数修改
+  void undo() {
+    if (!canUndo) return;
+    _redoStack.add(params);
+    final previous = _undoStack.removeLast();
+    setState(() {
+      params = previous;
+    });
+    debounceTimer?.cancel();
+    debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      processImages();
+    });
+  }
+
+  /// 重做参数修改
+  void redo() {
+    if (!canRedo) return;
+    _undoStack.add(params);
+    final next = _redoStack.removeLast();
+    setState(() {
+      params = next;
+    });
+    debounceTimer?.cancel();
+    debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      processImages();
+    });
+  }
+
   // AI recognition
   final RecognitionService recognitionService = RecognitionService.instance;
   bool isRecognizing = false;
@@ -277,6 +348,21 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
   }
 
   void onParamsChanged(ProcessingParams newParams) {
+    // 保存当前参数到撤销栈
+    if (params.threshold != newParams.threshold ||
+        params.contrast != newParams.contrast ||
+        params.smoothness != newParams.smoothness ||
+        params.strokeWidth != newParams.strokeWidth ||
+        params.erosion != newParams.erosion ||
+        params.dilation != newParams.dilation ||
+        params.invertColors != newParams.invertColors) {
+      _undoStack.add(params);
+      if (_undoStack.length > _maxHistorySize) {
+        _undoStack.removeAt(0);
+      }
+      _redoStack.clear(); // 新操作清空重做栈
+    }
+
     setState(() {
       params = newParams;
     });

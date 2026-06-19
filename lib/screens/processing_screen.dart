@@ -60,6 +60,17 @@ class _ProcessingScreenState extends State<ProcessingScreen>
       appBar: WFAppBar(
         title: widget.charset != null ? '标准字表匹配' : '调节参数',
         actions: [
+          // 撤销/重做按钮
+          IconButton(
+            onPressed: canUndo ? undo : null,
+            icon: const Icon(Icons.undo),
+            tooltip: '撤销参数修改',
+          ),
+          IconButton(
+            onPressed: canRedo ? redo : null,
+            icon: const Icon(Icons.redo),
+            tooltip: '重做参数修改',
+          ),
           TextButton.icon(
             onPressed: () {
               Navigator.of(context).pushNamed('/ocr-settings').then((_) {
@@ -88,11 +99,26 @@ class _ProcessingScreenState extends State<ProcessingScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const CircularProgressIndicator(),
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 4,
+                      color: colorScheme.primary,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     '正在处理图片...',
                     style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '图片分割与轮廓提取中...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    ),
                   ),
                 ],
               ),
@@ -103,6 +129,8 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                 ParameterPanel(
                   params: params,
                   onChanged: onParamsChanged,
+                  presets: presetNames,
+                  onPresetSelected: applyPreset,
                 ),
 
                 const Divider(height: 1),

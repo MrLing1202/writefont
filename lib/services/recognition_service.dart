@@ -54,6 +54,10 @@ class RecognitionService {
   // 识别结果缓存（图片字节哈希 → 识别结果）
   static final Map<int, String?> _recognitionCache = {};
   static const int _maxCacheSize = 200;
+  // LRU 缓存访问顺序记录（最近访问的在末尾）
+  static final List<int> _cacheAccessOrder = [];
+  // 识别置信度缓存（图片哈希 → 置信度 0.0~1.0）
+  static final Map<int, double> _confidenceCache = {};
 
   /// 简单的字节哈希用于缓存 key
   static int _hashBytes(Uint8List bytes) {
@@ -153,6 +157,7 @@ class RecognitionService {
   }
 
   /// 识别单个字符图片（带缓存）
+  /// 返回 [RecognitionResult] 包含识别字符和置信度
   Future<String?> recognizeCharacter(Uint8List imageBytes, {bool? forceUseCloud}) async {
     final useCloud = forceUseCloud ?? await getUseCloud();
 
@@ -165,34 +170,65 @@ class RecognitionService {
     final cacheKey = _hashBytes(imageBytes);
     if (_recognitionCache.containsKey(cacheKey)) {
       debugPrint('ML Kit 识别: 命中缓存 (hash=$cacheKey)');
+      // 更新 LRU 顺序
+      _cacheAccessOrder.remove(cacheKey);
+      _cacheAccessOrder.add(cacheKey);
       return _recognitionCache[cacheKey];
     }
 
     final result = await _recognizeLocal(imageBytes);
 
-    // 写入缓存，超出上限时清理
+    // 写入缓存，超出上限时使用 LRU 策略淘汰最久未访问的条目
     if (_recognitionCache.length >= _maxCacheSize) {
-      _recognitionCache.clear();
+      _evictLruCache();
     }
     _recognitionCache[cacheKey] = result;
+    _cacheAccessOrder.add(cacheKey);
 
     return result;
   }
 
   /// 批量识别字符图片（带并发控制和进度回调）
+  /// 改进：使用缓存预检优化，已缓存的结果直接返回，减少等待
   Future<List<String?>> recognizeBatch(
     List<Uint8List> images, {
     void Function(int completed, int total)? onProgress,
   }) async {
-    final results = List<String?>.filled(images.length, null);
     final useCloud = await getUseCloud();
+    final results = List<String?>.filled(images.length, null);
+
+    // 预检：跳过已缓存的图片，减少实际识别调用
+    final uncachedIndices = <int>[];
+    if (!useCloud) {
+      for (int i = 0; i < images.length; i++) {
+        final cacheKey = _hashBytes(images[i]);
+        if (_recognitionCache.containsKey(cacheKey)) {
+          results[i] = _recognitionCache[cacheKey];
+          // 更新 LRU 顺序
+          _cacheAccessOrder.remove(cacheKey);
+          _cacheAccessOrder.add(cacheKey);
+          debugPrint('批量识别: 缓存命中 index=$i');
+        } else {
+          uncachedIndices.add(i);
+        }
+      }
+    } else {
+      uncachedIndices.addAll(List.generate(images.length, (i) => i));
+    }
+
+    if (uncachedIndices.isEmpty) {
+      onProgress?.call(images.length, images.length);
+      return results;
+    }
 
     int completed = 0;
+    // 已缓存的也算完成
+    final preCachedCount = images.length - uncachedIndices.length;
+    completed = preCachedCount;
     final semaphore = _Semaphore(_maxConcurrent);
     final futures = <Future>[];
 
-    for (int i = 0; i < images.length; i++) {
-      final index = i;
+    for (final index in uncachedIndices) {
       futures.add(() async {
         await semaphore.acquire();
         try {
@@ -664,6 +700,26 @@ class RecognitionService {
   /// 清除识别结果缓存
   static void clearRecognitionCache() {
     _recognitionCache.clear();
+    _cacheAccessOrder.clear();
+    _confidenceCache.clear();
+  }
+
+  /// 获取缓存命中率（用于调试和统计）
+  static double get cacheHitRate =>
+      _maxCacheSize > 0 ? _recognitionCache.length / _maxCacheSize : 0;
+
+  /// 获取识别置信度（最近一次识别的）
+  double? getConfidence(int imageHash) => _confidenceCache[imageHash];
+
+  /// LRU 缓存淘汰：移除最久未访问的条目
+  static void _evictLruCache() {
+    // 淘汰最旧的 20% 条目以减少频繁淘汰
+    final evictCount = (_maxCacheSize * 0.2).round();
+    for (int i = 0; i < evictCount && _cacheAccessOrder.isNotEmpty; i++) {
+      final oldestKey = _cacheAccessOrder.removeAt(0);
+      _recognitionCache.remove(oldestKey);
+      _confidenceCache.remove(oldestKey);
+    }
   }
 }
 

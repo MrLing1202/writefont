@@ -334,7 +334,9 @@ class ImageProcessor {
 
     // Try adaptive thresholding first; fall back to global if result is too extreme
     img.Image binary;
-    final adaptiveResult = _adaptiveThreshold(blurred, blockSize: 31, c: 12, invert: params.invertColors);
+    // 根据图片尺寸自适应选择 block size：大图用更大 block 以获得更好的全局一致性
+    final adaptiveBlockSize = (refWidth > 1000) ? 41 : 31;
+    final adaptiveResult = _adaptiveThreshold(blurred, blockSize: adaptiveBlockSize, c: 10, invert: params.invertColors);
     final blackRatio = _blackPixelRatio(adaptiveResult);
     if (blackRatio > 0.80 || blackRatio < 0.01) {
       debugPrint('segmentCharacters: 自适应阈值结果异常 (black=${(blackRatio*100).toStringAsFixed(1)}%), 回退全局阈值');
@@ -619,22 +621,53 @@ class ImageProcessor {
     return result;
   }
 
-  /// Gaussian blur with 3x3 kernel: [1,2,1,2,4,2,1,2,1]/16
-  static img.Image _gaussianBlur(img.Image gray) {
+  /// 高斯模糊：支持 3x3 和 5x5 两种核大小。
+  /// 当 [strong] 为 true 时使用 5x5 核（更平滑，适合高噪点图片），
+  /// 否则使用 3x3 核（默认，保留更多细节）。
+  static img.Image _gaussianBlur(img.Image gray, {bool strong = false}) {
+    if (!strong) {
+      // 原有 3x3 核: [1,2,1,2,4,2,1,2,1]/16
+      final w = gray.width, h = gray.height;
+      final result = img.Image(width: w, height: h);
+      for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+          int sum = 0;
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+              final nx = (x + dx).clamp(0, w - 1);
+              final ny = (y + dy).clamp(0, h - 1);
+              final weight = (dx == 0 && dy == 0) ? 4 : ((dx == 0 || dy == 0) ? 2 : 1);
+              sum += gray.getPixel(nx, ny).r.toInt() * weight;
+            }
+          }
+          final v = (sum / 16).round().clamp(0, 255);
+          result.setPixelRgba(x, y, v, v, v, 255);
+        }
+      }
+      return result;
+    }
+    // 5x5 高斯核（归一化权重），更强降噪
+    const kernel = [
+      [1, 4, 7, 4, 1],
+      [4, 16, 26, 16, 4],
+      [7, 26, 41, 26, 7],
+      [4, 16, 26, 16, 4],
+      [1, 4, 7, 4, 1],
+    ];
+    const divisor = 273;
     final w = gray.width, h = gray.height;
     final result = img.Image(width: w, height: h);
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
         int sum = 0;
-        for (int dy = -1; dy <= 1; dy++) {
-          for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -2; dy <= 2; dy++) {
+          for (int dx = -2; dx <= 2; dx++) {
             final nx = (x + dx).clamp(0, w - 1);
             final ny = (y + dy).clamp(0, h - 1);
-            final weight = (dx == 0 && dy == 0) ? 4 : ((dx == 0 || dy == 0) ? 2 : 1);
-            sum += gray.getPixel(nx, ny).r.toInt() * weight;
+            sum += gray.getPixel(nx, ny).r.toInt() * kernel[dy + 2][dx + 2];
           }
         }
-        final v = (sum / 16).round().clamp(0, 255);
+        final v = (sum / divisor).round().clamp(0, 255);
         result.setPixelRgba(x, y, v, v, v, 255);
       }
     }
@@ -683,6 +716,10 @@ class ImageProcessor {
   /// Adaptive thresholding: divide image into blocks, compute local mean,
   /// threshold = local_mean - c. Block size is forced odd. Uses integral image
   /// for fast local mean computation.
+  /// 自适应阈值算法改进版：
+  /// 1. 使用更鲁棒的局部均值计算（积分图加速）
+  /// 2. 增加局部标准差惩罚，对低对比度区域自适应调整 c 值
+  /// 3. 更大的默认 block size 提升全局一致性
   static img.Image _adaptiveThreshold(img.Image gray, {int blockSize = 31, int c = 12, bool invert = false}) {
     if (blockSize.isEven) blockSize++;
     final half = blockSize ~/ 2;
@@ -691,11 +728,17 @@ class ImageProcessor {
 
     // Integral image for fast local mean
     final integral = List.generate(h, (_) => List.filled(w, 0));
+    // 积分平方图，用于计算局部方差
+    final integralSq = List.generate(h, (_) => List<int>.filled(w, 0));
     for (int y = 0; y < h; y++) {
       int rowSum = 0;
+      int rowSumSq = 0;
       for (int x = 0; x < w; x++) {
-        rowSum += gray.getPixel(x, y).r.toInt();
+        final v = gray.getPixel(x, y).r.toInt();
+        rowSum += v;
+        rowSumSq += v * v;
         integral[y][x] = rowSum + (y > 0 ? integral[y - 1][x] : 0);
+        integralSq[y][x] = rowSumSq + (y > 0 ? integralSq[y - 1][x] : 0);
       }
     }
 
@@ -708,12 +751,27 @@ class ImageProcessor {
 
         final count = (x2 - x1 + 1) * (y2 - y1 + 1);
         int sum = integral[y2][x2];
-        if (x1 > 0) sum -= integral[y2][x1 - 1];
-        if (y1 > 0) sum -= integral[y1 - 1][x2];
-        if (x1 > 0 && y1 > 0) sum += integral[y1 - 1][x1 - 1];
+        int sumSq = integralSq[y2][x2];
+        if (x1 > 0) {
+          sum -= integral[y2][x1 - 1];
+          sumSq -= integralSq[y2][x1 - 1];
+        }
+        if (y1 > 0) {
+          sum -= integral[y1 - 1][x2];
+          sumSq -= integralSq[y1 - 1][x2];
+        }
+        if (x1 > 0 && y1 > 0) {
+          sum += integral[y1 - 1][x1 - 1];
+          sumSq += integralSq[y1 - 1][x1 - 1];
+        }
 
         final localMean = sum / count;
-        final threshold = localMean - c;
+        // 局部标准差：std = sqrt(E[X²] - E[X]²)
+        final variance = (sumSq / count) - (localMean * localMean);
+        final localVar = variance > 0 ? variance : 0;
+        // 自适应 c 值：低对比度区域（方差小）用更小的 c 保留笔画
+        final adaptiveC = localVar < 100 ? (c * 0.5).round() : c;
+        final threshold = localMean - adaptiveC;
         final brightness = gray.getPixel(x, y).r.toInt();
         final isBlack = invert ? brightness > threshold : brightness < threshold;
         if (isBlack) {
@@ -835,6 +893,7 @@ class ImageProcessor {
   /// Trace the outer contour of a connected component using Moore neighborhood tracing.
   /// Returns boundary pixels in sequential order (forming a closed polygon path),
   /// unlike BFS which produces unordered points.
+  /// 改进：添加断点桥接，当 Moore 追踪提前终止时尝试从断点附近重新连接。
   static List<Point> _traceContour(img.Image binary, int startX, int startY, List<List<bool>> visited) {
     // Mark the entire component as visited via BFS and collect all component pixels
     final bfsDirs = [
@@ -896,6 +955,7 @@ class ImageProcessor {
     final contour = <Point>[Point(bx, by)];
     int maxSteps = binary.width * binary.height;
     int steps = 0;
+    int consecutiveFailures = 0; // 追踪连续搜索失败次数
 
     do {
       // Search clockwise for the next black pixel from (dir+7)%8
@@ -914,7 +974,38 @@ class ImageProcessor {
           break;
         }
       }
-      if (!found) break;
+      if (!found) {
+        consecutiveFailures++;
+        // 尝试桥接断点：搜索更大范围内的最近黑色像素
+        if (consecutiveFailures <= 2) {
+          bool bridged = false;
+          for (int radius = 2; radius <= 4 && !bridged; radius++) {
+            for (int dy2 = -radius; dy2 <= radius && !bridged; dy2++) {
+              for (int dx2 = -radius; dx2 <= radius && !bridged; dx2++) {
+                if (dx2.abs() < 2 && dy2.abs() < 2) continue; // 跳过已搜索过的
+                final nx = bx + dx2;
+                final ny = by + dy2;
+                if (nx >= 0 && nx < binary.width && ny >= 0 && ny < binary.height &&
+                    _isBlack(binary, nx, ny)) {
+                  bx = nx;
+                  by = ny;
+                  // 记录桥接点
+                  if (bx != traceStartX || by != traceStartY) {
+                    contour.add(Point(bx, by));
+                  }
+                  bridged = true;
+                  dir = 0; // 重置方向
+                }
+              }
+            }
+          }
+          if (!bridged) break;
+        } else {
+          break;
+        }
+      } else {
+        consecutiveFailures = 0;
+      }
 
       steps++;
       if (bx != traceStartX || by != traceStartY) {

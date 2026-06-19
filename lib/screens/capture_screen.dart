@@ -28,6 +28,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
   final List<XFile> _selectedImages = [];
   bool _isLoading = false;
   bool _showGridGuide = false;
+  // 批量拍摄模式：拍照后自动准备下一张
+  bool _batchMode = false;
+  // 拍照计数器（批量模式下显示已拍数量）
+  int _captureCount = 0;
 
   Future<void> _takePhoto() async {
     try {
@@ -40,6 +44,14 @@ class _CaptureScreenState extends State<CaptureScreen> {
       );
       if (photo != null) {
         await _handleCapturedImage(photo);
+        // 批量模式：拍照成功后自动提示继续
+        if (_batchMode && mounted) {
+          _captureCount++;
+          final remaining = (widget.charset?.length ?? 0) - _selectedImages.length;
+          if (remaining > 0) {
+            WFSnackBar.show(context, '已拍 $_captureCount 张，还需 $remaining 张');
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -75,12 +87,18 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
       if (!mounted) return;
 
-      final confirmed = await Navigator.of(context).push<bool>(
-        WFAnimations.slideRoute<bool>(ImagePreviewScreen(
-          imagePath: photo.path,
-          quality: quality,
-        )),
-      );
+      // 批量模式下跳过低质量图片的预览确认，直接添加
+      bool confirmed;
+      if (_batchMode && quality.level != QualityLevel.poor) {
+        confirmed = true;
+      } else {
+        confirmed = await Navigator.of(context).push<bool>(
+          WFAnimations.slideRoute<bool>(ImagePreviewScreen(
+            imagePath: photo.path,
+            quality: quality,
+          )),
+        ) ?? false;
+      }
 
       if (confirmed == true && mounted) {
         setState(() {
@@ -152,6 +170,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
     });
   }
 
+  /// 切换批量拍摄模式
+  void _toggleBatchMode() {
+    setState(() {
+      _batchMode = !_batchMode;
+      if (_batchMode) {
+        _captureCount = 0;
+      }
+    });
+    if (_batchMode) {
+      WFSnackBar.show(context, '批量模式已开启，拍照后自动准备下一张');
+    }
+  }
+
   /// 批量从相册选择（并行检测质量）
   Future<void> _pickMultiFromGallery() async {
     try {
@@ -217,6 +248,15 @@ class _CaptureScreenState extends State<CaptureScreen> {
               ),
               tooltip: _showGridGuide ? '关闭网格引导' : '显示网格引导',
             ),
+          // 批量拍摄模式切换
+          IconButton(
+            onPressed: _toggleBatchMode,
+            icon: Icon(
+              _batchMode ? Icons.burst_mode : Icons.photo_camera_outlined,
+              color: _batchMode ? Theme.of(context).colorScheme.primary : null,
+            ),
+            tooltip: _batchMode ? '关闭批量拍摄' : '开启批量拍摄',
+          ),
           if (_selectedImages.isNotEmpty)
             TextButton.icon(
               onPressed: _proceed,
