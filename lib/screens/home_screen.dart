@@ -208,6 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       WFAnimations.slideRoute(const FontPreviewScreen()),
                     );
                   },
+                  onStyleTransferTap: () => HomeActions.openStyleTransfer(context),
                 ),
                 delay: const Duration(milliseconds: 400),
               ),
