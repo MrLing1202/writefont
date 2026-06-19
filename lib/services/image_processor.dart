@@ -1532,6 +1532,243 @@ class ImageProcessor {
     final ey = p.y - projY;
     return sqrt(ex * ex + ey * ey);
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 数据压缩优化：图片压缩、数据压缩、压缩设置
+  // ═══════════════════════════════════════════════════════════
+
+  /// 默认压缩质量（0-100，JPEG 质量参数）
+  static int _defaultCompressionQuality = 85;
+
+  /// 默认压缩最大尺寸（像素，长边最大值）
+  static int _defaultMaxDimension = 2048;
+
+  /// 获取当前压缩质量设置
+  static int get compressionQuality => _defaultCompressionQuality;
+
+  /// 设置压缩质量（0-100）
+  static void setCompressionQuality(int quality) {
+    _defaultCompressionQuality = quality.clamp(1, 100);
+  }
+
+  /// 获取当前最大尺寸设置
+  static int get maxDimension => _defaultMaxDimension;
+
+  /// 设置压缩最大尺寸
+  static void setMaxDimension(int dimension) {
+    _defaultMaxDimension = dimension.clamp(100, 8192);
+  }
+
+  /// 压缩图片：按指定质量和最大尺寸进行压缩
+  ///
+  /// [imageBytes] 原始图片字节
+  /// [quality] JPEG 压缩质量（1-100），默认使用全局设置
+  /// [maxDimension] 长边最大像素数，默认使用全局设置
+  /// [format] 输出格式：'jpeg' 或 'png'，默认 'jpeg'
+  ///
+  /// 返回压缩后的图片字节和压缩信息 Map：
+  /// - bytes: 压缩后的图片字节
+  /// - originalSize: 原始大小（字节）
+  /// - compressedSize: 压缩后大小（字节）
+  /// - compressionRatio: 压缩比例（0.0-1.0，越小压缩越多）
+  /// - width: 压缩后宽度
+  /// - height: 压缩后高度
+  static Map<String, dynamic> compressImage(
+    Uint8List imageBytes, {
+    int? quality,
+    int? maxDimension,
+    String format = 'jpeg',
+  }) {
+    _recordUsage('compressImage');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+
+    try {
+      final effectiveQuality = quality ?? _defaultCompressionQuality;
+      final effectiveMaxDim = maxDimension ?? _defaultMaxDimension;
+
+      final originalSize = imageBytes.length;
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) {
+        _recordError('compressImage', '图片解码失败');
+        return {
+          'bytes': imageBytes,
+          'originalSize': originalSize,
+          'compressedSize': originalSize,
+          'compressionRatio': 1.0,
+          'width': 0,
+          'height': 0,
+          'error': '图片解码失败',
+        };
+      }
+
+      // 调整尺寸
+      img.Image resized = decoded;
+      final w = decoded.width;
+      final h = decoded.height;
+      final currentMaxDim = w > h ? w : h;
+
+      if (currentMaxDim > effectiveMaxDim) {
+        final scale = effectiveMaxDim / currentMaxDim;
+        final newW = (w * scale).round().clamp(1, 99999);
+        final newH = (h * scale).round().clamp(1, 99999);
+        resized = img.copyResize(decoded, width: newW, height: newH,
+            interpolation: img.Interpolation.linear);
+      }
+
+      // 编码压缩
+      Uint8List compressedBytes;
+      if (format == 'png') {
+        compressedBytes = Uint8List.fromList(img.encodePng(resized));
+      } else {
+        compressedBytes = Uint8List.fromList(img.encodeJpg(resized, quality: effectiveQuality));
+      }
+
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+
+      final compressedSize = compressedBytes.length;
+      final ratio = originalSize > 0 ? compressedSize / originalSize : 1.0;
+
+      debugPrint('compressImage: ${originalSize}B → ${compressedSize}B '
+          '(压缩率 ${(ratio * 100).toStringAsFixed(1)}%, '
+          '${resized.width}x${resized.height})');
+
+      return {
+        'bytes': compressedBytes,
+        'originalSize': originalSize,
+        'compressedSize': compressedSize,
+        'compressionRatio': ratio,
+        'width': resized.width,
+        'height': resized.height,
+      };
+    } catch (e) {
+      _recordError('compressImage', e);
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      return {
+        'bytes': imageBytes,
+        'originalSize': imageBytes.length,
+        'compressedSize': imageBytes.length,
+        'compressionRatio': 1.0,
+        'width': 0,
+        'height': 0,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// 批量压缩图片
+  ///
+  /// [images] 图片字节列表
+  /// [quality] JPEG 压缩质量
+  /// [maxDimension] 长边最大像素数
+  /// [onProgress] 进度回调
+  ///
+  /// 返回压缩结果列表（与输入顺序一致）
+  static List<Map<String, dynamic>> compressImages(
+    List<Uint8List> images, {
+    int? quality,
+    int? maxDimension,
+    void Function(int completed, int total)? onProgress,
+  }) {
+    final results = <Map<String, dynamic>>[];
+    for (int i = 0; i < images.length; i++) {
+      results.add(compressImage(images[i], quality: quality, maxDimension: maxDimension));
+      onProgress?.call(i + 1, images.length);
+    }
+    return results;
+  }
+
+  /// 压缩数据：对任意二进制数据进行简单压缩
+  ///
+  /// 使用 run-length 编码（RLE）进行简单压缩，
+  /// 适合包含大量重复字节的数据（如二值化图片）。
+  ///
+  /// [data] 原始数据
+  /// 返回压缩后的数据字节
+  static Uint8List compressData(Uint8List data) {
+    if (data.isEmpty) return data;
+
+    _recordUsage('compressData');
+    final result = <int>[];
+
+    int i = 0;
+    while (i < data.length) {
+      final currentByte = data[i];
+      int count = 1;
+
+      // 计算连续相同字节的数量（最多 255）
+      while (i + count < data.length &&
+             data[i + count] == currentByte &&
+             count < 255) {
+        count++;
+      }
+
+      if (count >= 3) {
+        // 使用 RLE 编码：标记字节 0xFF + 计数 + 值
+        result.add(0xFF);
+        result.add(count);
+        result.add(currentByte);
+      } else {
+        // 直接输出
+        for (int j = 0; j < count; j++) {
+          if (currentByte == 0xFF) {
+            // 转义 0xFF 字节
+            result.add(0xFF);
+            result.add(0x01);
+            result.add(0xFF);
+          } else {
+            result.add(currentByte);
+          }
+        }
+      }
+
+      i += count;
+    }
+
+    return Uint8List.fromList(result);
+  }
+
+  /// 解压缩数据
+  ///
+  /// [data] 压缩后的数据（由 compressData 生成）
+  /// 返回解压后的原始数据
+  static Uint8List decompressData(Uint8List data) {
+    if (data.isEmpty) return data;
+
+    final result = <int>[];
+    int i = 0;
+
+    while (i < data.length) {
+      if (data[i] == 0xFF && i + 2 < data.length) {
+        final count = data[i + 1];
+        final value = data[i + 2];
+        for (int j = 0; j < count; j++) {
+          result.add(value);
+        }
+        i += 3;
+      } else {
+        result.add(data[i]);
+        i++;
+      }
+    }
+
+    return Uint8List.fromList(result);
+  }
+
+  /// 获取压缩统计信息
+  ///
+  /// 返回当前压缩设置和历史统计
+  static Map<String, dynamic> getCompressionStats() {
+    return {
+      'defaultQuality': _defaultCompressionQuality,
+      'defaultMaxDimension': _defaultMaxDimension,
+      'usageCount': _usageCounter['compressImage'] ?? 0,
+      'dataCompressionCount': _usageCounter['compressData'] ?? 0,
+    };
+  }
+
 }
 
 class Point {

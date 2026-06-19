@@ -1004,6 +1004,217 @@ class AppAnalytics {
     };
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 存储空间管理：统计、清理建议、优化建议、报告生成
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取空间使用统计
+  ///
+  /// 聚合存储服务和识别服务的空间使用数据
+  static Future<Map<String, dynamic>> getStorageSpaceUsage() async {
+    try {
+      final storageUsage = await StorageService.getStorageUsage();
+      final cacheUsage = RecognitionService.getCacheSpaceUsage();
+
+      return {
+        'storage': storageUsage,
+        'cache': cacheUsage,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+    } catch (e) {
+      debugPrint('[Analytics] 获取空间使用统计失败: $e');
+      return {
+        'storage': <String, dynamic>{},
+        'cache': <String, dynamic>{},
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// 获取空间清理建议
+  ///
+  /// 综合存储和缓存的清理建议
+  static Future<List<Map<String, dynamic>>> getStorageCleanupSuggestions() async {
+    final suggestions = <Map<String, dynamic>>[];
+
+    try {
+      // 存储清理建议
+      final storageSuggestions = await StorageService.getStorageSuggestions();
+      suggestions.addAll(storageSuggestions);
+
+      // 缓存清理建议
+      final cacheSuggestions = RecognitionService.getCacheCleanupSuggestions();
+      suggestions.addAll(cacheSuggestions);
+
+      // 按优先级排序：high > medium > low > none
+      const priorityOrder = {'high': 0, 'medium': 1, 'low': 2, 'none': 3};
+      suggestions.sort((a, b) {
+        final aPriority = priorityOrder[a['priority']] ?? 3;
+        final bPriority = priorityOrder[b['priority']] ?? 3;
+        return aPriority.compareTo(bPriority);
+      });
+    } catch (e) {
+      debugPrint('[Analytics] 获取清理建议失败: $e');
+    }
+
+    return suggestions;
+  }
+
+  /// 获取空间优化建议
+  ///
+  /// 基于使用模式和存储状态生成优化建议
+  static Future<List<Map<String, dynamic>>> getStorageOptimizationSuggestions() async {
+    final suggestions = <Map<String, dynamic>>[];
+
+    try {
+      final usage = await StorageService.getStorageUsage();
+      final totalBytes = (usage['total'] as Map<String, dynamic>?)?['bytes'] as int? ?? 0;
+      final projectBytes = ((usage['projects'] as Map<String, dynamic>?)?['bytes'] as int?) ?? 0;
+      final backupBytes = ((usage['backups'] as Map<String, dynamic>?)?['bytes'] as int?) ?? 0;
+
+      // 项目数据占比过高
+      if (totalBytes > 0 && projectBytes > totalBytes * 0.7) {
+        suggestions.add({
+          'type': 'project_dominant',
+          'title': '项目数据占比过高',
+          'description': '项目数据占用 ${StorageService.formatBytes(projectBytes)}，'
+              '占总存储的 ${(projectBytes / totalBytes * 100).toStringAsFixed(0)}%',
+          'recommendation': '考虑导出不需要的项目后删除，释放空间',
+          'priority': 'medium',
+        });
+      }
+
+      // 备份数据过大
+      if (backupBytes > 50 * 1024 * 1024) {
+        suggestions.add({
+          'type': 'backup_large',
+          'title': '备份数据较大',
+          'description': '备份占用 ${StorageService.formatBytes(backupBytes)}',
+          'recommendation': '减少每个项目的备份数量，保留最近 3-5 个版本即可',
+          'priority': 'medium',
+        });
+      }
+
+      // 缓存优化建议
+      final cacheUsage = RecognitionService.getCacheSpaceUsage();
+      final cachePercent = cacheUsage['cacheUsagePercent'] as double? ?? 0;
+      if (cachePercent > 50) {
+        suggestions.add({
+          'type': 'cache_optimization',
+          'title': '识别缓存可优化',
+          'description': '缓存使用率 ${cachePercent.toStringAsFixed(0)}%',
+          'recommendation': '定期清理低置信度的缓存条目，提升缓存效率',
+          'priority': 'low',
+        });
+      }
+
+      // 图片压缩建议
+      final projects = await StorageService.loadProjects();
+      int totalSourceImages = 0;
+      for (final p in projects) {
+        totalSourceImages += p.sourceImages.length;
+      }
+      if (totalSourceImages > 50) {
+        suggestions.add({
+          'type': 'image_compression',
+          'title': '源图片较多',
+          'description': '共有 $totalSourceImages 张源图片',
+          'recommendation': '考虑使用 ImageProcessor.compressImage 压缩源图片，减少存储占用',
+          'priority': 'low',
+        });
+      }
+
+      if (suggestions.isEmpty) {
+        suggestions.add({
+          'type': 'no_action',
+          'title': '存储状态良好',
+          'description': '当前存储使用合理，无需优化',
+          'recommendation': '继续保持良好的使用习惯',
+          'priority': 'none',
+        });
+      }
+    } catch (e) {
+      debugPrint('[Analytics] 获取优化建议失败: $e');
+    }
+
+    return suggestions;
+  }
+
+  /// 生成空间报告
+  ///
+  /// 包含完整的空间使用详情、清理建议、优化建议、缓存状态
+  static Future<Map<String, dynamic>> generateStorageReport() async {
+    final report = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'appVersion': 'v2.16.0',
+    };
+
+    try {
+      // 空间使用统计
+      report['spaceUsage'] = await getStorageSpaceUsage();
+
+      // 清理建议
+      report['cleanupSuggestions'] = await getStorageCleanupSuggestions();
+
+      // 优化建议
+      report['optimizationSuggestions'] = await getStorageOptimizationSuggestions();
+
+      // 缓存空间报告
+      report['cacheReport'] = await RecognitionService.getCacheSpaceReport();
+
+      // 存储空间报告
+      report['storageReport'] = await StorageService.getStorageReport();
+
+      // 应用运行信息
+      report['sessionInfo'] = getSessionInfo();
+
+      // 使用统计
+      report['usageReport'] = getUsageReport();
+    } catch (e) {
+      debugPrint('[Analytics] 生成存储报告失败: $e');
+      report['error'] = e.toString();
+    }
+
+    return report;
+  }
+
+  /// 执行空间清理
+  ///
+  /// 综合清理临时文件、优化缓存、清理旧导出等
+  /// 返回清理报告
+  static Future<Map<String, dynamic>> performSpaceCleanup() async {
+    final cleanupReport = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      // 1. 清理存储空间
+      final freedBytes = await StorageService.cleanupStorage();
+      cleanupReport['storageCleanup'] = {
+        'freedBytes': freedBytes,
+        'freedFormatted': StorageService.formatBytes(freedBytes),
+      };
+
+      // 2. 优化识别缓存
+      final optimizedCount = RecognitionService.optimizeCache();
+      cleanupReport['cacheOptimization'] = {
+        'removedEntries': optimizedCount,
+      };
+
+      // 3. 优化存储（清理孤立目录）
+      final optimizeResult = await StorageService.optimizeStorage();
+      cleanupReport['storageOptimization'] = optimizeResult;
+
+      cleanupReport['success'] = true;
+    } catch (e) {
+      debugPrint('[Analytics] 执行空间清理失败: $e');
+      cleanupReport['success'] = false;
+      cleanupReport['error'] = e.toString();
+    }
+
+    return cleanupReport;
+  }
+
   /// 获取完整分析报告（合并所有维度）
   static Map<String, dynamic> getFullReport() {
     return {

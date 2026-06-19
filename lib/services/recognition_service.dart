@@ -1230,6 +1230,187 @@ class RecognitionService {
 
     return const JsonEncoder.withIndent('  ').convert(data);
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 缓存空间管理：监控、清理、优化、报告
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取缓存空间使用情况
+  ///
+  /// 返回缓存的详细占用信息：
+  /// - recognitionCacheSize: 识别结果缓存条目数
+  /// - confidenceCacheSize: 置信度缓存条目数
+  /// - estimatedCacheBytes: 估算缓存内存占用（字节）
+  /// - maxCacheBytes: 缓存内存上限
+  /// - maxCacheSize: 缓存条目数上限
+  /// - cacheUsagePercent: 缓存使用百分比（基于条目数）
+  /// - memoryUsagePercent: 缓存使用百分比（基于内存）
+  /// - debugLogCount: 调试日志条目数
+  /// - latencyHistoryCount: 延迟历史条目数
+  static Map<String, dynamic> getCacheSpaceUsage() {
+    final cacheUsagePercent = _maxCacheSize > 0
+        ? (_recognitionCache.length / _maxCacheSize * 100).clamp(0, 100)
+        : 0.0;
+    final memoryUsagePercent = _maxCacheBytes > 0
+        ? (_estimatedCacheBytes / _maxCacheBytes * 100).clamp(0, 100)
+        : 0.0;
+
+    // 估算各部分内存占用
+    int debugLogBytes = 0;
+    for (final entry in _debugLogBuffer) {
+      debugLogBytes += 200; // 估算每条日志约 200 字节
+    }
+
+    int latencyHistoryBytes = _latencyHistory.length * 8; // 每个 double 8 字节
+
+    return {
+      'recognitionCacheSize': _recognitionCache.length,
+      'confidenceCacheSize': _confidenceCache.length,
+      'cacheAccessOrderSize': _cacheAccessOrder.length,
+      'estimatedCacheBytes': _estimatedCacheBytes,
+      'maxCacheBytes': _maxCacheBytes,
+      'maxCacheSize': _maxCacheSize,
+      'cacheUsagePercent': cacheUsagePercent,
+      'memoryUsagePercent': memoryUsagePercent,
+      'debugLogCount': _debugLogBuffer.length,
+      'debugLogBytes': debugLogBytes,
+      'latencyHistoryCount': _latencyHistory.length,
+      'latencyHistoryBytes': latencyHistoryBytes,
+      'totalEstimatedBytes': _estimatedCacheBytes + debugLogBytes + latencyHistoryBytes,
+    };
+  }
+
+  /// 清理缓存：移除低置信度和过旧的缓存条目
+  ///
+  /// [minConfidence] 最低置信度阈值，低于此值的缓存条目将被清除（默认 0.5）
+  /// [maxAge] 缓存条目的最大保留时间（默认 null 表示不限制）
+  /// 返回清理的条目数
+  static int optimizeCache({double minConfidence = 0.5, Duration? maxAge}) {
+    int removedCount = 0;
+
+    // 1. 移除低置信度的缓存条目
+    final keysToRemove = <int>[];
+    for (final entry in _confidenceCache.entries) {
+      if (entry.value < minConfidence) {
+        keysToRemove.add(entry.key);
+      }
+    }
+    for (final key in keysToRemove) {
+      _recognitionCache.remove(key);
+      _confidenceCache.remove(key);
+      _cacheAccessOrder.remove(key);
+      removedCount++;
+    }
+
+    // 2. 如果内存使用仍然过高，按 LRU 策略淘汰多余的条目
+    while (_estimatedCacheBytes > _maxCacheBytes * 0.8 &&
+           _cacheAccessOrder.isNotEmpty) {
+      final oldestKey = _cacheAccessOrder.removeAt(0);
+      _recognitionCache.remove(oldestKey);
+      _confidenceCache.remove(oldestKey);
+      removedCount++;
+    }
+
+    // 3. 限制调试日志数量
+    while (_debugLogBuffer.length > _maxDebugLogSize ~/ 2) {
+      _debugLogBuffer.removeAt(0);
+    }
+
+    // 4. 限制延迟历史数量
+    while (_latencyHistory.length > _maxLatencyHistory ~/ 2) {
+      _latencyHistory.removeAt(0);
+    }
+
+    if (removedCount > 0) {
+      _addDebugLog('cache', '缓存优化完成，移除 $removedCount 个条目');
+      debugPrint('[RecognitionService] 缓存优化: 移除 $removedCount 个低置信度/多余条目');
+    }
+
+    return removedCount;
+  }
+
+  /// 获取缓存清理建议
+  ///
+  /// 根据当前缓存状态生成清理建议列表
+  static List<Map<String, dynamic>> getCacheCleanupSuggestions() {
+    final suggestions = <Map<String, dynamic>>[];
+    final usage = getCacheSpaceUsage();
+
+    final cachePercent = usage['cacheUsagePercent'] as double;
+    final memoryPercent = usage['memoryUsagePercent'] as double;
+    final debugLogCount = usage['debugLogCount'] as int;
+
+    // 缓存条目数接近上限
+    if (cachePercent > 80) {
+      suggestions.add({
+        'type': 'cache_full',
+        'title': '识别缓存接近上限',
+        'description': '缓存使用率 ${cachePercent.toStringAsFixed(0)}%，建议清理低置信度条目',
+        'action': 'optimizeCache',
+        'priority': 'high',
+      });
+    }
+
+    // 内存使用过高
+    if (memoryPercent > 70) {
+      suggestions.add({
+        'type': 'memory_high',
+        'title': '缓存内存使用过高',
+        'description': '缓存内存使用率 ${memoryPercent.toStringAsFixed(0)}%，建议清理缓存',
+        'action': 'clearRecognitionCache',
+        'priority': 'high',
+      });
+    }
+
+    // 调试日志过多
+    if (debugLogCount > _maxDebugLogSize * 0.8) {
+      suggestions.add({
+        'type': 'debug_log_full',
+        'title': '调试日志过多',
+        'description': '调试日志 $debugLogCount 条，建议清理',
+        'action': 'clearDebugLogs',
+        'priority': 'medium',
+      });
+    }
+
+    if (suggestions.isEmpty) {
+      suggestions.add({
+        'type': 'no_action',
+        'title': '缓存状态良好',
+        'description': '缓存使用率 ${cachePercent.toStringAsFixed(0)}%，内存使用率 ${memoryPercent.toStringAsFixed(0)}%',
+        'priority': 'none',
+      });
+    }
+
+    return suggestions;
+  }
+
+  /// 生成缓存空间报告
+  ///
+  /// 包含缓存使用详情、清理建议、命中率统计
+  static Future<Map<String, dynamic>> getCacheSpaceReport() async {
+    final usage = getCacheSpaceUsage();
+    final suggestions = getCacheCleanupSuggestions();
+
+    final hitRate = (_cacheHits + _cacheMisses) > 0
+        ? _cacheHits / (_cacheHits + _cacheMisses)
+        : 0.0;
+
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'spaceUsage': usage,
+      'suggestions': suggestions,
+      'performance': {
+        'totalRecognitions': _totalRecognitions,
+        'cacheHits': _cacheHits,
+        'cacheMisses': _cacheMisses,
+        'cacheHitRate': hitRate,
+        'avgLatencyMs': _latencyHistory.isNotEmpty
+            ? _latencyHistory.reduce((a, b) => a + b) / _latencyHistory.length
+            : 0.0,
+      },
+    };
+  }
 }
 
 /// 云端认证错误（API Key 无效或过期）

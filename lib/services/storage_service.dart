@@ -2117,6 +2117,318 @@ class StorageService {
     _crashReports.removeWhere((r) => r.id == reportId);
     await _saveCrashReports();
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 存储空间管理：监控、清理、优化、报告
+  // ═══════════════════════════════════════════════════════════
+
+  /// 获取各目录的存储空间使用情况
+  ///
+  /// 返回各目录的字节数和文件数 Map：
+  /// - projects: 项目数据目录
+  /// - exports: 导出目录
+  /// - backups: 备份目录
+  /// - temp: 临时目录
+  /// - total: 总计
+  static Future<Map<String, dynamic>> getStorageUsage() async {
+    final result = <String, dynamic>{};
+
+    try {
+      // 项目目录
+      final projDir = await _projectsDir;
+      result['projects'] = await _getDirectorySize(projDir);
+
+      // 导出目录
+      final expDir = await _exportsDir;
+      result['exports'] = await _getDirectorySize(expDir);
+
+      // 备份目录
+      final bakDir = await _backupDir;
+      result['backups'] = await _getDirectorySize(bakDir);
+
+      // 临时目录
+      final tmpDir = await tempDir;
+      result['temp'] = await _getDirectorySize(tmpDir);
+
+      // SharedPreferences 大小估算
+      final prefs = await SharedPreferences.getInstance();
+      int prefsSize = 0;
+      for (final key in prefs.getKeys()) {
+        final val = prefs.get(key);
+        if (val is String) prefsSize += val.length * 2; // UTF-16
+        else if (val is List) prefsSize += val.length * 8;
+        else prefsSize += 8;
+      }
+      result['preferences'] = {'bytes': prefsSize, 'fileCount': 0};
+
+      // 计算总和
+      int totalBytes = 0;
+      int totalFiles = 0;
+      for (final key in ['projects', 'exports', 'backups', 'temp', 'preferences']) {
+        final entry = result[key] as Map<String, dynamic>;
+        totalBytes += (entry['bytes'] as int? ?? 0);
+        totalFiles += (entry['fileCount'] as int? ?? 0);
+      }
+      result['total'] = {'bytes': totalBytes, 'fileCount': totalFiles};
+    } catch (e) {
+      debugPrint('[StorageService] 获取存储使用情况失败: $e');
+      result['error'] = e.toString();
+    }
+
+    return result;
+  }
+
+  /// 计算目录的总字节数和文件数
+  static Future<Map<String, dynamic>> _getDirectorySize(Directory dir) async {
+    int totalBytes = 0;
+    int fileCount = 0;
+    try {
+      if (await dir.exists()) {
+        await for (final entity in dir.list(recursive: true)) {
+          if (entity is File) {
+            try {
+              totalBytes += await entity.length();
+              fileCount++;
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[StorageService] 计算目录大小失败: ${dir.path} - $e');
+    }
+    return {'bytes': totalBytes, 'fileCount': fileCount};
+  }
+
+  /// 格式化字节数为可读字符串（如 "12.3 MB"）
+  static String formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  /// 清理存储空间：清除临时文件、过旧的导出文件、多余备份
+  ///
+  /// [maxExportAgeDays] 导出文件最大保留天数，默认 30
+  /// [maxBackupVersionsPerProject] 每个项目最多保留的备份数，默认 5
+  /// 返回清理释放的字节数
+  static Future<int> cleanupStorage({
+    int maxExportAgeDays = 30,
+    int maxBackupVersionsPerProject = 5,
+  }) async {
+    int freedBytes = 0;
+
+    try {
+      // 1. 清理临时目录
+      final tmpDir = await tempDir;
+      if (await tmpDir.exists()) {
+        final tmpUsage = await _getDirectorySize(tmpDir);
+        freedBytes += tmpUsage['bytes'] as int;
+        await cleanupTemp();
+        debugPrint('[StorageService] 清理临时文件: ${formatBytes(tmpUsage['bytes'] as int)}');
+      }
+
+      // 2. 清理过旧的导出文件
+      final expDir = await _exportsDir;
+      if (await expDir.exists()) {
+        final threshold = DateTime.now().subtract(Duration(days: maxExportAgeDays));
+        await for (final entity in expDir.list()) {
+          if (entity is File) {
+            final stat = await entity.stat();
+            if (stat.modified.isBefore(threshold)) {
+              freedBytes += await entity.length();
+              await entity.delete();
+            }
+          }
+        }
+      }
+
+      // 3. 清理多余的备份（每个项目保留最新的 N 份）
+      final bakDir = await _backupDir;
+      if (await bakDir.exists()) {
+        await for (final entity in bakDir.list()) {
+          if (entity is Directory) {
+            await _cleanOldBackups(entity, maxCount: maxBackupVersionsPerProject);
+          }
+        }
+      }
+
+      debugPrint('[StorageService] 存储清理完成，释放 ${formatBytes(freedBytes)}');
+    } catch (e) {
+      debugPrint('[StorageService] 存储清理失败: $e');
+    }
+
+    return freedBytes;
+  }
+
+  /// 优化存储：压缩项目中未使用的数据、清理孤立文件
+  ///
+  /// 返回优化报告 Map：
+  /// - orphanedFiles: 发现的孤立文件数
+  /// - removedOrphanedFiles: 已删除的孤立文件数
+  /// - optimizedProjectCount: 优化的项目数
+  static Future<Map<String, dynamic>> optimizeStorage() async {
+    final report = <String, dynamic>{
+      'orphanedFiles': 0,
+      'removedOrphanedFiles': 0,
+      'optimizedProjectCount': 0,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      final projDir = await _projectsDir;
+      if (!await projDir.exists()) return report;
+
+      // 加载有效的项目 ID 列表
+      final projects = await loadProjects();
+      final validIds = projects.map((p) => p.id).toSet();
+
+      int orphanedCount = 0;
+      int removedCount = 0;
+
+      // 检查项目目录中的孤立目录（没有对应项目的目录）
+      await for (final entity in projDir.list()) {
+        if (entity is Directory) {
+          final dirName = p.basename(entity.path);
+          if (!validIds.contains(dirName)) {
+            orphanedCount++;
+            try {
+              await entity.delete(recursive: true);
+              removedCount++;
+              debugPrint('[StorageService] 删除孤立项目目录: $dirName');
+            } catch (e) {
+              debugPrint('[StorageService] 删除孤立目录失败: $dirName - $e');
+            }
+          }
+        }
+      }
+
+      report['orphanedFiles'] = orphanedCount;
+      report['removedOrphanedFiles'] = removedCount;
+
+      debugPrint('[StorageService] 存储优化完成: 发现 $orphanedCount 个孤立目录, 删除 $removedCount 个');
+    } catch (e) {
+      debugPrint('[StorageService] 存储优化失败: $e');
+      report['error'] = e.toString();
+    }
+
+    return report;
+  }
+
+  /// 获取存储空间清理建议
+  ///
+  /// 根据当前存储使用情况生成具体的清理建议列表
+  static Future<List<Map<String, dynamic>>> getStorageSuggestions() async {
+    final suggestions = <Map<String, dynamic>>[];
+
+    try {
+      final usage = await getStorageUsage();
+      final totalBytes = (usage['total'] as Map<String, dynamic>)['bytes'] as int? ?? 0;
+      final tempBytes = ((usage['temp'] as Map<String, dynamic>?)?['bytes'] as int?) ?? 0;
+      final exportBytes = ((usage['exports'] as Map<String, dynamic>?)?['bytes'] as int?) ?? 0;
+      final backupBytes = ((usage['backups'] as Map<String, dynamic>?)?['bytes'] as int?) ?? 0;
+
+      // 临时文件大于 10MB 建议清理
+      if (tempBytes > 10 * 1024 * 1024) {
+        suggestions.add({
+          'type': 'temp_cleanup',
+          'title': '清理临时文件',
+          'description': '临时文件占用 ${formatBytes(tempBytes)}，建议清理',
+          'estimatedFreedBytes': tempBytes,
+          'priority': 'high',
+        });
+      }
+
+      // 导出文件大于 50MB 建议清理旧文件
+      if (exportBytes > 50 * 1024 * 1024) {
+        suggestions.add({
+          'type': 'export_cleanup',
+          'title': '清理旧导出文件',
+          'description': '导出文件占用 ${formatBytes(exportBytes)}，建议删除不需要的导出',
+          'estimatedFreedBytes': (exportBytes * 0.5).round(),
+          'priority': 'medium',
+        });
+      }
+
+      // 备份文件大于 100MB 建议减少备份数
+      if (backupBytes > 100 * 1024 * 1024) {
+        suggestions.add({
+          'type': 'backup_cleanup',
+          'title': '减少备份版本数',
+          'description': '备份文件占用 ${formatBytes(backupBytes)}，建议减少保留版本数',
+          'estimatedFreedBytes': (backupBytes * 0.6).round(),
+          'priority': 'medium',
+        });
+      }
+
+      // 总空间大于 500MB 建议全面清理
+      if (totalBytes > 500 * 1024 * 1024) {
+        suggestions.add({
+          'type': 'full_cleanup',
+          'title': '全面存储清理',
+          'description': '总存储占用 ${formatBytes(totalBytes)}，建议执行全面清理',
+          'estimatedFreedBytes': (totalBytes * 0.3).round(),
+          'priority': 'low',
+        });
+      }
+
+      if (suggestions.isEmpty) {
+        suggestions.add({
+          'type': 'no_action',
+          'title': '存储空间充足',
+          'description': '当前存储占用 ${formatBytes(totalBytes)}，无需清理',
+          'estimatedFreedBytes': 0,
+          'priority': 'none',
+        });
+      }
+    } catch (e) {
+      debugPrint('[StorageService] 获取存储建议失败: $e');
+    }
+
+    return suggestions;
+  }
+
+  /// 生成完整的存储空间报告
+  ///
+  /// 包含存储使用详情、清理建议、优化历史等
+  static Future<Map<String, dynamic>> getStorageReport() async {
+    final report = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      // 存储使用情况
+      report['usage'] = await getStorageUsage();
+
+      // 清理建议
+      report['suggestions'] = await getStorageSuggestions();
+
+      // 缓存状态
+      report['cache'] = {
+        'projectCacheSize': _projectCache.length,
+        'projectListCached': _cachedProjectList != null,
+        'projectListCacheTime': _projectListCacheTime?.toIso8601String(),
+        'performanceMetricsCount': _performanceMetrics.length,
+        'remindersCached': _cachedReminders != null,
+        'remindersCount': _cachedReminders?.length ?? 0,
+      };
+
+      // 项目统计
+      final projects = await loadProjects();
+      report['projectStats'] = {
+        'totalProjects': projects.length,
+        'totalGlyphs': projects.fold(0, (sum, p) => sum + p.glyphs.length),
+        'totalEdited': projects.fold(0, (sum, p) =>
+            sum + p.glyphs.values.where((g) => g.contours.isNotEmpty).length),
+        'totalSourceImages': projects.fold(0, (sum, p) => sum + p.sourceImages.length),
+      };
+    } catch (e) {
+      debugPrint('[StorageService] 生成存储报告失败: $e');
+      report['error'] = e.toString();
+    }
+
+    return report;
+  }
 }
 
 /// 崩溃报告数据模型
