@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/project.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/bezier_glyph_painter.dart';
 
 /// 预览内容渲染组件（逐字渲染贝塞尔曲线）
@@ -12,8 +13,8 @@ class PreviewContent extends StatelessWidget {
 
   static const bgColors = [
     Colors.white,
-    Color(0xFF1A1A1A),
-    Color(0xFFE0E0E0),
+    WFColors.previewDark,
+    WFColors.previewGray,
   ];
 
   const PreviewContent({

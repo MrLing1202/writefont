@@ -59,9 +59,7 @@ class _FontTestScreenState extends State<FontTestScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载项目失败: $e')),
-        );
+        WFSnackBar.error(context, '加载项目失败: $e');
       }
     }
   }

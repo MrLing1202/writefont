@@ -33,6 +33,10 @@ class WFColors {
   // ── 深色模式扩展 ──
   static const Color darkPrimary = Color(0xFF7FB3D8);
   static const Color darkSurface = Color(0xFF16213E);
+
+  // ── 预览背景色 ──
+  static const Color previewDark = Color(0xFF1A1A1A);   // 深色预览背景
+  static const Color previewGray = Color(0xFFE0E0E0);   // 灰色预览背景
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -349,6 +353,96 @@ class WFDialog extends StatelessWidget {
     );
   }
 
+  /// 确认对话框 — 返回 true（确认）/ false（取消）/ null（关闭）
+  static Future<bool?> confirm(
+    BuildContext context, {
+    required String title,
+    required String message,
+    String confirmText = '确认',
+    String cancelText = '取消',
+    IconData? icon,
+    Color? iconColor,
+    bool isDestructive = false,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => WFDialog(
+        title: title,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 48, color: iconColor ?? WFColors.primary),
+              const SizedBox(height: 16),
+            ],
+            Text(
+              message,
+              style: const TextStyle(
+                fontSize: 15,
+                color: WFColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              cancelText,
+              style: const TextStyle(color: WFColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: isDestructive ? WFColors.error : WFColors.primary,
+            ),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 单选列表对话框 — 返回选中项或 null
+  static Future<T?> singleChoice<T>(
+    BuildContext context, {
+    required String title,
+    required List<T> items,
+    required Widget Function(T item) itemBuilder,
+  }) {
+    return showDialog<T>(
+      context: context,
+      builder: (_) => WFDialog(
+        title: title,
+        content: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.5,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: items
+                  .map(
+                    (item) => InkWell(
+                      onTap: () => Navigator.pop(context, item),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: itemBuilder(item),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -379,6 +473,73 @@ class WFDialog extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SnackBar
+// ═══════════════════════════════════════════════════════════
+
+/// 统一 SnackBar 样式 — 底部显示，圆角 12px，统一内边距和时长
+class WFSnackBar {
+  WFSnackBar._();
+
+  /// 显示普通提示 SnackBar
+  static void show(BuildContext context, String message, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+        action: action,
+      ),
+    );
+  }
+
+  /// 显示错误提示 SnackBar（红色背景）
+  static void error(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: WFColors.error,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  /// 显示成功提示 SnackBar（绿色背景）
+  static void success(BuildContext context, String message, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: WFColors.success,
+        duration: const Duration(seconds: 2),
+        action: action,
+      ),
+    );
+  }
+
+  /// 显示带自定义时长的 SnackBar
+  static void showWithDuration(
+    BuildContext context,
+    String message, {
+    required Duration duration,
+    SnackBarAction? action,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: duration,
+        action: action,
       ),
     );
   }
@@ -418,6 +579,20 @@ class WFAnimations {
   /// 按钮点击缩放
   static Widget tapScale(Widget child, VoidCallback onTap) {
     return _TapScaleWrapper(onTap: onTap, child: child);
+  }
+
+  /// 淡入路由动画 — 用于对话框或页面过渡
+  static Route<T> fadeRoute<T>(Widget page) {
+    return PageRouteBuilder<T>(
+      pageBuilder: (_, __, ___) => page,
+      transitionsBuilder: (_, animation, __, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          child: child,
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 250),
+    );
   }
 }
 

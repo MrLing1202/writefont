@@ -74,9 +74,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
     await _recognitionService.setCustomModel(_customModelController.text.trim());
 
     if (showSnackbar && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('设置已保存')),
-      );
+      WFSnackBar.show(context, '设置已保存');
       Navigator.pop(context);
     }
   }
@@ -109,21 +107,14 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
 
       if (mounted) {
         final mode = _useCloud ? '云端' : '本地';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result != null ? '$mode识别成功！识别到: $result' : '$mode识别成功（返回空结果）'),
-            backgroundColor: WFColors.success,
-          ),
+        WFSnackBar.success(
+          context,
+          result != null ? '$mode识别成功！识别到: $result' : '$mode识别成功（返回空结果）',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('测试失败: $e'),
-            backgroundColor: WFColors.error,
-          ),
-        );
+        WFSnackBar.error(context, '测试失败: $e');
       }
     } finally {
       setState(() => _isTesting = false);

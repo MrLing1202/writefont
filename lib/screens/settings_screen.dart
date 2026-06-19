@@ -79,12 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _recognition.setUseCloud(value);
     if (mounted) {
       setState(() => _useCloud = value);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(value ? '已切换到云端识别' : '已切换到本地识别'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+      WFSnackBar.show(context, value ? '已切换到云端识别' : '已切换到本地识别');
     }
   }
 
@@ -94,15 +89,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await StorageService.cleanupTemp();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('临时文件已清除')),
-        );
+        WFSnackBar.show(context, '临时文件已清除');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('清除失败: $e')),
-        );
+        WFSnackBar.error(context, '清除失败: $e');
       }
     } finally {
       if (mounted) setState(() => _isClearing = false);
@@ -119,9 +110,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _smoothness = AppConfigService.defaultSmoothness;
         _strokeWidth = AppConfigService.defaultStrokeWidth;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('参数已重置为默认值')),
-      );
+      WFSnackBar.show(context, '参数已重置为默认值');
     }
   }
 
@@ -166,12 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _themeMode = mode);
       // 通知主页面刷新主题
       widget.onThemeChanged?.call();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('外观已切换为${_themeModeLabel(mode)}'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+      WFSnackBar.show(context, '外观已切换为${_themeModeLabel(mode)}');
     }
   }
 
@@ -351,9 +335,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const OcrSettingsScreen(),
-                  ),
+                  WFAnimations.slideRoute(const OcrSettingsScreen()),
                 );
               },
             ),
@@ -555,9 +537,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               } else {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('无法打开链接')),
-                  );
+                  WFSnackBar.error(context, '无法打开链接');
                 }
               }
             },

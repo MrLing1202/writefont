@@ -82,9 +82,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载项目失败: $e')),
-        );
+        WFSnackBar.error(context, '加载项目失败: $e');
       }
     }
   }
@@ -116,9 +114,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('分享失败: $e')),
-        );
+        WFSnackBar.error(context, '分享失败: $e');
       }
     }
   }
@@ -135,9 +131,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
 
       if (editedCount == 0) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('没有可导出的字符，请先编辑字符轮廓')),
-          );
+          WFSnackBar.show(context, '没有可导出的字符，请先编辑字符轮廓');
         }
         return;
       }
@@ -146,15 +140,11 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
       await StorageService.shareTtf(filePath);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已导出 $editedCount 个字符的字体文件')),
-        );
+        WFSnackBar.show(context, '已导出 $editedCount 个字符的字体文件');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
-        );
+        WFSnackBar.error(context, '导出失败: $e');
       }
     } finally {
       if (mounted) {
@@ -188,9 +178,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => FontTestScreen(project: _project),
-                      ),
+                      WFAnimations.slideRoute(FontTestScreen(project: _project)),
                     );
                   },
                 ),

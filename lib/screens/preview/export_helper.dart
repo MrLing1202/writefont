@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/project.dart';
 import '../../services/storage_service.dart';
+import '../../theme/app_theme.dart';
 import 'export_dialogs.dart';
 import '../font_metadata_screen.dart';
 
@@ -49,11 +50,10 @@ String mapExportError(String errorStr) {
 Future<void> saveProjectWithFeedback(BuildContext context, FontProject project) async {
   await StorageService.saveProject(project);
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('项目「${project.name}」已保存'),
-        action: SnackBarAction(label: '知道了', onPressed: () {}),
-      ),
+    WFSnackBar.show(
+      context,
+      '项目「${project.name}」已保存',
+      action: SnackBarAction(label: '知道了', onPressed: () {}),
     );
   }
 }
@@ -62,13 +62,12 @@ Future<void> saveProjectWithFeedback(BuildContext context, FontProject project) 
 Future<void> exportBackupWithFeedback(BuildContext context, FontProject project) async {
   final filePath = await StorageService.exportProject(project);
   if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('备份已导出: ${project.name}_backup.json'),
-        action: SnackBarAction(
-          label: '分享',
-          onPressed: () => StorageService.shareTtf(filePath),
-        ),
+    WFSnackBar.show(
+      context,
+      '备份已导出: ${project.name}_backup.json',
+      action: SnackBarAction(
+        label: '分享',
+        onPressed: () => StorageService.shareTtf(filePath),
       ),
     );
   }

@@ -115,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => SettingsScreen(
+                WFAnimations.slideRoute(SettingsScreen(
                   onThemeChanged: widget.onThemeChanged,
                 )),
               );
@@ -161,9 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const WritingTipsScreen(),
-                      ),
+                      WFAnimations.slideRoute(const WritingTipsScreen()),
                     );
                   },
                 ),
@@ -207,7 +205,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onFontPreviewTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const FontPreviewScreen()),
+                      WFAnimations.slideRoute(const FontPreviewScreen()),
                     );
                   },
                 ),

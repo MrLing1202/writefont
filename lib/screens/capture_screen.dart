@@ -43,9 +43,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('拍照失败: $e')),
-        );
+        WFSnackBar.error(context, '拍照失败: $e');
       }
     }
   }
@@ -63,9 +61,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('选择图片失败: $e')),
-        );
+        WFSnackBar.error(context, '选择图片失败: $e');
       }
     }
   }
@@ -80,12 +76,10 @@ class _CaptureScreenState extends State<CaptureScreen> {
       if (!mounted) return;
 
       final confirmed = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => ImagePreviewScreen(
-            imagePath: photo.path,
-            quality: quality,
-          ),
-        ),
+        WFAnimations.slideRoute<bool>(ImagePreviewScreen(
+          imagePath: photo.path,
+          quality: quality,
+        )),
       );
 
       if (confirmed == true && mounted) {
@@ -95,9 +89,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('图片处理失败: $e')),
-        );
+        WFSnackBar.error(context, '图片处理失败: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -112,9 +104,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
   Future<void> _proceed() async {
     if (_selectedImages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请至少选择一张图片')),
-      );
+      WFSnackBar.show(context, '请至少选择一张图片');
       return;
     }
 
@@ -138,9 +128,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('读取图片失败: $e')),
-        );
+        WFSnackBar.error(context, '读取图片失败: $e');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -151,9 +139,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   void _showGridGuideDialog() {
     final charset = widget.charset;
     if (charset == null || charset.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('自由模式下无网格引导')),
-      );
+      WFSnackBar.show(context, '自由模式下无网格引导');
       return;
     }
     setState(() {
@@ -186,24 +172,19 @@ class _CaptureScreenState extends State<CaptureScreen> {
 
         if (mounted) {
           if (poorCount > 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('已添加 ${photos.length} 张图片，其中 $poorCount 张质量较差，可能影响识别效果'),
-                duration: const Duration(seconds: 3),
-              ),
+            WFSnackBar.showWithDuration(
+              context,
+              '已添加 ${photos.length} 张图片，其中 $poorCount 张质量较差，可能影响识别效果',
+              duration: const Duration(seconds: 3),
             );
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已添加 ${photos.length} 张图片')),
-            );
+            WFSnackBar.show(context, '已添加 ${photos.length} 张图片');
           }
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('选择图片失败: $e')),
-        );
+        WFSnackBar.error(context, '选择图片失败: $e');
       }
     }
   }

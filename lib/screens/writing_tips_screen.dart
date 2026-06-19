@@ -241,9 +241,7 @@ class WritingTipsScreen extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (context) => const CharsetGuideScreen(),
-                    ),
+                    WFAnimations.slideRoute(const CharsetGuideScreen()),
                   );
                 },
                 icon: const Icon(Icons.arrow_forward),

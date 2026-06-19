@@ -469,11 +469,11 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
   void _showBrushWidthDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('画笔粗细'),
-        content: StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Column(
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return WFDialog(
+            title: '画笔粗细',
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Slider(
@@ -482,6 +482,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                   max: 10.0,
                   divisions: 9,
                   label: '${strokeWidth.round()}px',
+                  activeColor: WFColors.primary,
                   onChanged: (v) {
                     setDialogState(() {});
                     setState(() => strokeWidth = v);
@@ -489,18 +490,23 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                 ),
                 Text(
                   '${strokeWidth.round()}px',
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: WFColors.textPrimary,
+                  ),
                 ),
               ],
-            );
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('确定'),
-          ),
-        ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(foregroundColor: WFColors.primary),
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

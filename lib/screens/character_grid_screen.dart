@@ -158,9 +158,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
       // 未编辑字符 → 进入拍照页面
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => CaptureScreen(charset: [char]),
-        ),
+        WFAnimations.slideRoute(CaptureScreen(charset: [char])),
       ).then((_) async {
         // 拍照返回后重新加载项目数据
         final updated = await StorageService.loadProject(_project.id);
@@ -197,25 +195,23 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
 
   /// 批量删除选中字符
   void _batchDelete() {
-    showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('批量删除'),
-        content: Text('确定要删除已选的 ${_selectedChars.length} 个字符吗？\n删除后不可恢复。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+    WFDialog.show<bool>(
+      context,
+      title: '批量删除',
+      content: Text('确定要删除已选的 ${_selectedChars.length} 个字符吗？\n删除后不可恢复。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: FilledButton.styleFrom(
+            backgroundColor: WFColors.error,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+          child: const Text('删除'),
+        ),
+      ],
     ).then((confirmed) {
       if (confirmed == true) {
         setState(() {
@@ -237,9 +233,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
     } catch (e) {
       debugPrint('保存项目失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('保存失败，请重试')),
-        );
+        WFSnackBar.error(context, '保存失败，请重试');
       }
     }
   }
@@ -285,9 +279,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => FontTestScreen(project: _project),
-                      ),
+                      WFAnimations.slideRoute(FontTestScreen(project: _project)),
                     );
                   },
                   icon: const Icon(Icons.text_fields),
@@ -297,9 +289,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => FontQualityScreen(project: _project),
-                      ),
+                      WFAnimations.slideRoute(FontQualityScreen(project: _project)),
                     );
                   },
                   icon: const Icon(Icons.assessment),

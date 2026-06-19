@@ -68,9 +68,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(mapExportError(e.toString())), duration: const Duration(seconds: 4)),
-        );
+        WFSnackBar.error(context, mapExportError(e.toString()));
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
@@ -86,9 +84,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     if (result != null) {
       setState(() => _fontMetadata = result);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('元数据已更新，可直接导出字体')),
-        );
+        WFSnackBar.show(context, '元数据已更新，可直接导出字体');
       }
     }
   }
@@ -116,9 +112,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       await saveProjectWithFeedback(context, widget.project);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败: $e')),
-        );
+        WFSnackBar.error(context, '保存失败: $e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -131,9 +125,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       await exportBackupWithFeedback(context, widget.project);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('备份导出失败: $e')),
-        );
+        WFSnackBar.error(context, '备份导出失败: $e');
       }
     }
   }

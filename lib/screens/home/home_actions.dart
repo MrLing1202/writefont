@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/project.dart';
 import '../../services/storage_service.dart';
+import '../../theme/app_theme.dart';
 import '../auto_generate_screen.dart';
 import '../capture_screen.dart';
 import '../character_grid_screen.dart';
@@ -16,38 +17,26 @@ class HomeActions {
     if (!context.mounted) return;
 
     if (projects.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先创建并保存一个字体项目')),
-      );
+      WFSnackBar.show(context, '请先创建并保存一个字体项目');
       return;
     }
 
-    final selected = await showDialog<FontProject>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('选择项目'),
-        children: projects
-            .map(
-              (p) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, p),
-                child: ListTile(
-                  leading: const Icon(Icons.folder),
-                  title: Text(p.name),
-                  subtitle: Text('${p.glyphs.length} 个字符'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            )
-            .toList(),
+    final selected = await WFDialog.singleChoice<FontProject>(
+      context,
+      title: '选择项目',
+      items: projects,
+      itemBuilder: (p) => ListTile(
+        leading: const Icon(Icons.folder, color: WFColors.primary),
+        title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('${p.glyphs.length} 个字符'),
+        contentPadding: EdgeInsets.zero,
       ),
     );
 
     if (selected != null && context.mounted) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => CharacterGridScreen(project: selected),
-        ),
+        WFAnimations.slideRoute(CharacterGridScreen(project: selected)),
       );
     }
   }
@@ -73,9 +62,7 @@ class HomeActions {
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => CaptureScreen(charset: quickCharsList),
-      ),
+      WFAnimations.slideRoute(CaptureScreen(charset: quickCharsList)),
     );
   }
 
@@ -125,9 +112,7 @@ class HomeActions {
     if (context.mounted) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => AutoGenerateScreen(imageBytes: imageBytes),
-        ),
+        WFAnimations.slideRoute(AutoGenerateScreen(imageBytes: imageBytes)),
       );
     }
   }
@@ -145,9 +130,7 @@ class HomeActions {
       if (context.mounted) {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => ProcessingScreen(sourceImages: imageBytes),
-          ),
+          WFAnimations.slideRoute(ProcessingScreen(sourceImages: imageBytes)),
         );
       }
     }
@@ -157,7 +140,7 @@ class HomeActions {
   static Future<void> openProjectList(BuildContext context) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ProjectListScreen()),
+      WFAnimations.slideRoute(const ProjectListScreen()),
     );
   }
 }
