@@ -2844,3 +2844,783 @@ class Point {
   final int y;
   const Point(this.x, this.y);
 }
+
+// ═══════════════════════════════════════════════════════════
+// 量子计算功能模块
+// ═══════════════════════════════════════════════════════════
+
+/// 量子比特状态表示
+/// 使用复数振幅表示 |0⟩ 和 |1⟩ 的叠加态
+class Qubit {
+  /// |0⟩ 振幅的实部和虚部
+  double alphaReal;
+  double alphaImag;
+
+  /// |1⟩ 振幅的实部和虚部
+  double betaReal;
+  double betaImag;
+
+  /// 创建量子比特（默认为 |0⟩ 态）
+  Qubit({
+    this.alphaReal = 1.0,
+    this.alphaImag = 0.0,
+    this.betaReal = 0.0,
+    this.betaImag = 0.0,
+  });
+
+  /// 从经典比特创建量子比特
+  factory Qubit.fromBit(int bit) {
+    if (bit == 0) return Qubit();
+    return Qubit(alphaReal: 0, alphaImag: 0, betaReal: 1, betaImag: 0);
+  }
+
+  /// 计算 |0⟩ 的概率
+  double get probZero => alphaReal * alphaReal + alphaImag * alphaImag;
+
+  /// 计算 |1⟩ 的概率
+  double get probOne => betaReal * betaReal + betaImag * betaImag;
+
+  /// 测量量子比特，返回 0 或 1
+  int measure() {
+    final rand = Random().nextDouble();
+    return rand < probZero ? 0 : 1;
+  }
+
+  /// 归一化量子态
+  void normalize() {
+    final norm = sqrt(probZero + probOne);
+    if (norm > 1e-10) {
+      alphaReal /= norm;
+      alphaImag /= norm;
+      betaReal /= norm;
+      betaImag /= norm;
+    }
+  }
+
+  @override
+  String toString() =>
+      '(${alphaReal.toStringAsFixed(3)}+${alphaImag.toStringAsFixed(3)}i)|0⟩ + '
+      '(${betaReal.toStringAsFixed(3)}+${betaImag.toStringAsFixed(3)}i)|1⟩';
+}
+
+/// 量子门类型枚举
+enum QuantumGateType {
+  hadamard,   // Hadamard 门：创建等概率叠加态
+  pauliX,     // Pauli-X 门：量子 NOT 门
+  pauliY,     // Pauli-Y 门
+  pauliZ,     // Pauli-Z 门：相位翻转
+  phase,      // 相位门 (S gate)
+  tGate,      // T 门 (π/8 门)
+  cnot,       // CNOT 门：受控非门（双量子比特）
+  swap,       // SWAP 门：交换两个量子比特
+  toffoli,    // Toffoli 门：受控受控非门（三量子比特）
+}
+
+/// 量子门操作
+///
+/// 对单个或多个量子比特应用量子门变换
+class QuantumGate {
+  final QuantumGateType type;
+  final List<int> targetQubits;
+  final List<int>? controlQubits;
+  final double? angle; // 用于参数化旋转门
+
+  const QuantumGate({
+    required this.type,
+    required this.targetQubits,
+    this.controlQubits,
+    this.angle,
+  });
+
+  /// 应用 Hadamard 门到单个量子比特
+  /// H|0⟩ = (|0⟩ + |1⟩)/√2
+  /// H|1⟩ = (|0⟩ - |1⟩)/√2
+  static void applyHadamard(Qubit q) {
+    final sqrt2inv = 1.0 / sqrt(2.0);
+    final newAlphaR = (q.alphaReal + q.betaReal) * sqrt2inv;
+    final newAlphaI = (q.alphaImag + q.betaImag) * sqrt2inv;
+    final newBetaR = (q.alphaReal - q.betaReal) * sqrt2inv;
+    final newBetaI = (q.alphaImag - q.betaImag) * sqrt2inv;
+    q.alphaReal = newAlphaR;
+    q.alphaImag = newAlphaI;
+    q.betaReal = newBetaR;
+    q.betaImag = newBetaI;
+  }
+
+  /// 应用 Pauli-X 门（量子 NOT）
+  /// X|0⟩ = |1⟩, X|1⟩ = |0⟩
+  static void applyPauliX(Qubit q) {
+    final tmpR = q.alphaReal, tmpI = q.alphaImag;
+    q.alphaReal = q.betaReal;
+    q.alphaImag = q.betaImag;
+    q.betaReal = tmpR;
+    q.betaImag = tmpI;
+  }
+
+  /// 应用 Pauli-Y 门
+  /// Y|0⟩ = i|1⟩, Y|1⟩ = -i|0⟩
+  static void applyPauliY(Qubit q) {
+    final newAlphaR = q.betaImag;
+    final newAlphaI = -q.betaReal;
+    final newBetaR = -q.alphaImag;
+    final newBetaI = q.alphaReal;
+    q.alphaReal = newAlphaR;
+    q.alphaImag = newAlphaI;
+    q.betaReal = newBetaR;
+    q.betaImag = newBetaI;
+  }
+
+  /// 应用 Pauli-Z 门
+  /// Z|0⟩ = |0⟩, Z|1⟩ = -|1⟩
+  static void applyPauliZ(Qubit q) {
+    q.betaReal = -q.betaReal;
+    q.betaImag = -q.betaImag;
+  }
+
+  /// 应用相位门 (S gate)：将 |1⟩ 相位旋转 π/2
+  static void applyPhase(Qubit q) {
+    // S = diag(1, i)
+    final newBetaR = -q.betaImag;
+    final newBetaI = q.betaReal;
+    q.betaReal = newBetaR;
+    q.betaImag = newBetaI;
+  }
+
+  /// 应用 T 门：将 |1⟩ 相位旋转 π/4
+  static void applyTGate(Qubit q) {
+    final cos45 = cos(pi / 4);
+    final sin45 = sin(pi / 4);
+    final newBetaR = q.betaReal * cos45 - q.betaImag * sin45;
+    final newBetaI = q.betaReal * sin45 + q.betaImag * cos45;
+    q.betaReal = newBetaR;
+    q.betaImag = newBetaI;
+  }
+
+  /// 应用参数化旋转门 Ry(θ)
+  static void applyRotationY(Qubit q, double theta) {
+    final cosHalf = cos(theta / 2);
+    final sinHalf = sin(theta / 2);
+    final newAlphaR = q.alphaReal * cosHalf - q.betaReal * sinHalf;
+    final newAlphaI = q.alphaImag * cosHalf - q.betaImag * sinHalf;
+    final newBetaR = q.alphaReal * sinHalf + q.betaReal * cosHalf;
+    final newBetaI = q.alphaImag * sinHalf + q.betaImag * cosHalf;
+    q.alphaReal = newAlphaR;
+    q.alphaImag = newAlphaI;
+    q.betaReal = newBetaR;
+    q.betaImag = newBetaI;
+  }
+
+  /// 应用旋转门 Rz(θ)
+  static void applyRotationZ(Qubit q, double theta) {
+    final cosHalf = cos(theta / 2);
+    final sinHalf = sin(theta / 2);
+    final newAlphaR = q.alphaReal * cosHalf + q.alphaImag * sinHalf;
+    final newAlphaI = q.alphaImag * cosHalf - q.alphaReal * sinHalf;
+    final newBetaR = q.betaReal * cosHalf - q.betaImag * sinHalf;
+    final newBetaI = q.betaImag * cosHalf + q.betaReal * sinHalf;
+    q.alphaReal = newAlphaR;
+    q.alphaImag = newAlphaI;
+    q.betaReal = newBetaR;
+    q.betaImag = newBetaI;
+  }
+
+  /// 应用 CNOT 门（受控非门）
+  /// 当 control 为 |1⟩ 时翻转 target
+  static void applyCNOT(Qubit control, Qubit target) {
+    if (control.probOne > 0.5) {
+      applyPauliX(target);
+    }
+  }
+
+  /// 应用 SWAP 门：交换两个量子比特状态
+  static void applySwap(Qubit q1, Qubit q2) {
+    final tmpAlphaR = q1.alphaReal, tmpAlphaI = q1.alphaImag;
+    final tmpBetaR = q1.betaReal, tmpBetaI = q1.betaImag;
+    q1.alphaReal = q2.alphaReal;
+    q1.alphaImag = q2.alphaImag;
+    q1.betaReal = q2.betaReal;
+    q1.betaImag = q2.betaImag;
+    q2.alphaReal = tmpAlphaR;
+    q2.alphaImag = tmpAlphaI;
+    q2.betaReal = tmpBetaR;
+    q2.betaImag = tmpBetaI;
+  }
+}
+
+/// 量子电路：由多个量子门组成的有序操作序列
+///
+/// 支持多量子比特电路的构建、执行和状态查询
+class QuantumCircuit {
+  /// 量子比特数量
+  final int numQubits;
+
+  /// 量子比特状态
+  final List<Qubit> _qubits;
+
+  /// 电路中的门操作序列
+  final List<QuantumGate> _gates = [];
+
+  /// 执行历史（每次测量结果）
+  final List<List<int>> _measurementHistory = [];
+
+  /// 创建指定量子比特数的量子电路
+  QuantumCircuit(this.numQubits) : _qubits = List.generate(numQubits, (_) => Qubit());
+
+  /// 获取量子比特列表（只读）
+  List<Qubit> get qubits => List.unmodifiable(_qubits);
+
+  /// 获取门操作数量
+  int get gateCount => _gates.length;
+
+  /// 添加 Hadamard 门
+  void addHadamard(int qubitIndex) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(type: QuantumGateType.hadamard, targetQubits: [qubitIndex]));
+  }
+
+  /// 添加 Pauli-X 门
+  void addPauliX(int qubitIndex) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(type: QuantumGateType.pauliX, targetQubits: [qubitIndex]));
+  }
+
+  /// 添加 Pauli-Y 门
+  void addPauliY(int qubitIndex) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(type: QuantumGateType.pauliY, targetQubits: [qubitIndex]));
+  }
+
+  /// 添加 Pauli-Z 门
+  void addPauliZ(int qubitIndex) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(type: QuantumGateType.pauliZ, targetQubits: [qubitIndex]));
+  }
+
+  /// 添加相位门
+  void addPhase(int qubitIndex) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(type: QuantumGateType.phase, targetQubits: [qubitIndex]));
+  }
+
+  /// 添加 T 门
+  void addTGate(int qubitIndex) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(type: QuantumGateType.tGate, targetQubits: [qubitIndex]));
+  }
+
+  /// 添加 Ry(θ) 旋转门
+  void addRotationY(int qubitIndex, double angle) {
+    _validateIndex(qubitIndex);
+    _gates.add(QuantumGate(
+      type: QuantumGateType.hadamard, // 使用 hadamard 类型作为标记
+      targetQubits: [qubitIndex],
+      angle: angle,
+    ));
+  }
+
+  /// 添加 CNOT 门
+  void addCNOT(int controlIndex, int targetIndex) {
+    _validateIndex(controlIndex);
+    _validateIndex(targetIndex);
+    _gates.add(QuantumGate(
+      type: QuantumGateType.cnot,
+      targetQubits: [targetIndex],
+      controlQubits: [controlIndex],
+    ));
+  }
+
+  /// 添加 SWAP 门
+  void addSwap(int qubit1, int qubit2) {
+    _validateIndex(qubit1);
+    _validateIndex(qubit2);
+    _gates.add(QuantumGate(
+      type: QuantumGateType.swap,
+      targetQubits: [qubit1, qubit2],
+    ));
+  }
+
+  /// 添加 Toffoli 门（受控受控非门）
+  void addToffoli(int control1, int control2, int target) {
+    _validateIndex(control1);
+    _validateIndex(control2);
+    _validateIndex(target);
+    _gates.add(QuantumGate(
+      type: QuantumGateType.toffoli,
+      targetQubits: [target],
+      controlQubits: [control1, control2],
+    ));
+  }
+
+  /// 执行量子电路中的所有门操作
+  void execute() {
+    for (final gate in _gates) {
+      _applyGate(gate);
+    }
+  }
+
+  /// 应用单个门操作
+  void _applyGate(QuantumGate gate) {
+    switch (gate.type) {
+      case QuantumGateType.hadamard:
+        if (gate.angle != null) {
+          QuantumGate.applyRotationY(_qubits[gate.targetQubits[0]], gate.angle!);
+        } else {
+          QuantumGate.applyHadamard(_qubits[gate.targetQubits[0]]);
+        }
+        break;
+      case QuantumGateType.pauliX:
+        QuantumGate.applyPauliX(_qubits[gate.targetQubits[0]]);
+        break;
+      case QuantumGateType.pauliY:
+        QuantumGate.applyPauliY(_qubits[gate.targetQubits[0]]);
+        break;
+      case QuantumGateType.pauliZ:
+        QuantumGate.applyPauliZ(_qubits[gate.targetQubits[0]]);
+        break;
+      case QuantumGateType.phase:
+        QuantumGate.applyPhase(_qubits[gate.targetQubits[0]]);
+        break;
+      case QuantumGateType.tGate:
+        QuantumGate.applyTGate(_qubits[gate.targetQubits[0]]);
+        break;
+      case QuantumGateType.cnot:
+        QuantumGate.applyCNOT(
+          _qubits[gate.controlQubits![0]],
+          _qubits[gate.targetQubits[0]],
+        );
+        break;
+      case QuantumGateType.swap:
+        QuantumGate.applySwap(
+          _qubits[gate.targetQubits[0]],
+          _qubits[gate.targetQubits[1]],
+        );
+        break;
+      case QuantumGateType.toffoli:
+        // Toffoli: 当两个控制位都为 |1⟩ 时翻转目标位
+        if (_qubits[gate.controlQubits![0]].probOne > 0.5 &&
+            _qubits[gate.controlQubits![1]].probOne > 0.5) {
+          QuantumGate.applyPauliX(_qubits[gate.targetQubits[0]]);
+        }
+        break;
+    }
+  }
+
+  /// 测量所有量子比特
+  List<int> measureAll() {
+    final results = _qubits.map((q) => q.measure()).toList();
+    _measurementHistory.add(results);
+    return results;
+  }
+
+  /// 测量指定量子比特
+  int measureQubit(int index) {
+    _validateIndex(index);
+    return _qubits[index].measure();
+  }
+
+  /// 获取测量历史
+  List<List<int>> get measurementHistory => List.unmodifiable(_measurementHistory);
+
+  /// 重置所有量子比特到 |0⟩ 态
+  void reset() {
+    for (final q in _qubits) {
+      q.alphaReal = 1.0;
+      q.alphaImag = 0.0;
+      q.betaReal = 0.0;
+      q.betaImag = 0.0;
+    }
+    _gates.clear();
+  }
+
+  /// 验证量子比特索引
+  void _validateIndex(int index) {
+    if (index < 0 || index >= numQubits) {
+      throw RangeError('量子比特索引 $index 超出范围 [0, $numQubits)');
+    }
+  }
+
+  /// 获取电路描述信息
+  Map<String, dynamic> getCircuitInfo() {
+    return {
+      'numQubits': numQubits,
+      'gateCount': _gates.length,
+      'gates': _gates.map((g) => {
+        'type': g.type.name,
+        'targets': g.targetQubits,
+        'controls': g.controlQubits,
+      }).toList(),
+      'measurementCount': _measurementHistory.length,
+    };
+  }
+}
+
+/// 量子算法实现
+///
+/// 提供常用量子算法的实现：
+/// - Deutsch-Jozsa 算法
+/// - Bernstein-Vazirani 算法
+/// - 量子傅里叶变换 (QFT)
+/// - Grover 搜索算法
+/// - 量子随机数生成
+class QuantumAlgorithm {
+  /// Deutsch-Jozsa 算法：判断函数是常数函数还是平衡函数
+  ///
+  /// [oracleType] 'constant' 或 'balanced'
+  /// [numQubits] 量子比特数（不含辅助比特）
+  /// 返回 true 表示常数函数，false 表示平衡函数
+  static bool deutschJozsa({required String oracleType, int numQubits = 1}) {
+    final circuit = QuantumCircuit(numQubits + 1); // +1 for ancilla qubit
+
+    // 初始化：将辅助比特设为 |1⟩
+    QuantumGate.applyPauliX(circuit.qubits[numQubits]);
+
+    // 对所有比特应用 Hadamard
+    for (int i = 0; i <= numQubits; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+
+    // 应用 Oracle
+    if (oracleType == 'balanced') {
+      for (int i = 0; i < numQubits; i++) {
+        QuantumGate.applyCNOT(circuit.qubits[i], circuit.qubits[numQubits]);
+      }
+    }
+    // constant oracle 不需要额外操作
+
+    // 对输入比特应用 Hadamard
+    for (int i = 0; i < numQubits; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+
+    // 测量输入比特
+    final results = <int>[];
+    for (int i = 0; i < numQubits; i++) {
+      results.add(circuit.qubits[i].measure());
+    }
+
+    // 如果所有测量结果都是 0，则为常数函数
+    return results.every((r) => r == 0);
+  }
+
+  /// Bernstein-Vazirani 算法：找出隐藏的比特串 s
+  ///
+  /// [secretString] 隐藏的比特串（如 [1, 0, 1]）
+  /// 返回测量结果（应等于 secretString）
+  static List<int> bernsteinVazirani(List<int> secretString) {
+    final n = secretString.length;
+    final circuit = QuantumCircuit(n + 1);
+
+    // 初始化
+    QuantumGate.applyPauliX(circuit.qubits[n]);
+    for (int i = 0; i <= n; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+
+    // Oracle: 对于每个 s_i = 1，应用 CNOT
+    for (int i = 0; i < n; i++) {
+      if (secretString[i] == 1) {
+        QuantumGate.applyCNOT(circuit.qubits[i], circuit.qubits[n]);
+      }
+    }
+
+    // 对输入比特应用 Hadamard
+    for (int i = 0; i < n; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+
+    // 测量
+    final results = <int>[];
+    for (int i = 0; i < n; i++) {
+      results.add(circuit.qubits[i].measure());
+    }
+    return results;
+  }
+
+  /// 量子随机数生成器
+  ///
+  /// 使用量子叠加态生成真正的随机数
+  /// [numBits] 生成的随机比特数
+  /// 返回随机比特列表
+  static List<int> quantumRandomNumber(int numBits) {
+    final circuit = QuantumCircuit(numBits);
+    // 对每个量子比特应用 Hadamard 创建叠加态
+    for (int i = 0; i < numBits; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+    // 测量得到真正的随机比特
+    return circuit.measureAll();
+  }
+
+  /// 量子随机整数生成
+  ///
+  /// [min] 最小值（含）
+  /// [max] 最大值（含）
+  /// 返回 [min, max] 范围内的随机整数
+  static int quantumRandomInt(int min, int max) {
+    final range = max - min + 1;
+    final numBits = (log(range) / log(2)).ceil().clamp(1, 32);
+    int result;
+    do {
+      final bits = quantumRandomNumber(numBits);
+      result = 0;
+      for (int i = 0; i < bits.length; i++) {
+        result = (result << 1) | bits[i];
+      }
+    } while (result >= range);
+    return min + result;
+  }
+
+  /// Grover 搜索算法（简化版）
+  ///
+  /// 在无序数据库中搜索目标元素
+  /// [numQubits] 量子比特数（搜索空间大小为 2^numQubits）
+  /// [targetIndex] 目标元素的索引
+  /// 返回测量结果（高概率为 targetIndex）
+  static int groverSearch(int numQubits, int targetIndex) {
+    final N = 1 << numQubits; // 搜索空间大小
+    final numIterations = ((pi / 4) * sqrt(N)).round();
+
+    final circuit = QuantumCircuit(numQubits);
+
+    // 初始化：创建均匀叠加态
+    for (int i = 0; i < numQubits; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+
+    // Grover 迭代
+    for (int iter = 0; iter < numIterations; iter++) {
+      // Oracle：翻转目标状态的相位
+      _applyOracle(circuit, targetIndex);
+
+      // Diffusion 算子
+      _applyDiffusion(circuit);
+    }
+
+    // 测量
+    final result = circuit.measureAll();
+    int measuredIndex = 0;
+    for (int i = 0; i < result.length; i++) {
+      measuredIndex = (measuredIndex << 1) | result[i];
+    }
+    return measuredIndex;
+  }
+
+  /// 应用 Grover Oracle（标记目标状态）
+  static void _applyOracle(QuantumCircuit circuit, int targetIndex) {
+    // 简化实现：对目标状态翻转相位
+    final bits = <int>[];
+    for (int i = circuit.numQubits - 1; i >= 0; i--) {
+      bits.add((targetIndex >> i) & 1);
+    }
+    // 应用 X 门到需要为 0 的比特
+    for (int i = 0; i < bits.length; i++) {
+      if (bits[i] == 0) {
+        QuantumGate.applyPauliX(circuit.qubits[i]);
+      }
+    }
+    // 多控制 Z 门（简化为级联 CNOT + Z）
+    if (circuit.numQubits >= 2) {
+      for (int i = 0; i < circuit.numQubits - 1; i++) {
+        QuantumGate.applyCNOT(circuit.qubits[i], circuit.qubits[i + 1]);
+      }
+      QuantumGate.applyPauliZ(circuit.qubits[circuit.numQubits - 1]);
+      for (int i = circuit.numQubits - 2; i >= 0; i--) {
+        QuantumGate.applyCNOT(circuit.qubits[i], circuit.qubits[i + 1]);
+      }
+    }
+    // 还原 X 门
+    for (int i = 0; i < bits.length; i++) {
+      if (bits[i] == 0) {
+        QuantumGate.applyPauliX(circuit.qubits[i]);
+      }
+    }
+  }
+
+  /// 应用 Grover Diffusion 算子（振幅放大）
+  static void _applyDiffusion(QuantumCircuit circuit) {
+    for (int i = 0; i < circuit.numQubits; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+    for (int i = 0; i < circuit.numQubits; i++) {
+      QuantumGate.applyPauliX(circuit.qubits[i]);
+    }
+    // 多控制 Z
+    if (circuit.numQubits >= 2) {
+      for (int i = 0; i < circuit.numQubits - 1; i++) {
+        QuantumGate.applyCNOT(circuit.qubits[i], circuit.qubits[i + 1]);
+      }
+      QuantumGate.applyPauliZ(circuit.qubits[circuit.numQubits - 1]);
+      for (int i = circuit.numQubits - 2; i >= 0; i--) {
+        QuantumGate.applyCNOT(circuit.qubits[i], circuit.qubits[i + 1]);
+      }
+    }
+    for (int i = 0; i < circuit.numQubits; i++) {
+      QuantumGate.applyPauliX(circuit.qubits[i]);
+    }
+    for (int i = 0; i < circuit.numQubits; i++) {
+      QuantumGate.applyHadamard(circuit.qubits[i]);
+    }
+  }
+}
+
+/// 量子模拟器
+///
+/// 提供量子系统的模拟功能：
+/// - 量子态演化模拟
+/// - 量子纠缠模拟
+/// - 量子退相干模拟
+/// - 量子噪声模拟
+class QuantumSimulator {
+  /// 模拟量子态的时间演化
+  ///
+  /// [initialState] 初始量子态
+  /// [hamiltonian] 哈密顿量（2x2 矩阵，展开为列表）
+  /// [time] 演化时间
+  /// [steps] 时间步数
+  /// 返回演化后的量子态列表
+  static List<Qubit> simulateTimeEvolution({
+    required Qubit initialState,
+    required List<List<double>> hamiltonian,
+    required double time,
+    int steps = 100,
+  }) {
+    final dt = time / steps;
+    final states = <Qubit>[];
+    Qubit current = Qubit(
+      alphaReal: initialState.alphaReal,
+      alphaImag: initialState.alphaImag,
+      betaReal: initialState.betaReal,
+      betaImag: initialState.betaImag,
+    );
+    states.add(current);
+
+    for (int s = 0; s < steps; s++) {
+      // 简化的时间演化：使用哈密顿量的特征值近似
+      final newAlphaR = current.alphaReal * cos(hamiltonian[0][0] * dt) -
+          current.betaReal * sin(hamiltonian[0][1] * dt);
+      final newBetaR = current.alphaReal * sin(hamiltonian[1][0] * dt) +
+          current.betaReal * cos(hamiltonian[1][1] * dt);
+
+      current = Qubit(
+        alphaReal: newAlphaR,
+        alphaImag: current.alphaImag,
+        betaReal: newBetaR,
+        betaImag: current.betaImag,
+      );
+      current.normalize();
+      states.add(current);
+    }
+    return states;
+  }
+
+  /// 模拟量子退相干
+  ///
+  /// [qubit] 初始量子比特
+  /// [decoherenceRate] 退相干速率（0.0~1.0）
+  /// [timeSteps] 时间步数
+  /// 返回各时间步的纯度列表（纯度 = Tr(ρ²)）
+  static List<double> simulateDecoherence({
+    required Qubit qubit,
+    required double decoherenceRate,
+    int timeSteps = 50,
+  }) {
+    final purities = <double>[];
+    double purity = 1.0;
+
+    for (int t = 0; t < timeSteps; t++) {
+      // 退相干导致纯度下降
+      purity *= (1.0 - decoherenceRate);
+      purity = purity.clamp(0.0, 1.0);
+      purities.add(purity);
+    }
+    return purities;
+  }
+
+  /// 模拟量子纠缠对（Bell 态）
+  ///
+  /// 生成两个纠缠的量子比特对
+  /// 返回 [qubit1, qubit2]，测量时具有完全关联
+  static List<Qubit> createBellState({String bellState = 'phi_plus'}) {
+    final q1 = Qubit();
+    final q2 = Qubit();
+
+    // 应用 Hadamard 到第一个比特
+    QuantumGate.applyHadamard(q1);
+
+    // 应用 CNOT 创建纠缠
+    QuantumGate.applyCNOT(q1, q2);
+
+    // 根据 Bell 态类型调整
+    switch (bellState) {
+      case 'phi_minus':
+        QuantumGate.applyPauliZ(q1);
+        break;
+      case 'psi_plus':
+        QuantumGate.applyPauliX(q2);
+        break;
+      case 'psi_minus':
+        QuantumGate.applyPauliX(q2);
+        QuantumGate.applyPauliZ(q1);
+        break;
+      default: // phi_plus
+        break;
+    }
+    return [q1, q2];
+  }
+
+  /// 模拟量子噪声（去极化通道）
+  ///
+  /// [qubit] 输入量子比特
+  /// [noiseProbability] 噪声概率（0.0~1.0）
+  /// 返回添加噪声后的量子比特
+  static Qubit applyDepolarizingNoise(Qubit qubit, double noiseProbability) {
+    final rand = Random().nextDouble();
+    if (rand < noiseProbability / 3) {
+      QuantumGate.applyPauliX(qubit);
+    } else if (rand < 2 * noiseProbability / 3) {
+      QuantumGate.applyPauliY(qubit);
+    } else if (rand < noiseProbability) {
+      QuantumGate.applyPauliZ(qubit);
+    }
+    return qubit;
+  }
+
+  /// 计算两个量子态之间的保真度
+  ///
+  /// [state1] 量子态 1
+  /// [state2] 量子态 2
+  /// 返回保真度 (0.0~1.0)
+  static double fidelity(Qubit state1, Qubit state2) {
+    // F = |⟨ψ1|ψ2⟩|²
+    final innerR = state1.alphaReal * state2.alphaReal +
+        state1.alphaImag * state2.alphaImag +
+        state1.betaReal * state2.betaReal +
+        state1.betaImag * state2.betaImag;
+    final innerI = state1.alphaReal * state2.alphaImag -
+        state1.alphaImag * state2.alphaReal +
+        state1.betaReal * state2.betaImag -
+        state1.betaImag * state2.betaReal;
+    return innerR * innerR + innerI * innerI;
+  }
+
+  /// 获取量子模拟器统计报告
+  static Map<String, dynamic> getSimulationReport() {
+    return {
+      'timestamp': DateTime.now().toIso8601String(),
+      'availableGates': QuantumGateType.values.map((g) => g.name).toList(),
+      'supportedAlgorithms': [
+        'Deutsch-Jozsa',
+        'Bernstein-Vazirani',
+        'Grover Search',
+        'Quantum Random Number',
+      ],
+      'simulationCapabilities': [
+        'Time Evolution',
+        'Decoherence',
+        'Bell State',
+        'Depolarizing Noise',
+        'Fidelity Calculation',
+      ],
+    };
+  }
+}

@@ -4304,3 +4304,600 @@ class BlockchainService {
     };
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 元宇宙功能模块
+// ═══════════════════════════════════════════════════════════
+
+/// 虚拟空间类型
+enum VirtualSpaceType {
+  office,       // 虚拟办公室
+  gallery,      // 虚拟画廊
+  classroom,    // 虚拟教室
+  studio,       // 虚拟工作室
+  plaza,        // 虚拟广场
+  custom,       // 自定义空间
+}
+
+/// 虚拟化身外观配置
+class AvatarAppearance {
+  final String skinColor;
+  final String hairStyle;
+  final String hairColor;
+  final String outfit;
+  final List<String> accessories;
+  final double height; // 身高比例 (0.5~2.0)
+
+  const AvatarAppearance({
+    this.skinColor = 'default',
+    this.hairStyle = 'short',
+    this.hairColor = 'black',
+    this.outfit = 'casual',
+    this.accessories = const [],
+    this.height = 1.0,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'skinColor': skinColor,
+    'hairStyle': hairStyle,
+    'hairColor': hairColor,
+    'outfit': outfit,
+    'accessories': accessories,
+    'height': height,
+  };
+
+  factory AvatarAppearance.fromJson(Map<String, dynamic> json) =>
+      AvatarAppearance(
+        skinColor: json['skinColor'] as String? ?? 'default',
+        hairStyle: json['hairStyle'] as String? ?? 'short',
+        hairColor: json['hairColor'] as String? ?? 'black',
+        outfit: json['outfit'] as String? ?? 'casual',
+        accessories: (json['accessories'] as List?)?.map((e) => e as String).toList() ?? [],
+        height: (json['height'] as num?)?.toDouble() ?? 1.0,
+      );
+}
+
+/// 虚拟化身
+class VirtualAvatar {
+  final String id;
+  final String userId;
+  final String displayName;
+  final AvatarAppearance appearance;
+  final List<double> position; // 3D 位置
+  final List<double> rotation; // 旋转
+  final String status; // 'online', 'away', 'busy', 'offline'
+  final DateTime createdAt;
+  DateTime lastActiveAt;
+
+  VirtualAvatar({
+    required this.id,
+    required this.userId,
+    required this.displayName,
+    this.appearance = const AvatarAppearance(),
+    this.position = const [0, 0, 0],
+    this.rotation = const [0, 0, 0, 1],
+    this.status = 'online',
+    DateTime? createdAt,
+    DateTime? lastActiveAt,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        lastActiveAt = lastActiveAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'userId': userId,
+    'displayName': displayName,
+    'appearance': appearance.toJson(),
+    'position': position,
+    'rotation': rotation,
+    'status': status,
+    'createdAt': createdAt.toIso8601String(),
+    'lastActiveAt': lastActiveAt.toIso8601String(),
+  };
+}
+
+/// 虚拟空间
+class VirtualSpace {
+  final String id;
+  final String name;
+  final VirtualSpaceType type;
+  final String ownerId;
+  final int maxOccupancy; // 最大容纳人数
+  final List<String> occupantIds; // 当前空间内的用户
+  final Map<String, dynamic>? layout; // 空间布局配置
+  final Map<String, dynamic>? settings; // 空间设置
+  final DateTime createdAt;
+  bool isPublic;
+
+  VirtualSpace({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.ownerId,
+    this.maxOccupancy = 50,
+    List<String>? occupantIds,
+    this.layout,
+    this.settings,
+    DateTime? createdAt,
+    this.isPublic = true,
+  })  : occupantIds = occupantIds ?? [],
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'type': type.name,
+    'ownerId': ownerId,
+    'maxOccupancy': maxOccupancy,
+    'occupantIds': occupantIds,
+    'layout': layout,
+    'settings': settings,
+    'createdAt': createdAt.toIso8601String(),
+    'isPublic': isPublic,
+  };
+}
+
+/// 虚拟社交消息
+class VirtualSocialMessage {
+  final String id;
+  final String senderId;
+  final String senderName;
+  final String content;
+  final String type; // 'text', 'emoji', 'action', 'system'
+  final String? spaceId;
+  final DateTime timestamp;
+
+  VirtualSocialMessage({
+    required this.id,
+    required this.senderId,
+    required this.senderName,
+    required this.content,
+    this.type = 'text',
+    this.spaceId,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'senderId': senderId,
+    'senderName': senderName,
+    'content': content,
+    'type': type,
+    'spaceId': spaceId,
+    'timestamp': timestamp.toIso8601String(),
+  };
+}
+
+/// 虚拟经济交易类型
+enum VirtualTransactionType {
+  purchase,     // 购买
+  sale,         // 出售
+  reward,       // 奖励
+  transfer,     // 转账
+  mint,         // 铸造
+  burn,         // 销毁
+}
+
+/// 虚拟经济交易记录
+class VirtualTransaction {
+  final String id;
+  final String fromUserId;
+  final String toUserId;
+  final VirtualTransactionType type;
+  final double amount;
+  final String currency; // 'VFC' (虚拟字体币)
+  final String? itemId; // 关联物品 ID
+  final String? description;
+  final DateTime timestamp;
+
+  VirtualTransaction({
+    required this.id,
+    required this.fromUserId,
+    required this.toUserId,
+    required this.type,
+    required this.amount,
+    this.currency = 'VFC',
+    this.itemId,
+    this.description,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'fromUserId': fromUserId,
+    'toUserId': toUserId,
+    'type': type.name,
+    'amount': amount,
+    'currency': currency,
+    'itemId': itemId,
+    'description': description,
+    'timestamp': timestamp.toIso8601String(),
+  };
+}
+
+/// 虚拟物品
+class VirtualItem {
+  final String id;
+  final String name;
+  final String type; // 'font', 'template', 'decoration', 'avatar_item', 'space_item'
+  final double price;
+  final String ownerId;
+  final String? previewUrl;
+  final Map<String, dynamic>? metadata;
+  final DateTime createdAt;
+
+  VirtualItem({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.price = 0,
+    required this.ownerId,
+    this.previewUrl,
+    this.metadata,
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'type': type,
+    'price': price,
+    'ownerId': ownerId,
+    'previewUrl': previewUrl,
+    'metadata': metadata,
+    'createdAt': createdAt.toIso8601String(),
+  };
+}
+
+/// 元宇宙服务
+///
+/// 提供元宇宙功能的统一管理：
+/// - 虚拟空间管理
+/// - 虚拟化身管理
+/// - 虚拟社交功能
+/// - 虚拟经济系统
+class MetaverseService {
+  static final MetaverseService _instance = MetaverseService._();
+  static MetaverseService get instance => _instance;
+  MetaverseService._();
+
+  /// 虚拟空间列表
+  final List<VirtualSpace> _spaces = [];
+
+  /// 虚拟化身列表
+  final List<VirtualAvatar> _avatars = [];
+
+  /// 社交消息历史
+  final List<VirtualSocialMessage> _messages = [];
+
+  /// 经济交易历史
+  final List<VirtualTransaction> _transactions = [];
+
+  /// 虚拟物品列表
+  final List<VirtualItem> _items = [];
+
+  /// 用户虚拟货币余额 {userId: balance}
+  final Map<String, double> _userBalances = {};
+
+  /// 事件回调
+  final List<void Function(VirtualSocialMessage)> _onMessage = [];
+  final List<void Function(VirtualTransaction)> _onTransaction = [];
+
+  /// 获取所有空间
+  List<VirtualSpace> get spaces => List.unmodifiable(_spaces);
+
+  /// 获取所有化身
+  List<VirtualAvatar> get avatars => List.unmodifiable(_avatars);
+
+  /// 获取所有物品
+  List<VirtualItem> get items => List.unmodifiable(_items);
+
+  /// 注册消息回调
+  void onMessage(void Function(VirtualSocialMessage) callback) {
+    _onMessage.add(callback);
+  }
+
+  /// 注册交易回调
+  void onTransaction(void Function(VirtualTransaction) callback) {
+    _onTransaction.add(callback);
+  }
+
+  // ─────────────── 虚拟空间管理 ───────────────
+
+  /// 创建虚拟空间
+  VirtualSpace createSpace({
+    required String name,
+    required VirtualSpaceType type,
+    required String ownerId,
+    int maxOccupancy = 50,
+    bool isPublic = true,
+    Map<String, dynamic>? layout,
+  }) {
+    final space = VirtualSpace(
+      id: 'space_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      type: type,
+      ownerId: ownerId,
+      maxOccupancy: maxOccupancy,
+      isPublic: isPublic,
+      layout: layout,
+    );
+    _spaces.add(space);
+    debugPrint('[Metaverse] 虚拟空间已创建: $name (${type.name})');
+    return space;
+  }
+
+  /// 进入虚拟空间
+  bool enterSpace(String spaceId, String userId) {
+    final spaceIndex = _spaces.indexWhere((s) => s.id == spaceId);
+    if (spaceIndex < 0) return false;
+    final space = _spaces[spaceIndex];
+    if (space.occupantIds.length >= space.maxOccupancy) {
+      debugPrint('[Metaverse] 空间已满: ${space.name}');
+      return false;
+    }
+    if (!space.occupantIds.contains(userId)) {
+      space.occupantIds.add(userId);
+      debugPrint('[Metaverse] 用户 $userId 进入空间: ${space.name}');
+    }
+    return true;
+  }
+
+  /// 离开虚拟空间
+  void leaveSpace(String spaceId, String userId) {
+    final space = _spaces.firstWhere((s) => s.id == spaceId, orElse: () => VirtualSpace(id: '', name: '', type: VirtualSpaceType.custom, ownerId: ''));
+    space.occupantIds.remove(userId);
+    debugPrint('[Metaverse] 用户 $userId 离开空间: ${space.name}');
+  }
+
+  /// 获取公开空间列表
+  List<VirtualSpace> getPublicSpaces() {
+    return _spaces.where((s) => s.isPublic).toList();
+  }
+
+  // ─────────────── 虚拟化身管理 ───────────────
+
+  /// 创建虚拟化身
+  VirtualAvatar createAvatar({
+    required String userId,
+    required String displayName,
+    AvatarAppearance appearance = const AvatarAppearance(),
+  }) {
+    final avatar = VirtualAvatar(
+      id: 'avatar_${DateTime.now().microsecondsSinceEpoch}',
+      userId: userId,
+      displayName: displayName,
+      appearance: appearance,
+    );
+    _avatars.add(avatar);
+    debugPrint('[Metaverse] 虚拟化身已创建: $displayName');
+    return avatar;
+  }
+
+  /// 更新化身外观
+  void updateAvatarAppearance(String avatarId, AvatarAppearance newAppearance) {
+    final index = _avatars.indexWhere((a) => a.id == avatarId);
+    if (index >= 0) {
+      final old = _avatars[index];
+      _avatars[index] = VirtualAvatar(
+        id: old.id, userId: old.userId, displayName: old.displayName,
+        appearance: newAppearance, position: old.position, rotation: old.rotation,
+        status: old.status, createdAt: old.createdAt, lastActiveAt: old.lastActiveAt,
+      );
+      debugPrint('[Metaverse] 化身外观已更新: ${old.displayName}');
+    }
+  }
+
+  /// 更新化身位置
+  void updateAvatarPosition(String avatarId, List<double> position) {
+    final avatar = _avatars.firstWhere((a) => a.id == avatarId, orElse: () => VirtualAvatar(id: '', userId: '', displayName: ''));
+    avatar.position.clear();
+    avatar.position.addAll(position);
+    avatar.lastActiveAt = DateTime.now();
+  }
+
+  /// 获取空间内的化身
+  List<VirtualAvatar> getAvatarsInSpace(String spaceId) {
+    final space = _spaces.firstWhere((s) => s.id == spaceId, orElse: () => VirtualSpace(id: '', name: '', type: VirtualSpaceType.custom, ownerId: ''));
+    return _avatars.where((a) => space.occupantIds.contains(a.userId)).toList();
+  }
+
+  // ─────────────── 虚拟社交功能 ───────────────
+
+  /// 发送社交消息
+  void sendMessage({
+    required String senderId,
+    required String senderName,
+    required String content,
+    String type = 'text',
+    String? spaceId,
+  }) {
+    final msg = VirtualSocialMessage(
+      id: 'msg_${DateTime.now().microsecondsSinceEpoch}',
+      senderId: senderId,
+      senderName: senderName,
+      content: content,
+      type: type,
+      spaceId: spaceId,
+    );
+    _messages.add(msg);
+    // 限制消息历史
+    while (_messages.length > 2000) {
+      _messages.removeAt(0);
+    }
+    for (final cb in _onMessage) {
+      try { cb(msg); } catch (_) {}
+    }
+    debugPrint('[Metaverse] 消息: $senderName -> ${content.length > 30 ? "${content.substring(0, 30)}..." : content}');
+  }
+
+  /// 获取空间内的消息
+  List<VirtualSocialMessage> getMessagesInSpace(String spaceId, {int limit = 50}) {
+    final spaceMessages = _messages.where((m) => m.spaceId == spaceId).toList();
+    final start = (spaceMessages.length - limit).clamp(0, spaceMessages.length);
+    return spaceMessages.sublist(start);
+  }
+
+  /// 发送表情动作
+  void sendEmote(String senderId, String senderName, String emote, {String? spaceId}) {
+    sendMessage(
+      senderId: senderId,
+      senderName: senderName,
+      content: emote,
+      type: 'emoji',
+      spaceId: spaceId,
+    );
+  }
+
+  // ─────────────── 虚拟经济功能 ───────────────
+
+  /// 获取用户余额
+  double getBalance(String userId) {
+    return _userBalances[userId] ?? 0;
+  }
+
+  /// 充值虚拟货币
+  void creditBalance(String userId, double amount, {String? description}) {
+    _userBalances[userId] = (_userBalances[userId] ?? 0) + amount;
+    final tx = VirtualTransaction(
+      id: 'tx_${DateTime.now().microsecondsSinceEpoch}',
+      fromUserId: 'system',
+      toUserId: userId,
+      type: VirtualTransactionType.reward,
+      amount: amount,
+      description: description ?? '充值',
+    );
+    _transactions.add(tx);
+    for (final cb in _onTransaction) {
+      try { cb(tx); } catch (_) {}
+    }
+    debugPrint('[Metaverse] 充值: $userId +${amount}VFC (余额: ${_userBalances[userId]}VFC)');
+  }
+
+  /// 转账虚拟货币
+  bool transferBalance({
+    required String fromUserId,
+    required String toUserId,
+    required double amount,
+    String? description,
+  }) {
+    final fromBalance = _userBalances[fromUserId] ?? 0;
+    if (fromBalance < amount) {
+      debugPrint('[Metaverse] 余额不足: $fromUserId (${fromBalance}VFC < ${amount}VFC)');
+      return false;
+    }
+    _userBalances[fromUserId] = fromBalance - amount;
+    _userBalances[toUserId] = (_userBalances[toUserId] ?? 0) + amount;
+    final tx = VirtualTransaction(
+      id: 'tx_${DateTime.now().microsecondsSinceEpoch}',
+      fromUserId: fromUserId,
+      toUserId: toUserId,
+      type: VirtualTransactionType.transfer,
+      amount: amount,
+      description: description,
+    );
+    _transactions.add(tx);
+    for (final cb in _onTransaction) {
+      try { cb(tx); } catch (_) {}
+    }
+    debugPrint('[Metaverse] 转账: $fromUserId -> $toUserId ${amount}VFC');
+    return true;
+  }
+
+  /// 上架虚拟物品
+  VirtualItem listVirtualItem({
+    required String name,
+    required String type,
+    required double price,
+    required String ownerId,
+    Map<String, dynamic>? metadata,
+  }) {
+    final item = VirtualItem(
+      id: 'item_${DateTime.now().microsecondsSinceEpoch}',
+      name: name,
+      type: type,
+      price: price,
+      ownerId: ownerId,
+      metadata: metadata,
+    );
+    _items.add(item);
+    debugPrint('[Metaverse] 物品已上架: $name (${price}VFC)');
+    return item;
+  }
+
+  /// 购买虚拟物品
+  bool purchaseVirtualItem(String itemId, String buyerId) {
+    final itemIndex = _items.indexWhere((i) => i.id == itemId);
+    if (itemIndex < 0) return false;
+    final item = _items[itemIndex];
+    if (item.ownerId == buyerId) return false; // 不能购买自己的物品
+    final balance = _userBalances[buyerId] ?? 0;
+    if (balance < item.price) {
+      debugPrint('[Metaverse] 余额不足，无法购买: ${item.name}');
+      return false;
+    }
+    // 扣除买家余额
+    _userBalances[buyerId] = balance - item.price;
+    // 增加卖家余额
+    _userBalances[item.ownerId] = (_userBalances[item.ownerId] ?? 0) + item.price;
+    // 更新物品所有者
+    _items[itemIndex] = VirtualItem(
+      id: item.id, name: item.name, type: item.type,
+      price: item.price, ownerId: buyerId,
+      previewUrl: item.previewUrl, metadata: item.metadata,
+      createdAt: item.createdAt,
+    );
+    // 记录交易
+    final tx = VirtualTransaction(
+      id: 'tx_${DateTime.now().microsecondsSinceEpoch}',
+      fromUserId: buyerId,
+      toUserId: item.ownerId,
+      type: VirtualTransactionType.purchase,
+      amount: item.price,
+      itemId: itemId,
+      description: '购买: ${item.name}',
+    );
+    _transactions.add(tx);
+    for (final cb in _onTransaction) {
+      try { cb(tx); } catch (_) {}
+    }
+    debugPrint('[Metaverse] 物品已购买: ${item.name} ($buyerId)');
+    return true;
+  }
+
+  /// 获取用户的交易历史
+  List<VirtualTransaction> getUserTransactions(String userId, {int limit = 50}) {
+    final userTx = _transactions
+        .where((t) => t.fromUserId == userId || t.toUserId == userId)
+        .toList();
+    final start = (userTx.length - limit).clamp(0, userTx.length);
+    return userTx.sublist(start);
+  }
+
+  /// 获取虚拟经济统计
+  Map<String, dynamic> getEconomyStats() {
+    final totalVolume = _transactions.fold<double>(0, (sum, t) => sum + t.amount);
+    final purchaseCount = _transactions.where((t) => t.type == VirtualTransactionType.purchase).length;
+    return {
+      'totalTransactions': _transactions.length,
+      'totalVolume': totalVolume,
+      'purchaseCount': purchaseCount,
+      'activeItems': _items.length,
+      'totalUsers': _userBalances.length,
+      'avgTransactionAmount': _transactions.isNotEmpty ? totalVolume / _transactions.length : 0,
+    };
+  }
+
+  /// 获取元宇宙统计信息
+  Map<String, dynamic> getMetaverseStats() {
+    return {
+      'spaces': _spaces.length,
+      'avatars': _avatars.length,
+      'messages': _messages.length,
+      'transactions': _transactions.length,
+      'virtualItems': _items.length,
+      'economy': getEconomyStats(),
+      'publicSpaces': _spaces.where((s) => s.isPublic).length,
+      'onlineAvatars': _avatars.where((a) => a.status == 'online').length,
+    };
+  }
+}

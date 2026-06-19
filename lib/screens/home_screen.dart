@@ -3722,3 +3722,342 @@ class ScatterPlotPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
+
+// ═══════════════════════════════════════════════════════════
+// 虚拟现实（VR）功能模块
+// ═══════════════════════════════════════════════════════════
+
+/// VR 环境类型
+enum VREnvironmentType {
+  studio,       // 工作室环境
+  gallery,      // 画廊环境
+  nature,       // 自然环境
+  abstract3D,   // 抽象环境
+  dark,         // 暗色环境
+  custom,       // 自定义环境
+}
+
+/// VR 交互模式
+enum VRInteractionMode {
+  gaze,         // 注视交互
+  controller,   // 手柄交互
+  hand,         // 手势交互
+  voice,        // 语音交互
+}
+
+/// VR 渲染质量等级
+enum VRQualityLevel {
+  low,          // 低质量（高帧率）
+  medium,       // 中等质量
+  high,         // 高质量
+  ultra,        // 超高质量（低帧率）
+}
+
+/// VR 场景对象
+class VRSceneObject {
+  final String id;
+  final String name;
+  final String type; // 'text', 'image', 'model', 'light', 'camera'
+  final List<double> position; // 3D 位置 [x, y, z]
+  final List<double> rotation; // 旋转 [rx, ry, rz]
+  final List<double> scale; // 缩放 [sx, sy, sz]
+  final Map<String, dynamic>? properties; // 对象属性
+  final bool isInteractable; // 是否可交互
+
+  VRSceneObject({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.position = const [0, 0, 0],
+    this.rotation = const [0, 0, 0],
+    this.scale = const [1, 1, 1],
+    this.properties,
+    this.isInteractable = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'type': type,
+    'position': position,
+    'rotation': rotation,
+    'scale': scale,
+    'properties': properties,
+    'isInteractable': isInteractable,
+  };
+}
+
+/// VR 交互事件
+class VRInteractionEvent {
+  final String id;
+  final VRInteractionMode mode;
+  final String? targetObjectId;
+  final String actionType; // 'select', 'grab', 'release', 'point', 'speak'
+  final Map<String, dynamic>? data;
+  final DateTime timestamp;
+
+  VRInteractionEvent({
+    required this.id,
+    required this.mode,
+    this.targetObjectId,
+    required this.actionType,
+    this.data,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+}
+
+/// VR 环境配置
+class VREnvironmentConfig {
+  final VREnvironmentType type;
+  final String? skyboxAsset; // 天空盒贴图路径
+  final List<double> ambientColor; // 环境光颜色 [r, g, b]
+  final double ambientIntensity; // 环境光强度
+  final double fogDensity; // 雾效密度
+  final List<double>? fogColor; // 雾效颜色
+  final VRQualityLevel qualityLevel;
+
+  const VREnvironmentConfig({
+    this.type = VREnvironmentType.studio,
+    this.skyboxAsset,
+    this.ambientColor = const [1.0, 1.0, 1.0],
+    this.ambientIntensity = 0.6,
+    this.fogDensity = 0.0,
+    this.fogColor,
+    this.qualityLevel = VRQualityLevel.medium,
+  });
+}
+
+/// VR 服务
+///
+/// 提供虚拟现实功能管理：
+/// - VR 环境生成与管理
+/// - VR 场景对象管理
+/// - VR 渲染控制
+/// - VR 交互处理
+class VRService {
+  static final VRService _instance = VRService._();
+  static VRService get instance => _instance;
+  VRService._();
+
+  /// 当前环境配置
+  VREnvironmentConfig _environmentConfig = const VREnvironmentConfig();
+
+  /// 场景对象列表
+  final List<VRSceneObject> _sceneObjects = [];
+
+  /// 交互事件历史
+  final List<VRInteractionEvent> _interactionHistory = [];
+
+  /// 当前交互模式
+  VRInteractionMode _interactionMode = VRInteractionMode.gaze;
+
+  /// VR 会话状态
+  bool _isSessionActive = false;
+
+  /// 视角位置 [x, y, z]
+  List<double> _viewPosition = [0, 1.6, 0]; // 默认站立高度 1.6m
+
+  /// 视角方向 [yaw, pitch]（弧度）
+  List<double> _viewOrientation = [0, 0];
+
+  /// 事件回调
+  final List<void Function(VRInteractionEvent)> _onInteraction = [];
+
+  /// 获取当前环境配置
+  VREnvironmentConfig get environmentConfig => _environmentConfig;
+
+  /// 是否处于活跃 VR 会话
+  bool get isSessionActive => _isSessionActive;
+
+  /// 获取场景对象
+  List<VRSceneObject> get sceneObjects => List.unmodifiable(_sceneObjects);
+
+  /// 当前交互模式
+  VRInteractionMode get interactionMode => _interactionMode;
+
+  /// 注册交互事件回调
+  void onInteraction(void Function(VRInteractionEvent) callback) {
+    _onInteraction.add(callback);
+  }
+
+  /// 开始 VR 会话
+  Future<bool> startSession({VREnvironmentConfig? config}) async {
+    try {
+      if (config != null) _environmentConfig = config;
+      _isSessionActive = true;
+      _sceneObjects.clear();
+      debugPrint('[VR] VR 会话已启动 (环境: ${_environmentConfig.type.name})');
+      return true;
+    } catch (e) {
+      debugPrint('[VR] 启动 VR 会话失败: $e');
+      return false;
+    }
+  }
+
+  /// 停止 VR 会话
+  void stopSession() {
+    _isSessionActive = false;
+    _sceneObjects.clear();
+    _interactionHistory.clear();
+    debugPrint('[VR] VR 会话已停止');
+  }
+
+  /// 设置 VR 环境
+  void setEnvironment(VREnvironmentConfig config) {
+    _environmentConfig = config;
+    debugPrint('[VR] 环境已切换: ${config.type.name}');
+  }
+
+  /// 生成预设环境
+  VREnvironmentConfig generatePresetEnvironment(VREnvironmentType type) {
+    switch (type) {
+      case VREnvironmentType.studio:
+        return const VREnvironmentConfig(
+          type: VREnvironmentType.studio,
+          ambientColor: [0.95, 0.95, 0.98],
+          ambientIntensity: 0.7,
+          qualityLevel: VRQualityLevel.high,
+        );
+      case VREnvironmentType.gallery:
+        return const VREnvironmentConfig(
+          type: VREnvironmentType.gallery,
+          ambientColor: [1.0, 0.98, 0.95],
+          ambientIntensity: 0.5,
+          fogDensity: 0.02,
+          fogColor: [0.9, 0.9, 0.9],
+          qualityLevel: VRQualityLevel.medium,
+        );
+      case VREnvironmentType.nature:
+        return const VREnvironmentConfig(
+          type: VREnvironmentType.nature,
+          ambientColor: [0.8, 0.95, 0.8],
+          ambientIntensity: 0.8,
+          fogDensity: 0.05,
+          fogColor: [0.7, 0.85, 0.7],
+          qualityLevel: VRQualityLevel.high,
+        );
+      case VREnvironmentType.abstract3D:
+        return const VREnvironmentConfig(
+          type: VREnvironmentType.abstract3D,
+          ambientColor: [0.1, 0.1, 0.2],
+          ambientIntensity: 0.3,
+          qualityLevel: VRQualityLevel.ultra,
+        );
+      case VREnvironmentType.dark:
+        return const VREnvironmentConfig(
+          type: VREnvironmentType.dark,
+          ambientColor: [0.15, 0.15, 0.2],
+          ambientIntensity: 0.2,
+          qualityLevel: VRQualityLevel.low,
+        );
+      default:
+        return const VREnvironmentConfig();
+    }
+  }
+
+  /// 添加场景对象
+  void addSceneObject(VRSceneObject obj) {
+    _sceneObjects.add(obj);
+    debugPrint('[VR] 添加场景对象: ${obj.name} (${obj.type})');
+  }
+
+  /// 移除场景对象
+  void removeSceneObject(String objectId) {
+    _sceneObjects.removeWhere((o) => o.id == objectId);
+  }
+
+  /// 更新场景对象
+  void updateSceneObject(String objectId, {
+    List<double>? position,
+    List<double>? rotation,
+    List<double>? scale,
+    Map<String, dynamic>? properties,
+  }) {
+    final index = _sceneObjects.indexWhere((o) => o.id == objectId);
+    if (index < 0) return;
+    final old = _sceneObjects[index];
+    _sceneObjects[index] = VRSceneObject(
+      id: old.id, name: old.name, type: old.type,
+      position: position ?? old.position,
+      rotation: rotation ?? old.rotation,
+      scale: scale ?? old.scale,
+      properties: properties ?? old.properties,
+      isInteractable: old.isInteractable,
+    );
+  }
+
+  /// 设置交互模式
+  void setInteractionMode(VRInteractionMode mode) {
+    _interactionMode = mode;
+    debugPrint('[VR] 交互模式已切换: ${mode.name}');
+  }
+
+  /// 更新视角位置
+  void updateViewPosition(List<double> position) {
+    _viewPosition = position;
+  }
+
+  /// 更新视角方向
+  void updateViewOrientation(double yaw, double pitch) {
+    _viewOrientation = [yaw, pitch.clamp(-pi / 2, pi / 2)];
+  }
+
+  /// 获取当前视角信息
+  Map<String, dynamic> getViewInfo() {
+    return {
+      'position': _viewPosition,
+      'orientation': _viewOrientation,
+    };
+  }
+
+  /// 处理 VR 交互事件
+  void handleInteraction(VRInteractionEvent event) {
+    _interactionHistory.add(event);
+    while (_interactionHistory.length > 500) {
+      _interactionHistory.removeAt(0);
+    }
+    for (final cb in _onInteraction) {
+      try { cb(event); } catch (_) {}
+    }
+    debugPrint('[VR] 交互: ${event.actionType} -> ${event.targetObjectId ?? "none"}');
+  }
+
+  /// 创建字体预览 VR 场景
+  void createFontPreviewScene({
+    required String fontName,
+    required List<String> characters,
+    double spacing = 0.5,
+  }) {
+    _sceneObjects.clear();
+    for (int i = 0; i < characters.length; i++) {
+      final col = i % 5;
+      final row = i ~/ 5;
+      addSceneObject(VRSceneObject(
+        id: 'char_$i',
+        name: characters[i],
+        type: 'text',
+        position: [col * spacing - 1.0, 1.5 - row * spacing, -2.0],
+        properties: {
+          'content': characters[i],
+          'fontFamily': fontName,
+          'fontSize': 0.3,
+        },
+        isInteractable: true,
+      ));
+    }
+    debugPrint('[VR] 字体预览场景已创建: $fontName (${characters.length} 字)');
+  }
+
+  /// 获取 VR 统计信息
+  Map<String, dynamic> getVRStats() {
+    return {
+      'isSessionActive': _isSessionActive,
+      'environmentType': _environmentConfig.type.name,
+      'qualityLevel': _environmentConfig.qualityLevel.name,
+      'interactionMode': _interactionMode.name,
+      'sceneObjectCount': _sceneObjects.length,
+      'interactionCount': _interactionHistory.length,
+      'viewPosition': _viewPosition,
+    };
+  }
+}

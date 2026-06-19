@@ -5961,3 +5961,357 @@ class FederatedLearningService {
     };
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// 增强现实（AR）功能模块
+// ═══════════════════════════════════════════════════════════
+
+/// AR 标记类型
+enum ARMarkerType {
+  qrCode,       // 二维码标记
+  image,        // 图像标记
+  plane,        // 平面标记
+  face,         // 人脸标记
+  custom,       // 自定义标记
+}
+
+/// AR 渲染模式
+enum ARRenderMode {
+  overlay,      // 叠加渲染
+  occlusion,    // 遮挡渲染
+  shadow,       // 投影渲染
+  lighting,     // 光照渲染
+}
+
+/// AR 交互类型
+enum ARInteractionType {
+  tap,          // 点击
+  pinch,        // 捏合缩放
+  rotate,       // 旋转
+  drag,         // 拖拽
+  longPress,    // 长按
+}
+
+/// AR 标记检测结果
+class ARMarkerDetection {
+  final String id;
+  final ARMarkerType type;
+  final String? markerData; // 标记携带的数据（如 QR 码内容）
+  final List<double> position; // 3D 位置 [x, y, z]
+  final List<double> rotation; // 旋转四元数 [x, y, z, w]
+  final double confidence; // 检测置信度
+  final DateTime detectedAt;
+
+  ARMarkerDetection({
+    required this.id,
+    required this.type,
+    this.markerData,
+    this.position = const [0, 0, 0],
+    this.rotation = const [0, 0, 0, 1],
+    this.confidence = 1.0,
+    DateTime? detectedAt,
+  }) : detectedAt = detectedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type.name,
+    'markerData': markerData,
+    'position': position,
+    'rotation': rotation,
+    'confidence': confidence,
+    'detectedAt': detectedAt.toIso8601String(),
+  };
+
+  factory ARMarkerDetection.fromJson(Map<String, dynamic> json) =>
+      ARMarkerDetection(
+        id: json['id'] as String,
+        type: ARMarkerType.values.firstWhere(
+          (e) => e.name == json['type'],
+          orElse: () => ARMarkerType.custom,
+        ),
+        markerData: json['markerData'] as String?,
+        position: (json['position'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [0, 0, 0],
+        rotation: (json['rotation'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [0, 0, 0, 1],
+        confidence: (json['confidence'] as num?)?.toDouble() ?? 1.0,
+        detectedAt: json['detectedAt'] != null
+            ? DateTime.parse(json['detectedAt'] as String)
+            : DateTime.now(),
+      );
+}
+
+/// AR 场景节点
+class ARSceneNode {
+  final String id;
+  final String name;
+  final String? meshId; // 关联的 3D 模型 ID
+  final List<double> position; // 世界坐标 [x, y, z]
+  final List<double> rotation; // 旋转四元数
+  final List<double> scale; // 缩放 [sx, sy, sz]
+  final Map<String, dynamic>? material; // 材质属性
+  final bool isVisible;
+  final List<String> childIds;
+
+  ARSceneNode({
+    required this.id,
+    required this.name,
+    this.meshId,
+    this.position = const [0, 0, 0],
+    this.rotation = const [0, 0, 0, 1],
+    this.scale = const [1, 1, 1],
+    this.material,
+    this.isVisible = true,
+    this.childIds = const [],
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'meshId': meshId,
+    'position': position,
+    'rotation': rotation,
+    'scale': scale,
+    'material': material,
+    'isVisible': isVisible,
+    'childIds': childIds,
+  };
+}
+
+/// AR 交互事件
+class ARInteractionEvent {
+  final String id;
+  final ARInteractionType type;
+  final String? targetNodeId; // 交互目标节点
+  final List<double> worldPosition; // 交互发生的世界坐标
+  final List<double> screenPosition; // 交互发生的屏幕坐标
+  final Map<String, dynamic>? gestureData; // 手势附加数据
+  final DateTime timestamp;
+
+  ARInteractionEvent({
+    required this.id,
+    required this.type,
+    this.targetNodeId,
+    this.worldPosition = const [0, 0, 0],
+    this.screenPosition = const [0, 0],
+    this.gestureData,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+}
+
+/// AR 服务
+///
+/// 提供增强现实功能的管理：
+/// - 标记检测与跟踪
+/// - 3D 场景管理
+/// - AR 渲染控制
+/// - 用户交互处理
+class ARService {
+  static final ARService _instance = ARService._();
+  static ARService get instance => _instance;
+  ARService._();
+
+  /// 已检测的标记列表
+  final List<ARMarkerDetection> _detectedMarkers = [];
+
+  /// AR 场景节点列表
+  final List<ARSceneNode> _sceneNodes = [];
+
+  /// 交互事件历史
+  final List<ARInteractionEvent> _interactionHistory = [];
+
+  /// 当前渲染模式
+  ARRenderMode _renderMode = ARRenderMode.overlay;
+
+  /// AR 会话状态
+  bool _isSessionActive = false;
+
+  /// 事件回调
+  final List<void Function(ARMarkerDetection)> _onMarkerDetected = [];
+  final List<void Function(ARInteractionEvent)> _onInteraction = [];
+
+  /// 获取当前渲染模式
+  ARRenderMode get renderMode => _renderMode;
+
+  /// 是否处于活跃 AR 会话
+  bool get isSessionActive => _isSessionActive;
+
+  /// 获取已检测标记
+  List<ARMarkerDetection> get detectedMarkers =>
+      List.unmodifiable(_detectedMarkers);
+
+  /// 获取场景节点
+  List<ARSceneNode> get sceneNodes => List.unmodifiable(_sceneNodes);
+
+  /// 注册标记检测回调
+  void onMarkerDetected(void Function(ARMarkerDetection) callback) {
+    _onMarkerDetected.add(callback);
+  }
+
+  /// 注册交互事件回调
+  void onInteraction(void Function(ARInteractionEvent) callback) {
+    _onInteraction.add(callback);
+  }
+
+  /// 开始 AR 会话
+  Future<bool> startSession() async {
+    try {
+      _isSessionActive = true;
+      _detectedMarkers.clear();
+      debugPrint('[AR] AR 会话已启动');
+      return true;
+    } catch (e) {
+      debugPrint('[AR] 启动 AR 会话失败: $e');
+      return false;
+    }
+  }
+
+  /// 停止 AR 会话
+  void stopSession() {
+    _isSessionActive = false;
+    _detectedMarkers.clear();
+    debugPrint('[AR] AR 会话已停止');
+  }
+
+  /// 添加标记检测结果
+  ///
+  /// 当平台 AR 引擎检测到标记时调用
+  void addDetectedMarker(ARMarkerDetection marker) {
+    // 避免重复添加相同标记
+    final existingIndex = _detectedMarkers.indexWhere((m) => m.id == marker.id);
+    if (existingIndex >= 0) {
+      _detectedMarkers[existingIndex] = marker;
+    } else {
+      _detectedMarkers.add(marker);
+    }
+    // 通知回调
+    for (final cb in _onMarkerDetected) {
+      try { cb(marker); } catch (_) {}
+    }
+    debugPrint('[AR] 检测到标记: ${marker.type.name} (置信度: ${marker.confidence.toStringAsFixed(2)})');
+  }
+
+  /// 模拟 QR 码标记检测
+  ///
+  /// 用于测试和演示目的
+  ARMarkerDetection simulateQRDetection(String qrContent) {
+    final marker = ARMarkerDetection(
+      id: 'qr_${DateTime.now().microsecondsSinceEpoch}',
+      type: ARMarkerType.qrCode,
+      markerData: qrContent,
+      position: [0, 0, -0.5],
+      confidence: 0.95,
+    );
+    addDetectedMarker(marker);
+    return marker;
+  }
+
+  /// 添加场景节点
+  void addSceneNode(ARSceneNode node) {
+    _sceneNodes.add(node);
+    debugPrint('[AR] 添加场景节点: ${node.name}');
+  }
+
+  /// 移除场景节点
+  void removeSceneNode(String nodeId) {
+    _sceneNodes.removeWhere((n) => n.id == nodeId);
+  }
+
+  /// 更新场景节点位置
+  void updateNodePosition(String nodeId, List<double> newPosition) {
+    final index = _sceneNodes.indexWhere((n) => n.id == nodeId);
+    if (index >= 0) {
+      final old = _sceneNodes[index];
+      _sceneNodes[index] = ARSceneNode(
+        id: old.id, name: old.name, meshId: old.meshId,
+        position: newPosition, rotation: old.rotation,
+        scale: old.scale, material: old.material,
+        isVisible: old.isVisible, childIds: old.childIds,
+      );
+    }
+  }
+
+  /// 设置渲染模式
+  void setRenderMode(ARRenderMode mode) {
+    _renderMode = mode;
+    debugPrint('[AR] 渲染模式已切换: ${mode.name}');
+  }
+
+  /// 处理用户交互事件
+  void handleInteraction(ARInteractionEvent event) {
+    _interactionHistory.add(event);
+    // 限制历史记录数量
+    while (_interactionHistory.length > 200) {
+      _interactionHistory.removeAt(0);
+    }
+    for (final cb in _onInteraction) {
+      try { cb(event); } catch (_) {}
+    }
+    debugPrint('[AR] 交互事件: ${event.type.name} -> ${event.targetNodeId ?? "none"}');
+  }
+
+  /// 创建文字 AR 叠加节点
+  ///
+  /// 将文字内容以 3D 文字形式叠加到 AR 场景中
+  ARSceneNode createTextOverlay({
+    required String text,
+    required List<double> position,
+    double fontSize = 24.0,
+    int color = 0xFFFFFFFF,
+  }) {
+    final node = ARSceneNode(
+      id: 'text_${DateTime.now().microsecondsSinceEpoch}',
+      name: 'Text: $text',
+      position: position,
+      material: {
+        'type': 'text',
+        'content': text,
+        'fontSize': fontSize,
+        'color': color,
+      },
+    );
+    addSceneNode(node);
+    return node;
+  }
+
+  /// 创建图片 AR 叠加节点
+  ARSceneNode createImageOverlay({
+    required String imageAssetPath,
+    required List<double> position,
+    List<double> scale = const [0.2, 0.2, 0.2],
+  }) {
+    final node = ARSceneNode(
+      id: 'img_${DateTime.now().microsecondsSinceEpoch}',
+      name: 'Image Overlay',
+      position: position,
+      scale: scale,
+      material: {
+        'type': 'image',
+        'assetPath': imageAssetPath,
+      },
+    );
+    addSceneNode(node);
+    return node;
+  }
+
+  /// 获取 AR 统计信息
+  Map<String, dynamic> getARStats() {
+    return {
+      'isSessionActive': _isSessionActive,
+      'renderMode': _renderMode.name,
+      'detectedMarkerCount': _detectedMarkers.length,
+      'sceneNodeCount': _sceneNodes.length,
+      'interactionCount': _interactionHistory.length,
+      'markersByType': {
+        for (final type in ARMarkerType.values)
+          type.name: _detectedMarkers.where((m) => m.type == type).length,
+      },
+    };
+  }
+
+  /// 清除所有 AR 数据
+  void clearAll() {
+    _detectedMarkers.clear();
+    _sceneNodes.clear();
+    _interactionHistory.clear();
+    debugPrint('[AR] 已清除所有 AR 数据');
+  }
+}
