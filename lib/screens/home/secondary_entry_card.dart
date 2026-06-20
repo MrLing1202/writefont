@@ -11,6 +11,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onEnhancedPreviewTap;
   final VoidCallback onTemplateGeneratorTap;
   final VoidCallback onFontCompareTap;
+  final VoidCallback onPracticeModeTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -22,6 +23,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onEnhancedPreviewTap,
     required this.onTemplateGeneratorTap,
     required this.onFontCompareTap,
+    required this.onPracticeModeTap,
   });
 
   @override
@@ -102,6 +104,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字体对比',
             subtitle: '多字体并排预览对比',
             onTap: onFontCompareTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.edit_note,
+            iconColor: WFColors.success,
+            title: '练习模式',
+            subtitle: '针对弱字反复练习',
+            onTap: onPracticeModeTap,
           ),
         ],
       ),

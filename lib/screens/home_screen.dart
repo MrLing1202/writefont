@@ -1909,6 +1909,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           WFAnimations.slideRoute(const FontCompareScreen()),
                         );
                       },
+                      onPracticeModeTap: () {
+                        // 练习模式需要选择项目，先打开项目列表
+                        HomeActions.openProjectList(context);
+                      },
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
