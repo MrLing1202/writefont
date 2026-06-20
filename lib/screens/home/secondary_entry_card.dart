@@ -10,6 +10,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onStyleTransferTap;
   final VoidCallback onEnhancedPreviewTap;
   final VoidCallback onTemplateGeneratorTap;
+  final VoidCallback onFontCompareTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -20,6 +21,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onStyleTransferTap,
     required this.onEnhancedPreviewTap,
     required this.onTemplateGeneratorTap,
+    required this.onFontCompareTap,
   });
 
   @override
@@ -92,6 +94,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '手写模板',
             subtitle: '生成可打印方格纸模板',
             onTap: onTemplateGeneratorTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.compare,
+            iconColor: WFColors.accent,
+            title: '字体对比',
+            subtitle: '多字体并排预览对比',
+            onTap: onFontCompareTap,
           ),
         ],
       ),

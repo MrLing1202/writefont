@@ -1903,6 +1903,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           WFAnimations.slideRoute(const TemplateGeneratorScreen()),
                         );
                       },
+                      onFontCompareTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const FontCompareScreen()),
+                        );
+                      },
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
