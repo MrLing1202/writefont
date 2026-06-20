@@ -9,6 +9,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onFontPreviewTap;
   final VoidCallback onStyleTransferTap;
   final VoidCallback onEnhancedPreviewTap;
+  final VoidCallback onTemplateGeneratorTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -18,6 +19,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onFontPreviewTap,
     required this.onStyleTransferTap,
     required this.onEnhancedPreviewTap,
+    required this.onTemplateGeneratorTap,
   });
 
   @override
@@ -82,6 +84,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '风格迁移',
             subtitle: 'AI 智能字体风格转换',
             onTap: onStyleTransferTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.grid_on,
+            iconColor: WFColors.primary,
+            title: '手写模板',
+            subtitle: '生成可打印方格纸模板',
+            onTap: onTemplateGeneratorTap,
           ),
         ],
       ),

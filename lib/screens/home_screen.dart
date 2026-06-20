@@ -1897,6 +1897,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         );
                       },
                       onStyleTransferTap: () => HomeActions.openStyleTransfer(context),
+                      onTemplateGeneratorTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const TemplateGeneratorScreen()),
+                        );
+                      },
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
