@@ -21,8 +21,9 @@ class CharsetScreen extends StatefulWidget {
 class _CharsetScreenState extends State<CharsetScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late CharsetAnalysisResult _result;
+  CharsetAnalysisResult? _result;
   bool _isAnalyzing = true;
+  String? _error;
 
   @override
   void initState() {
@@ -32,13 +33,26 @@ class _CharsetScreenState extends State<CharsetScreen>
   }
 
   Future<void> _analyze() async {
-    // 分析在 isolate 中执行太快，直接同步即可
-    final result = CharsetAnalyzer.analyze(widget.project);
-    if (mounted) {
-      setState(() {
-        _result = result;
-        _isAnalyzing = false;
-      });
+    setState(() {
+      _isAnalyzing = true;
+      _error = null;
+    });
+    try {
+      // 分析在 isolate 中执行太快，直接同步即可
+      final result = CharsetAnalyzer.analyze(widget.project);
+      if (mounted) {
+        setState(() {
+          _result = result;
+          _isAnalyzing = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAnalyzing = false;
+          _error = '分析失败: $e';
+        });
+      }
     }
   }
 
@@ -67,7 +81,26 @@ class _CharsetScreenState extends State<CharsetScreen>
       ),
       body: _isAnalyzing
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, size: 48, color: WFColors.error),
+                        const SizedBox(height: 16),
+                        Text(_error!, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _analyze,
+                          child: const Text('重试'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Column(
               children: [
                 // ── 顶部覆盖率概览 ──
                 _buildCoverageHeader(),
@@ -83,10 +116,10 @@ class _CharsetScreenState extends State<CharsetScreen>
                   child: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildMissingGrid(_result.allMissing, '全部'),
-                      _buildMissingGrid(_result.missingLevel1, '一级汉字'),
-                      _buildMissingGrid(_result.missingLevel2, '二级汉字'),
-                      _buildMissingGrid(_result.missingSymbols, '符号'),
+                      _buildMissingGrid(_result!.allMissing, '全部'),
+                      _buildMissingGrid(_result!.missingLevel1, '一级汉字'),
+                      _buildMissingGrid(_result!.missingLevel2, '二级汉字'),
+                      _buildMissingGrid(_result!.missingSymbols, '符号'),
                     ],
                   ),
                 ),
@@ -97,7 +130,8 @@ class _CharsetScreenState extends State<CharsetScreen>
 
   /// 顶部覆盖率概览区域
   Widget _buildCoverageHeader() {
-    final percent = _result.coveragePercent;
+    final result = _result!;
+    final percent = result.coveragePercent;
     final color = _getCoverageColor(percent);
 
     return Container(
@@ -146,7 +180,7 @@ class _CharsetScreenState extends State<CharsetScreen>
                       ),
                     ),
                     Text(
-                      '${_result.coveredChars}/${_result.totalChars}',
+                      '${result.coveredChars}/${result.totalChars}',
                       style: TextStyle(
                         fontSize: 11,
                         color: WFColors.textSecondaryColor(context),
@@ -173,8 +207,8 @@ class _CharsetScreenState extends State<CharsetScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '已覆盖 ${_result.coveredChars} 个字符，'
-                  '缺失 ${_result.allMissing.length} 个',
+                  '已覆盖 ${result.coveredChars} 个字符，'
+                  '缺失 ${result.allMissing.length} 个',
                   style: TextStyle(
                     fontSize: 13,
                     color: WFColors.textSecondaryColor(context),
@@ -205,27 +239,27 @@ class _CharsetScreenState extends State<CharsetScreen>
         children: [
           Expanded(child: _buildStatCard(
             '一级汉字',
-            _result.level1Covered,
-            _result.level1Total,
-            _result.level1Percent,
+            _result!.level1Covered,
+            _result!.level1Total,
+            _result!.level1Percent,
             Icons.text_fields,
             WFColors.primary,
           )),
           const SizedBox(width: 10),
           Expanded(child: _buildStatCard(
             '二级汉字',
-            _result.level2Covered,
-            _result.level2Total,
-            _result.level2Percent,
+            _result!.level2Covered,
+            _result!.level2Total,
+            _result!.level2Percent,
             Icons.translate,
             WFColors.info,
           )),
           const SizedBox(width: 10),
           Expanded(child: _buildStatCard(
             '符号',
-            _result.symbolCovered,
-            _result.symbolTotal,
-            _result.symbolPercent,
+            _result!.symbolCovered,
+            _result!.symbolTotal,
+            _result!.symbolPercent,
             Icons.tag,
             WFColors.accent,
           )),
@@ -307,10 +341,10 @@ class _CharsetScreenState extends State<CharsetScreen>
         isScrollable: true,
         tabAlignment: TabAlignment.start,
         tabs: [
-          Tab(text: '全部 (${_result.allMissing.length})'),
-          Tab(text: '一级 (${_result.missingLevel1.length})'),
-          Tab(text: '二级 (${_result.missingLevel2.length})'),
-          Tab(text: '符号 (${_result.missingSymbols.length})'),
+          Tab(text: '全部 (${_result!.allMissing.length})'),
+          Tab(text: '一级 (${_result!.missingLevel1.length})'),
+          Tab(text: '二级 (${_result!.missingLevel2.length})'),
+          Tab(text: '符号 (${_result!.missingSymbols.length})'),
         ],
       ),
     );
@@ -412,7 +446,9 @@ class _CharsetScreenState extends State<CharsetScreen>
   /// 导出缺失字符列表
   Future<void> _exportMissingList() async {
     try {
-      await CharsetAnalyzer.shareMissingList(_result);
+      final result = _result;
+      if (result == null) return;
+      await CharsetAnalyzer.shareMissingList(result);
     } catch (e) {
       if (mounted) {
         WFSnackBar.show(context, '导出失败: $e');
