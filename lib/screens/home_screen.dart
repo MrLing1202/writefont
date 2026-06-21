@@ -2251,7 +2251,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onCharRecommendTap: () => _openCharRecommendWithProjectPicker(),
                       onWebExportTap: () => _openWebExportWithProjectPicker(),
                       onFontFamilyTap: () => _openFontFamilyWithProjectPicker(),
-                      onFontFamilyTap: () => _openFontFamilyWithProjectPicker(),
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
