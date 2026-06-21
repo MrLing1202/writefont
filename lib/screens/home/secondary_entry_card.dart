@@ -17,6 +17,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onGlyphQualityTap;
   final VoidCallback onWebExportTap;
   final VoidCallback onFontFamilyTap;
+  final VoidCallback onStrokeOrderTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -34,6 +35,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onGlyphQualityTap,
     required this.onWebExportTap,
     required this.onFontFamilyTap,
+    required this.onStrokeOrderTap,
   });
 
   @override
@@ -162,6 +164,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字体家族',
             subtitle: '一键生成 Bold · Italic 变体',
             onTap: onFontFamilyTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.brush,
+            iconColor: const Color(0xFFE67E22),
+            title: '笔画顺序',
+            subtitle: '演示汉字书写笔画顺序动画',
+            onTap: onStrokeOrderTap,
           ),
         ],
       ),
