@@ -723,6 +723,7 @@ class StorageService {
       glyphs: glyphs,
       familyName: project.name,
       unitsPerEm: 1000,
+      kerningPairs: project.kerningPairs,
       customFamilyName: familyName,
       customSubfamilyName: subfamilyName,
       customVersion: version,
@@ -766,6 +767,7 @@ class StorageService {
       customVersion: version,
       customCopyright: copyright,
       customDescription: description,
+      kerningPairs: project.kerningPairs,
     );
 
     final ttfBytes = builder.build();
@@ -807,6 +809,7 @@ class StorageService {
       customVersion: version,
       customCopyright: copyright,
       customDescription: description,
+      kerningPairs: project.kerningPairs,
     );
 
     final otfBytes = builder.build();

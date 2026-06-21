@@ -28,6 +28,9 @@ class TtfBuilder {
   late final String _buildCopyright;
   late final String _buildDescription;
 
+  /// 字形间距对（kerning pairs），key 为两个字符如 'AB'，value 为间距值（font units）
+  final Map<String, int>? kerningPairs;
+
   TtfBuilder({
     required this.glyphs,
     this.familyName = 'WriteFont',
@@ -37,6 +40,7 @@ class TtfBuilder {
     this.customVersion,
     this.customCopyright,
     this.customDescription,
+    this.kerningPairs,
   });
 
   /// Build a complete TTF file and return the bytes.
@@ -73,6 +77,7 @@ class TtfBuilder {
     _buildName();
     _buildOs2();
     _buildPost();
+    _buildKern();
     _buildFpgm();
     _buildPrep();
 
@@ -698,6 +703,75 @@ class TtfBuilder {
     _tables['post'] = w.toBytes();
   }
 
+  // --- kern table (version 0, format 0) ---
+  void _buildKern() {
+    if (kerningPairs == null || kerningPairs!.isEmpty) return;
+
+    // 构建 unicode → glyph index 反查表
+    final unicodeToGlyph = <int, int>{};
+    for (int i = 0; i < glyphs.length; i++) {
+      if (glyphs[i].unicode > 0) {
+        unicodeToGlyph[glyphs[i].unicode] = i;
+      }
+    }
+
+    // 将字符对转为 glyph index 对
+    final pairs = <_KernPair>[];
+    for (final entry in kerningPairs!.entries) {
+      final key = entry.key;
+      if (key.length != 2) continue;
+      final leftUnicode = key.codeUnitAt(0);
+      final rightUnicode = key.codeUnitAt(1);
+      final leftIndex = unicodeToGlyph[leftUnicode];
+      final rightIndex = unicodeToGlyph[rightUnicode];
+      if (leftIndex == null || rightIndex == null) continue;
+      pairs.add(_KernPair(leftIndex, rightIndex, entry.value));
+    }
+
+    if (pairs.isEmpty) return;
+
+    // 按 (left << 16 | right) 排序，符合 kern 表二分查找要求
+    pairs.sort((a, b) => (a.left << 16 | a.right).compareTo(b.left << 16 | b.right));
+
+    // 计算 searchRange / entrySelector / rangeShift（nPairs 的二分查找参数）
+    final nPairs = pairs.length;
+    int searchRange = 1;
+    int entrySelector = 0;
+    while (searchRange * 2 <= nPairs) {
+      searchRange *= 2;
+      entrySelector++;
+    }
+    searchRange *= 6; // 每个 pair 6 字节
+    final rangeShift = nPairs * 6 - searchRange;
+
+    // 构建 kern 表
+    final w = _Writer();
+    // kern 表头
+    w.writeUint16(0); // version (0)
+    w.writeUint16(1); // nTables (1 个子表)
+
+    // 子表头
+    // 子表长度 = length字段(4) + coverage(2) + format0 header(8) + pairs(nPairs*6)
+    final subtableLength = 14 + nPairs * 6;
+    w.writeUint32(subtableLength); // length（含 length 字段自身）
+    w.writeUint16(0x0000);         // coverage: format 0, horizontal, no flags
+
+    // Format 0 数据
+    w.writeUint16(nPairs);
+    w.writeUint16(searchRange);
+    w.writeUint16(entrySelector);
+    w.writeUint16(rangeShift);
+
+    // 写入每个 kerning pair
+    for (final pair in pairs) {
+      w.writeUint16(pair.left);
+      w.writeUint16(pair.right);
+      w.writeInt16(pair.value);
+    }
+
+    _tables['kern'] = w.toBytes();
+  }
+
   // --- fpgm table (Font Program) ---
   // 基本 hinting 字体程序，标记字体支持 hinting
   // 改进：添加更完善的 hinting 指令，提升小字号显示效果
@@ -757,6 +831,13 @@ class _CmapEntry {
   final int charCode;
   final int glyphIndex;
   _CmapEntry(this.charCode, this.glyphIndex);
+}
+
+class _KernPair {
+  final int left;
+  final int right;
+  final int value;
+  _KernPair(this.left, this.right, this.value);
 }
 
 class _NameRecord {
