@@ -1436,8 +1436,10 @@ class StorageService {
 
   /// 提醒列表缓存
   static const String _keyReminders = 'app_reminders';
+  static List<dynamic>? _cachedReminders;
 
   /// 加载所有提醒
+  static Future<List<dynamic>> loadReminders() async {
     if (_cachedReminders != null) return List.unmodifiable(_cachedReminders!);
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1461,7 +1463,7 @@ class StorageService {
     if (_cachedReminders == null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final json = jsonEncode(_cachedReminders!.map((e) => e.toJson()).toList());
+      final json = jsonEncode(_cachedReminders);
       await prefs.setString(_keyReminders, json);
     } catch (e) {
       debugPrint('保存提醒失败: $e');
@@ -1475,19 +1477,22 @@ class StorageService {
   /// [scheduledTime] 提醒时间
   /// [repeatDaily] 是否每天重复
   /// [repeatIntervalDays] 重复间隔天数（如每3天）
+  static Future<dynamic> addReminder({
     required String title,
     required String message,
     required DateTime scheduledTime,
     bool repeatDaily = false,
     int? repeatIntervalDays,
   }) async {
-      id: generateId(),
-      title: title,
-      message: message,
-      scheduledTime: scheduledTime,
-      repeatDaily: repeatDaily,
-      repeatIntervalDays: repeatIntervalDays,
-    );
+    final reminder = <String, dynamic>{
+      'id': generateId(),
+      'title': title,
+      'message': message,
+      'scheduledTime': scheduledTime.toIso8601String(),
+      'repeatDaily': repeatDaily,
+      'repeatIntervalDays': repeatIntervalDays,
+      'isEnabled': true,
+    };
     await loadReminders();
     _cachedReminders!.add(reminder);
     await _saveReminders();
@@ -1502,17 +1507,20 @@ class StorageService {
   ///   - 'char_count_reached': 字符数达到N个
   ///   - 'sync_pending': 有待同步项目
   /// [conditionValue] 条件阈值
+  static Future<dynamic> addConditionReminder({
     required String title,
     required String message,
     required String conditionType,
     required int conditionValue,
   }) async {
-      id: generateId(),
-      title: title,
-      message: message,
-      conditionType: conditionType,
-      conditionValue: conditionValue,
-    );
+    final reminder = <String, dynamic>{
+      'id': generateId(),
+      'title': title,
+      'message': message,
+      'conditionType': conditionType,
+      'conditionValue': conditionValue,
+      'isEnabled': true,
+    };
     await loadReminders();
     _cachedReminders!.add(reminder);
     await _saveReminders();
@@ -1525,19 +1533,22 @@ class StorageService {
   /// [latitude] 纬度
   /// [longitude] 经度
   /// [radiusMeters] 触发半径（米）
+  static Future<dynamic> addLocationReminder({
     required String title,
     required String message,
     required double latitude,
     required double longitude,
     double radiusMeters = 100,
   }) async {
-      id: generateId(),
-      title: title,
-      message: message,
-      latitude: latitude,
-      longitude: longitude,
-      radiusMeters: radiusMeters,
-    );
+    final reminder = <String, dynamic>{
+      'id': generateId(),
+      'title': title,
+      'message': message,
+      'latitude': latitude,
+      'longitude': longitude,
+      'radiusMeters': radiusMeters,
+      'isEnabled': true,
+    };
     await loadReminders();
     _cachedReminders!.add(reminder);
     await _saveReminders();
@@ -1548,15 +1559,18 @@ class StorageService {
   /// 添加自定义提醒
   ///
   /// [customRule] JSON 格式的自定义规则
+  static Future<dynamic> addCustomReminder({
     required String title,
     required String message,
     required String customRule,
   }) async {
-      id: generateId(),
-      title: title,
-      message: message,
-      customRule: customRule,
-    );
+    final reminder = <String, dynamic>{
+      'id': generateId(),
+      'title': title,
+      'message': message,
+      'customRule': customRule,
+      'isEnabled': true,
+    };
     await loadReminders();
     _cachedReminders!.add(reminder);
     await _saveReminders();
@@ -1569,7 +1583,7 @@ class StorageService {
     await loadReminders();
     final idx = _cachedReminders!.indexWhere((r) => r.id == reminderId);
     if (idx >= 0) {
-      _cachedReminders![idx].isEnabled = enabled;
+      _cachedReminders![idx]['isEnabled'] = enabled;
       await _saveReminders();
     }
   }
@@ -1585,15 +1599,17 @@ class StorageService {
   ///
   /// 遍历所有启用的条件提醒，检查是否满足条件。
   /// 返回应该触发的提醒列表。
+  static Future<List<dynamic>> checkConditionReminders() async {
     final reminders = await loadReminders();
+    final triggered = <dynamic>[];
 
-    for (final r in reminders.where((r) =>
+    for (final r in reminders.where((r) => r['conditionType'] != null && r['isEnabled'] == true)) {
       try {
-        switch (r.conditionType) {
+        switch (r['conditionType']) {
           case 'project_idle_days':
             // 检查是否有项目闲置超过指定天数
             final projects = await loadProjects();
-            final idleDays = r.conditionValue ?? 7;
+            final idleDays = r['conditionValue'] ?? 7;
             for (final p in projects) {
               final daysSinceUpdate = DateTime.now().difference(p.updatedAt).inDays;
               if (daysSinceUpdate >= idleDays) {
@@ -1609,7 +1625,7 @@ class StorageService {
             for (final p in projects) {
               totalChars += p.glyphs.values.where((g) => g.contours.isNotEmpty).length;
             }
-            if (totalChars >= (r.conditionValue ?? 100)) {
+            if (totalChars >= (r['conditionValue'] ?? 100)) {
               triggered.add(r);
             }
             break;
@@ -1624,20 +1640,22 @@ class StorageService {
             break;
         }
       } catch (e) {
-        debugPrint('检查条件提醒失败: ${r.id} - $e');
+        debugPrint('检查条件提醒失败: ${r['id']} - $e');
       }
     }
     return triggered;
   }
 
   /// 获取即将到期的定时提醒（未来24小时内）
+  static Future<List<dynamic>> getUpcomingReminders() async {
     final reminders = await loadReminders();
     final now = DateTime.now();
     final tomorrow = now.add(const Duration(hours: 24));
 
     return reminders.where((r) {
-      if (r.scheduledTime == null) return false;
-      return r.scheduledTime!.isAfter(now) && r.scheduledTime!.isBefore(tomorrow);
+      if (r['scheduledTime'] == null) return false;
+      final scheduled = DateTime.parse(r['scheduledTime'] as String);
+      return scheduled.isAfter(now) && scheduled.isBefore(tomorrow);
     }).toList();
   }
 
@@ -2796,8 +2814,3 @@ class CrashReport {
   String toString() => 'CrashReport[$errorType]: $error (${fatal ? "fatal" : "non-fatal"})';
 }
 
-// ═══════════════════════════════════════════════════════════
-// 学习功能优化：学习进度跟踪、学习建议、学习统计、学习报告
-// ═══════════════════════════════════════════════════════════
-
-/// 学习进度数据模型
