@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'image_processor.dart';
 import 'user_feedback_service.dart';
+import 'dictionary_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'api_key.dart';
@@ -408,9 +409,6 @@ class RecognitionService {
         _estimatedCacheBytes >= _maxCacheBytes) {
       _evictLruCache();
     }
-    _recognitionCache[cacheKey] = result;
-    _cacheAccessOrder.add(cacheKey);
-    _estimatedCacheBytes += imageBytes.length; // 估算缓存内存增长
 
     sw.stop();
     final latencyMs = sw.elapsed.inMicroseconds / 1000.0;
@@ -422,16 +420,38 @@ class RecognitionService {
       if (!_confidenceCache.containsKey(cacheKey)) {
         _confidenceCache[cacheKey] = 0.75; // 投票通过的默认置信度
       }
+
+      // ── 字典后处理：常见字优先，形近字纠正 ──
+      final confidence = _confidenceCache[cacheKey] ?? 0.75;
+      final dictResult = DictionaryService.instance.postProcess(result, confidence: confidence);
+      if (dictResult != result) {
+        _addDebugLog('recognition', '字典后处理', data: {
+          'original': result,
+          'corrected': dictResult,
+          'confidence': confidence,
+        });
+        debugPrint('识别: 字典后处理 "$result" → "$dictResult"');
+        result = dictResult;
+      }
+
+      // 记录用户识别的字符，更新用户常用字缓存（异步，不阻塞返回）
+      DictionaryService.instance.recordUsage(result);
+
       _addDebugLog('recognition', '识别成功', data: {
         'result': result,
         'latencyMs': latencyMs,
         'mode': useCloud ? 'cloud' : 'local',
-        'confidence': _confidenceCache[cacheKey],
+        'confidence': confidence,
       });
     } else {
       _failedRecognitions++;
       _addDebugLog('recognition', '识别失败', data: {'latencyMs': latencyMs, 'mode': useCloud ? 'cloud' : 'local'});
     }
+
+    // 最终结果写入缓存
+    _recognitionCache[cacheKey] = result;
+    _cacheAccessOrder.add(cacheKey);
+    _estimatedCacheBytes += imageBytes.length; // 估算缓存内存增长
 
     return result;
   }
