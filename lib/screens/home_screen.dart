@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import 'font_preview_screen.dart';
 import 'font_preview_enhanced_screen.dart';
 import 'kerning_editor_screen.dart';
+import 'char_recommend_screen.dart';
 import 'project_list_screen.dart';
 import 'settings_screen.dart';
 import 'writing_tips_screen.dart';
@@ -1079,6 +1080,70 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       );
     } catch (e) {
       debugPrint('[Home] 打开间距编辑器失败: $e');
+    }
+  }
+
+  /// 打开智能字符推荐（先选择项目）
+  Future<void> _openCharRecommendWithProjectPicker() async {
+    try {
+      final projects = await StorageService.loadProjects();
+      if (!mounted) return;
+
+      if (projects.isEmpty) {
+        WFSnackBar.show(context, '请先创建一个字体项目');
+        return;
+      }
+
+      // 过滤出有字形数据的项目
+      final available = projects.where((p) => p.glyphs.isNotEmpty).toList();
+      if (available.isEmpty) {
+        WFSnackBar.show(context, '暂无已编辑的字形，请先完成造字');
+        return;
+      }
+
+      if (available.length == 1) {
+        // 只有一个项目时直接进入
+        Navigator.push(
+          context,
+          WFAnimations.slideRoute(CharRecommendScreen(project: available.first)),
+        );
+        return;
+      }
+
+      // 多个项目时弹出选择对话框
+      showModalBottomSheet(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '选择字体项目',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              ...available.map((p) => ListTile(
+                    leading: const Icon(Icons.font_download),
+                    title: Text(p.name),
+                    subtitle: Text('${p.glyphs.length} 个字形'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        WFAnimations.slideRoute(CharRecommendScreen(project: p)),
+                      );
+                    },
+                  )),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Home] 打开智能推荐失败: $e');
     }
   }
 
