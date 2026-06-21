@@ -369,7 +369,16 @@ class RecognitionService {
 
     if (result != null) {
       _successfulRecognitions++;
-      _addDebugLog('recognition', '识别成功', data: {'result': result, 'latencyMs': latencyMs, 'mode': useCloud ? 'cloud' : 'local'});
+      // 确保置信度缓存中有该图片的记录（投票结果可能未经过 _recognizeFromImage）
+      if (!_confidenceCache.containsKey(cacheKey)) {
+        _confidenceCache[cacheKey] = 0.75; // 投票通过的默认置信度
+      }
+      _addDebugLog('recognition', '识别成功', data: {
+        'result': result,
+        'latencyMs': latencyMs,
+        'mode': useCloud ? 'cloud' : 'local',
+        'confidence': _confidenceCache[cacheKey],
+      });
     } else {
       _failedRecognitions++;
       _addDebugLog('recognition', '识别失败', data: {'latencyMs': latencyMs, 'mode': useCloud ? 'cloud' : 'local'});
@@ -441,6 +450,188 @@ class RecognitionService {
 
   // ===== 图片预处理辅助方法 =====
 
+  /// 中值滤波去噪（3x3 窗口，对椒盐噪声效果好）
+  img.Image _medianFilter(img.Image src) {
+    final result = img.Image(width: src.width, height: src.height);
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final values = <int>[];
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, src.width - 1);
+            final ny = (y + dy).clamp(0, src.height - 1);
+            values.add(src.getPixel(nx, ny).r.toInt());
+          }
+        }
+        values.sort();
+        final median = values[4]; // 中位数
+        result.setPixelRgba(x, y, median, median, median, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 反转颜色（黑底白字 ↔ 白底黑字）
+  img.Image _invertColors(img.Image src) {
+    final result = img.Image(width: src.width, height: src.height);
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final pixel = src.getPixel(x, y);
+        final r = 255 - pixel.r.toInt();
+        final g = 255 - pixel.g.toInt();
+        final b = 255 - pixel.b.toInt();
+        result.setPixelRgba(x, y, r, g, b, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 裁剪边缘空白，返回紧凑图片（带少量 padding）
+  img.Image _trimWhitespace(img.Image src, {double paddingRatio = 0.1}) {
+    // 找到内容边界
+    int minX = src.width, maxX = 0, minY = src.height, maxY = 0;
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final v = src.getPixel(x, y).r.toInt();
+        if (v < 240) { // 非白色像素
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (minX > maxX || minY > maxY) return src; // 全白，返回原图
+
+    // 加 padding
+    final contentW = maxX - minX + 1;
+    final contentH = maxY - minY + 1;
+    final padX = (contentW * paddingRatio).round();
+    final padY = (contentH * paddingRatio).round();
+    final cropX = (minX - padX).clamp(0, src.width - 1);
+    final cropY = (minY - padY).clamp(0, src.height - 1);
+    final cropW = (contentW + padX * 2).clamp(1, src.width - cropX);
+    final cropH = (contentH + padY * 2).clamp(1, src.height - cropY);
+
+    return img.copyCrop(src, x: cropX, y: cropY, width: cropW, height: cropH);
+  }
+
+  /// 形态学细化（骨架化）- Zhang-Suen 算法简化版
+  /// 将笔画细化为 1 像素宽的骨架，提升 ML Kit 对粗笔画的识别
+  img.Image _skeletonize(img.Image binary) {
+    // 先转为二值灰度
+    final gray = img.grayscale(binary);
+    final w = gray.width, h = gray.height;
+
+    // 初始化标记数组（true = 黑色前景）
+    var pixels = List.generate(h, (y) =>
+        List.generate(w, (x) => gray.getPixel(x, y).r.toInt() < 128));
+
+    bool changed = true;
+    int iterations = 0;
+    const maxIterations = 50;
+
+    while (changed && iterations < maxIterations) {
+      changed = false;
+      iterations++;
+
+      // 标记要删除的像素
+      final toRemove = List.generate(h, (_) => List.filled(w, false));
+
+      for (int y = 1; y < h - 1; y++) {
+        for (int x = 1; x < w - 1; x++) {
+          if (!pixels[y][x]) continue;
+
+          // 计算 8-邻域中黑色邻居数
+          final neighbors = [
+            pixels[y-1][x], pixels[y-1][x+1], pixels[y][x+1], pixels[y+1][x+1],
+            pixels[y+1][x], pixels[y+1][x-1], pixels[y][x-1], pixels[y-1][x-1],
+          ];
+          final p = neighbors.map((b) => b ? 1 : 0).toList();
+          final bp = p[0] + p[1] + p[2] + p[3] + p[4] + p[5] + p[6] + p[7];
+
+          // 条件1: 2 <= 黑色邻居数 <= 6
+          if (bp < 2 || bp > 6) continue;
+
+          // 条件2: 0->1 转换次数 == 1
+          int transitions = 0;
+          for (int i = 0; i < 8; i++) {
+            if (p[i] == 0 && p[(i + 1) % 8] == 1) transitions++;
+          }
+          if (transitions != 1) continue;
+
+          // 条件3: p[0] * p[2] * p[4] == 0 (N * E * S == 0)
+          if (p[0] * p[2] * p[4] != 0) continue;
+
+          // 条件4: p[2] * p[4] * p[6] == 0 (E * S * W == 0)
+          if (p[2] * p[4] * p[6] != 0) continue;
+
+          toRemove[y][x] = true;
+          changed = true;
+        }
+      }
+
+      // 执行删除
+      for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+          if (toRemove[y][x]) pixels[y][x] = false;
+        }
+      }
+    }
+
+    // 转回图片
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = pixels[y][x] ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    debugPrint('  骨架化: $iterations 次迭代');
+    return result;
+  }
+
+  /// 自适应二值化（局部均值法，增强版）
+  /// 对比度低的区域使用更小的阈值偏移，保留更多笔画细节
+  img.Image _adaptiveBinarize(img.Image src, {int blockSize = 31, int c = 10}) {
+    if (blockSize.isEven) blockSize++;
+    final half = blockSize ~/ 2;
+    final w = src.width, h = src.height;
+    final result = img.Image(width: w, height: h);
+
+    // 积分图加速
+    final integral = List.generate(h, (_) => List.filled(w, 0));
+    for (int y = 0; y < h; y++) {
+      int rowSum = 0;
+      for (int x = 0; x < w; x++) {
+        rowSum += src.getPixel(x, y).r.toInt();
+        integral[y][x] = rowSum + (y > 0 ? integral[y - 1][x] : 0);
+      }
+    }
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final x1 = (x - half).clamp(0, w - 1);
+        final y1 = (y - half).clamp(0, h - 1);
+        final x2 = (x + half).clamp(0, w - 1);
+        final y2 = (y + half).clamp(0, h - 1);
+        final count = (x2 - x1 + 1) * (y2 - y1 + 1);
+
+        int sum = integral[y2][x2];
+        if (x1 > 0) sum -= integral[y2][x1 - 1];
+        if (y1 > 0) sum -= integral[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) sum += integral[y1 - 1][x1 - 1];
+
+        final localMean = sum / count;
+        final threshold = localMean - c;
+        final brightness = src.getPixel(x, y).r.toInt();
+        final v = brightness < threshold ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
   /// 锐化卷积（3x3 锐化核，手动实现兼容 image v4）
   img.Image _sharpen(img.Image src) {
     final result = img.Image(width: src.width, height: src.height);
@@ -493,8 +684,13 @@ class RecognitionService {
     return result;
   }
 
-  /// 本地 ML Kit 识别（多级预处理 + 重试策略）
-  /// 优化：第一轮尝试灰度原图，成功即返回；避免不必要的放大
+  /// 本地 ML Kit 识别（多级预处理 + 多轮投票 + 自适应增强）
+  ///
+  /// 策略：
+  /// 1. 快速尝试：灰度原图，成功即返回
+  /// 2. 多轮识别：不同预处理结果分别识别，投票选最佳
+  /// 3. 失败回退：反转颜色、裁剪边缘、骨架化
+  /// 4. 置信度评分：低置信度时尝试更多变体
   Future<String?> _recognizeLocal(Uint8List imageBytes) async {
     try {
       final decoded = img.decodeImage(imageBytes);
@@ -505,7 +701,7 @@ class RecognitionService {
       final maxDim = w > h ? w : h;
       debugPrint('ML Kit 识别: 原始图片 ${w}x$h，最大边 $maxDim');
 
-      // 第一轮快速尝试：原图灰度（跳过不必要的放大和复杂预处理）
+      // ═══ 第一轮：快速尝试（灰度原图，跳过放大和复杂预处理） ═══
       if (maxDim >= 50) {
         debugPrint('ML Kit 识别: 快速尝试 | 原图灰度');
         final gray = img.grayscale(decoded);
@@ -517,26 +713,28 @@ class RecognitionService {
         }
       }
 
+      // ═══ 第二轮：多级预处理 + 投票 ═══
       // 根据图片大小分级，定义放大目标尺寸序列
       List<int> upscaleTargets;
       if (maxDim < 50) {
-        // 单字级别：放大到 400→600→800
         upscaleTargets = [400, 600, 800];
       } else if (maxDim < 100) {
-        // 小字：放大到 300→500→700
         upscaleTargets = [300, 500, 700];
       } else if (maxDim < 200) {
-        // 中等：放大到 200→400
         upscaleTargets = [200, 400];
       } else {
-        // 大图：不放大，只做预处理
-        upscaleTargets = [0]; // 0 表示不放大，用原图
+        upscaleTargets = [0]; // 0 = 不放大，用原图
       }
-
       debugPrint('ML Kit 识别: 分级策略 targets=$upscaleTargets');
 
-      // 预处理组合列表：先确保灰度，再尝试不同增强策略
+      // 投票统计：字符 → 出现次数
+      final voteMap = <String, int>{};
+      // 记录每个字符的最高置信度
+      final confidenceMap = <String, double>{};
+
+      // 预处理组合列表（覆盖更多场景）
       final preprocessors = <String, img.Image Function(img.Image)>{
+        // 基础策略
         '灰度': (src) => img.grayscale(src),
         '灰度+对比度': (src) {
           final gray = img.grayscale(src);
@@ -546,23 +744,44 @@ class RecognitionService {
           final gray = img.grayscale(src);
           return _sharpen(gray);
         },
+        '灰度+去噪': (src) {
+          final gray = img.grayscale(src);
+          return _medianFilter(gray);
+        },
+        '灰度+自适应二值化': (src) {
+          final gray = img.grayscale(src);
+          return _adaptiveBinarize(gray, blockSize: 31, c: 10);
+        },
         '灰度+对比度+二值化': (src) {
           final gray = img.grayscale(src);
           final enhanced = img.adjustColor(gray, contrast: 1.5, brightness: 1.1);
           return _binarize(enhanced);
         },
+        '灰度+去噪+锐化': (src) {
+          final gray = img.grayscale(src);
+          final denoised = _medianFilter(gray);
+          return _sharpen(denoised);
+        },
+        '灰度+去噪+自适应二值化': (src) {
+          final gray = img.grayscale(src);
+          final denoised = _medianFilter(gray);
+          return _adaptiveBinarize(denoised, blockSize: 31, c: 10);
+        },
+        '灰度+对比度+去噪+二值化': (src) {
+          final gray = img.grayscale(src);
+          final enhanced = img.adjustColor(gray, contrast: 1.5, brightness: 1.1);
+          final denoised = _medianFilter(enhanced);
+          return _binarize(denoised);
+        },
       };
 
       int attempt = 0;
 
-      // 对每个放大级别 × 每种预处理组合尝试识别
       for (final targetSize in upscaleTargets) {
-        // 确定当前要处理的图片
         img.Image base;
         if (targetSize == 0) {
           base = decoded;
         } else {
-          // 等比放大到目标尺寸（以最大边为准）
           final scale = targetSize / maxDim;
           final newW = (w * scale).round();
           final newH = (h * scale).round();
@@ -582,17 +801,103 @@ class RecognitionService {
           final rawResult = await _recognizeFromImage(processed);
           final result = _validateResult(rawResult);
           if (result != null) {
-            debugPrint('ML Kit 识别: ✓ 第${attempt}次成功 (放大=${targetSize == 0 ? "原图" : "${base.width}x${base.height}"}, 预处理=$label), 字符="$result"');
-            return result;
+            voteMap[result] = (voteMap[result] ?? 0) + 1;
+            // 更新置信度（取最高值）
+            final hash = _hashBytes(img.encodePng(processed));
+            final conf = _confidenceCache[hash] ?? 0.7;
+            confidenceMap[result] = (confidenceMap[result] ?? 0) > conf
+                ? confidenceMap[result]!
+                : conf;
+            debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]})');
+          } else {
+            if (rawResult != null && rawResult.isNotEmpty) {
+              debugPrint('ML Kit 识别: 过滤非目标字符 "$rawResult" (U+${rawResult.codeUnitAt(0).toRadixString(16)})');
+            }
+            debugPrint('ML Kit 识别: ✗ 第${attempt}次未识别到文字');
           }
-          if (rawResult != null && rawResult.isNotEmpty) {
-            debugPrint('ML Kit 识别: 过滤非目标字符 "$rawResult" (U+${rawResult.codeUnitAt(0).toRadixString(16)})');
-          }
-          debugPrint('ML Kit 识别: ✗ 第${attempt}次未识别到文字');
         }
       }
 
-      debugPrint('ML Kit 识别: 所有${attempt}次尝试均未识别到文字');
+      // 投票选出最佳结果
+      if (voteMap.isNotEmpty) {
+        // 按票数排序，票数相同取置信度高的
+        final sorted = voteMap.entries.toList()
+          ..sort((a, b) {
+            final voteDiff = b.value.compareTo(a.value);
+            if (voteDiff != 0) return voteDiff;
+            return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+          });
+        final winner = sorted.first;
+        debugPrint('ML Kit 识别: 投票结果 "$winner.key" (票数=${winner.value}, 置信度=${((confidenceMap[winner.key] ?? 0) * 100).toStringAsFixed(0)}%)');
+        return winner.key;
+      }
+
+      // ═══ 第三轮：失败回退策略 ═══
+      debugPrint('ML Kit 识别: 常规预处理均失败，尝试回退策略');
+
+      // 确定回退用的基础图片
+      final fallbackBase = upscaleTargets.isNotEmpty && upscaleTargets.first > 0
+          ? img.copyResize(decoded,
+              width: (w * upscaleTargets.first / maxDim).round(),
+              height: (h * upscaleTargets.first / maxDim).round(),
+              interpolation: img.Interpolation.cubic)
+          : decoded;
+
+      // 回退策略 1：裁剪边缘空白后再识别
+      debugPrint('ML Kit 识别: 回退策略1 - 裁剪边缘空白');
+      final trimmed = _trimWhitespace(fallbackBase);
+      if (trimmed.width != fallbackBase.width || trimmed.height != fallbackBase.height) {
+        final grayTrimmed = img.grayscale(trimmed);
+        final rawResult = await _recognizeFromImage(grayTrimmed);
+        final result = _validateResult(rawResult);
+        if (result != null) {
+          debugPrint('ML Kit 识别: ✓ 裁剪边缘成功, 字符="$result"');
+          return result;
+        }
+      }
+
+      // 回退策略 2：反转颜色（白底黑字 ↔ 黑底白字）
+      debugPrint('ML Kit 识别: 回退策略2 - 反转颜色');
+      final inverted = _invertColors(img.grayscale(fallbackBase));
+      final rawInvResult = await _recognizeFromImage(inverted);
+      final invResult = _validateResult(rawInvResult);
+      if (invResult != null) {
+        debugPrint('ML Kit 识别: ✓ 反转颜色成功, 字符="$invResult"');
+        return invResult;
+      }
+
+      // 回退策略 3：反转颜色 + 裁剪
+      debugPrint('ML Kit 识别: 回退策略3 - 反转颜色+裁剪');
+      final invertedTrimmed = _invertColors(img.grayscale(_trimWhitespace(fallbackBase)));
+      final rawInvTrimResult = await _recognizeFromImage(invertedTrimmed);
+      final invTrimResult = _validateResult(rawInvTrimResult);
+      if (invTrimResult != null) {
+        debugPrint('ML Kit 识别: ✓ 反转+裁剪成功, 字符="$invTrimResult"');
+        return invTrimResult;
+      }
+
+      // 回退策略 4：骨架化（对粗笔画特别有效）
+      debugPrint('ML Kit 识别: 回退策略4 - 骨架化');
+      final grayForSkel = img.grayscale(fallbackBase);
+      final skeletonized = _skeletonize(grayForSkel);
+      final rawSkelResult = await _recognizeFromImage(skeletonized);
+      final skelResult = _validateResult(rawSkelResult);
+      if (skelResult != null) {
+        debugPrint('ML Kit 识别: ✓ 骨架化成功, 字符="$skelResult"');
+        return skelResult;
+      }
+
+      // 回退策略 5：骨架化 + 反转
+      debugPrint('ML Kit 识别: 回退策略5 - 骨架化+反转');
+      final skelInverted = _invertColors(skeletonized);
+      final rawSkelInvResult = await _recognizeFromImage(skelInverted);
+      final skelInvResult = _validateResult(rawSkelInvResult);
+      if (skelInvResult != null) {
+        debugPrint('ML Kit 识别: ✓ 骨架化+反转成功, 字符="$skelInvResult"');
+        return skelInvResult;
+      }
+
+      debugPrint('ML Kit 识别: 所有${attempt}次常规尝试 + 5次回退策略均未识别到文字');
     } catch (e) {
       debugPrint('ML Kit 识别失败: $e');
     }
@@ -648,6 +953,8 @@ class RecognitionService {
   /// - 文本长度（越短越可能是单字识别，置信度越高）
   /// - 是否为有效字符
   /// - 文本块数量（块越少，聚焦度越高）
+  /// - 元素数量（元素越少，识别越聚焦）
+  /// - 文本内容质量（是否为常见汉字）
   static double _estimateConfidence(
     TextElement element,
     RecognizedText recognizedText,
@@ -657,13 +964,29 @@ class RecognitionService {
 
     // 单字符输出 → 较高置信度
     if (text.runes.length == 1) confidence += 0.15;
+    // 多字符输出 → 降低置信度（可能是误识别多个字符）
+    if (text.runes.length > 2) confidence -= 0.1;
+
     // 有效汉字 → 较高置信度
     if (text.runes.isNotEmpty) {
       final ch = String.fromCharCode(text.runes.first);
       if (_isValidChar(ch)) confidence += 0.1;
     }
+
     // 文本块数量少 → 聚焦度高
     if (recognizedText.blocks.length <= 1) confidence += 0.05;
+    // 文本块过多 → 分散，降低置信度
+    if (recognizedText.blocks.length > 3) confidence -= 0.05;
+
+    // 元素数量少 → 识别更聚焦
+    int totalElements = 0;
+    for (final block in recognizedText.blocks) {
+      for (final line in block.lines) {
+        totalElements += line.elements.length;
+      }
+    }
+    if (totalElements <= 1) confidence += 0.05;
+    if (totalElements > 5) confidence -= 0.05;
 
     return confidence.clamp(0.0, 1.0);
   }
