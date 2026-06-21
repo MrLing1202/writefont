@@ -8,6 +8,7 @@ import 'auto_generate/processing_view.dart';
 import 'auto_generate/confirm_view.dart';
 import 'auto_generate/error_view.dart';
 import 'auto_generate/quick_edit_dialog.dart';
+import '../services/recognition_service.dart';
 import 'auto_generate/processing_logic.dart';
 import 'auto_generate/generate_font.dart';
 import 'auto_generate/character_ops.dart';
@@ -213,6 +214,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       setState(() {
         _editedAssignments[index] = newChar;
       });
+      // 存入用户反馈学习系统，提升后续识别率
+      RecognitionService.correctRecognition(_cells[index], newChar);
     }
   }
 

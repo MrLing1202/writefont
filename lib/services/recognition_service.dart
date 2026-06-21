@@ -9,6 +9,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'image_processor.dart';
+import 'user_feedback_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'api_key.dart';
@@ -350,6 +351,23 @@ class RecognitionService {
     }
 
     _cacheMisses++;
+
+    // 用户反馈学习：查找相似图片的纠正结果（优先级最高）
+    final feedbackResult = await UserFeedbackService.instance.findSimilarFeedback(imageBytes);
+    if (feedbackResult != null) {
+      _cacheHits++;
+      _addDebugLog('cache', '命中用户反馈', data: {'hash': cacheKey, 'result': feedbackResult});
+      debugPrint('识别: 命中用户反馈 "$feedbackResult"');
+      // 同步写入内存缓存，加速后续查找
+      _recognitionCache[cacheKey] = feedbackResult;
+      _cacheAccessOrder.remove(cacheKey);
+      _cacheAccessOrder.add(cacheKey);
+      _confidenceCache[cacheKey] = 1.0; // 用户纠正 = 最高置信度
+      sw.stop();
+      _recordLatency(sw.elapsed.inMicroseconds / 1000.0);
+      return feedbackResult;
+    }
+
     _addDebugLog('recognition', '开始识别', data: {'mode': useCloud ? 'cloud' : 'local', 'imageSize': imageBytes.length});
 
     String? result;
@@ -1437,6 +1455,7 @@ class RecognitionService {
 
   /// 校正识别结果（用户手动修正误识别的字符）
   /// 将校正结果写入缓存，后续相同图片将返回校正后的结果
+  /// 同时将纠正记录存入用户反馈学习系统，用于相似图片匹配
   static void correctRecognition(Uint8List imageBytes, String correctedChar) {
     if (correctedChar.isEmpty) return;
     final cacheKey = _hashBytes(imageBytes);
@@ -1446,6 +1465,8 @@ class RecognitionService {
     _cacheAccessOrder.remove(cacheKey);
     _cacheAccessOrder.add(cacheKey);
     debugPrint('识别校正: hash=$cacheKey → "$correctedChar"');
+    // 存入用户反馈学习系统（异步，不阻塞）
+    UserFeedbackService.instance.feedback(imageBytes, correctedChar);
   }
 
   /// 读取已选择的模型

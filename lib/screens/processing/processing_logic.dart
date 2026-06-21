@@ -456,6 +456,8 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
                 confidence: ConfidenceLevel.high, // 用户手动修正 = 高置信
               );
             });
+            // 存入用户反馈学习系统，提升后续识别率
+            RecognitionService.correctRecognition(processedCells[index], text);
           },
           onMarkCorrect: charAssignments[index] != null
               ? () {
@@ -466,6 +468,9 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
                       confidence: ConfidenceLevel.high,
                     );
                   });
+                  // 标记正确也存入反馈系统
+                  RecognitionService.correctRecognition(
+                    processedCells[index], charAssignments[index]!);
                 }
               : null,
         );
