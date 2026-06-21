@@ -2395,15 +2395,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 14),
 
-                  // ── 辅助功能入口 ──
+                  // ── 功能入口（分组网格）──
                   WFAnimations.fadeInSlide(
                     SecondaryEntryCard(
                       savedProjectCount: _savedProjectCount,
-                      onMyFontsTap: () async {
-                        await HomeActions.openProjectList(context);
-                        _loadProjectData();
+                      // 创建
+                      onCameraImportTap: () => HomeActions.quickCapture(context),
+                      onBatchImportTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const BatchImportScreen()),
+                        );
                       },
-                      onCharGridTap: () => HomeActions.openCharacterGrid(context),
+                      onTemplateGeneratorTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(TemplateGeneratorScreen()),
+                        );
+                      },
+                      onPracticeModeTap: () {
+                        HomeActions.openProjectList(context);
+                      },
+                      // 预览
                       onFontPreviewTap: () {
                         Navigator.push(
                           context,
@@ -2416,32 +2429,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           WFAnimations.slideRoute(const FontPreviewEnhancedScreen()),
                         );
                       },
-                      onStyleTransferTap: () => HomeActions.openStyleTransfer(context),
-                      onTemplateGeneratorTap: () {
-                        Navigator.push(
-                          context,
-                          WFAnimations.slideRoute(TemplateGeneratorScreen()),
-                        );
-                      },
+                      onTextPreviewTap: () => _openTextPreviewWithProjectPicker(),
                       onFontCompareTap: () {
                         Navigator.push(
                           context,
                           WFAnimations.slideRoute(FontCompareScreen()),
                         );
                       },
-                      onPracticeModeTap: () {
-                        // 练习模式需要选择项目，先打开项目列表
-                        HomeActions.openProjectList(context);
-                      },
+                      // 编辑
+                      onCharGridTap: () => HomeActions.openCharacterGrid(context),
                       onKerningEditorTap: () => _openKerningEditorWithProjectPicker(),
-                      onGlyphQualityTap: () => _openGlyphQualityWithProjectPicker(),
                       onCharRecommendTap: () => _openCharRecommendWithProjectPicker(),
-                      onWebExportTap: () => _openWebExportWithProjectPicker(),
-                      onFontFamilyTap: () => _openFontFamilyWithProjectPicker(),
+                      onGlyphQualityTap: () => _openGlyphQualityWithProjectPicker(),
+                      onStyleTransferTap: () => HomeActions.openStyleTransfer(context),
                       onStrokeOrderTap: () => _openStrokeOrderWithProjectPicker(),
+                      // 导出
+                      onFontFamilyTap: () => _openFontFamilyWithProjectPicker(),
+                      onWebExportTap: () => _openWebExportWithProjectPicker(),
+                      onGoogleFontsExportTap: () => _openWebExportWithProjectPicker(),
                       onCharsetAnalysisTap: () => _openCharsetAnalysisWithProjectPicker(),
                       onGlyphCompletionTap: () => _openGlyphCompletionWithProjectPicker(),
-                      onTextPreviewTap: () => _openTextPreviewWithProjectPicker(),
+                      onMyFontsTap: () async {
+                        await HomeActions.openProjectList(context);
+                        _loadProjectData();
+                      },
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
