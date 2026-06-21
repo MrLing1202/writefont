@@ -345,7 +345,7 @@ class StrokeAnalyzer {
       final bottomRatio = totalInk > 0 ? bottomInk / totalInk : 0;
       final leftRatio = totalInk > 0 ? leftInk / totalInk : 0;
       final rightRatio = totalInk > 0 ? rightInk / totalInk : 0;
-      final borderVariance = _variance([topRatio, bottomRatio, leftRatio, rightRatio]);
+      final borderVariance = _variance([topRatio, bottomRatio, leftRatio, rightRatio]).toDouble();
       if (borderVariance < 0.02) {
         return CharStructure.surround;
       }
