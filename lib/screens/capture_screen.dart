@@ -57,6 +57,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       final prefs = await SharedPreferences.getInstance();
       final completed = prefs.getStringList('capture_completed_tutorials');
       if (completed != null && mounted) {
+        if (!mounted) return;
         setState(() {
           _completedTutorials.clear();
           _completedTutorials.addAll(completed.map(int.parse));
@@ -172,6 +173,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
       }
 
       if (confirmed == true && mounted) {
+        if (!mounted) return;
         setState(() {
           _selectedImages.add(photo);
         });

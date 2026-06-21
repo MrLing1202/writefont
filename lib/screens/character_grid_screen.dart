@@ -163,6 +163,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
         // 拍照返回后重新加载项目数据
         final updated = await StorageService.loadProject(_project.id);
         if (updated != null && mounted) {
+          if (!mounted) return;
           setState(() => _project = updated);
         }
       });
@@ -171,6 +172,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
 
   /// 进入/退出选择模式
   void _toggleSelectionMode() {
+    if (!mounted) return;
     setState(() {
       _isSelectionMode = !_isSelectionMode;
       if (!_isSelectionMode) {
@@ -300,6 +302,7 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                     final updated =
                         await StorageService.loadProject(_project.id);
                     if (updated != null && mounted) {
+                      if (!mounted) return;
                       setState(() => _project = updated);
                     }
                   },

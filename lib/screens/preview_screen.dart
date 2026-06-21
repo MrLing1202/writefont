@@ -82,6 +82,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       WFAnimations.slideRoute(FontMetadataScreen(project: widget.project)),
     );
     if (result != null && mounted) {
+      if (!mounted) return;
       setState(() => _fontMetadata = result);
       WFSnackBar.show(context, '元数据已更新，可直接导出字体');
     }
@@ -182,6 +183,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   Future<void> _deleteSelectedCharacters() async {
     final count = _selectedCharacters.length;
     if (await showDeleteConfirmDialog(context, count)) {
+      if (!mounted) return;
       setState(() {
         for (final char in _selectedCharacters) {
           widget.project.glyphs.remove(char);

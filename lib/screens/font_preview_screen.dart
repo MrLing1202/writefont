@@ -244,6 +244,7 @@ class _FontPreviewScreenState extends State<FontPreviewScreen> {
     );
     if (confirmed != true) return;
 
+    if (!mounted) return;
     setState(() => _isExporting = true);
     try {
       final editedCount = _project!.glyphs.values

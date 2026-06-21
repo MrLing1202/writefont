@@ -100,6 +100,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
     await _sync.init();
     await _refreshData();
     _loadSocialData();
+    if (!mounted) return;
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -213,6 +214,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
 
     if (confirmed != true) return;
 
+    if (!mounted) return;
     setState(() => _isSyncing = true);
     final error = await _sync.restoreFromCloud(entry.projectId, entry.timestamp);
     if (mounted) {
@@ -238,6 +240,7 @@ class _CloudSyncScreenState extends State<CloudSyncScreen> {
 
     if (confirmed != true) return;
 
+    if (!mounted) return;
     setState(() {
       _history.clear();
       _lastSyncTime = null;

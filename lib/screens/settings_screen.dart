@@ -821,6 +821,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirmed != true || !mounted) return;
 
+    if (!mounted) return;
     setState(() => _isRollingBack = true);
 
     try {
@@ -1723,6 +1724,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final json = prefs.getString(_feedbackStorageKey);
       if (json != null && mounted) {
         final list = jsonDecode(json) as List;
+        if (!mounted) return;
         setState(() {
           _feedbackList.clear();
           _feedbackList.addAll(
@@ -2008,6 +2010,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final json = prefs.getString(_supportHistoryKey);
       if (json != null && mounted) {
         final list = jsonDecode(json) as List;
+        if (!mounted) return;
         setState(() {
           _supportHistory.clear();
           _supportHistory.addAll(

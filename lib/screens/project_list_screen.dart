@@ -70,6 +70,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       final prefs = await SharedPreferences.getInstance();
       final history = prefs.getStringList(_searchHistoryKey);
       if (history != null && mounted) {
+        if (!mounted) return;
         setState(() => _searchHistory = history);
       }
     } catch (_) {}
@@ -95,6 +96,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       _searchHistory.clear();
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_searchHistoryKey);
+      if (!mounted) return;
       if (mounted) setState(() {});
     } catch (_) {}
   }
@@ -316,6 +318,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       final json = _filterPresets.map((p) => jsonEncode(p)).toList();
       await prefs.setStringList(_filterPresetsKey, json);
     } catch (_) {}
+    if (!mounted) return;
     if (mounted) setState(() {});
   }
 
@@ -846,6 +849,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
         for (final id in _selectedProjectIds) {
           await StorageService.deleteProject(id);
         }
+        if (!mounted) return;
         setState(() {
           _isMultiSelectMode = false;
           _selectedProjectIds.clear();

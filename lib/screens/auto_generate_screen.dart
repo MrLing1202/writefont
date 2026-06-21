@@ -129,6 +129,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         strokeWidth: await config.getStrokeWidth(),
       );
 
+      if (!mounted) return;
       setState(() {
         _status = '正在分割字符...'; _progress = 0.1;
         _isConfirming = false; _isGenerating = false;
@@ -140,6 +141,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         _params,
         onProgress: (progress, status) {
           if (mounted && !_cancelled) {
+            if (!mounted) return;
             setState(() {
               _progress = progress;
               _status = status;
@@ -207,6 +209,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       currentChar: currentChar,
     );
     if (newChar != null && newChar.isNotEmpty && newChar != currentChar) {
+      if (!mounted) return;
       setState(() {
         _editedAssignments[index] = newChar;
       });
@@ -224,6 +227,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       }
       final project = await generateFontFromCells(
         _cells, finalAssignments, _params, widget.imageBytes,
+        if (!mounted) return;
         onProgress: (p, s) { if (mounted) setState(() { _progress = p; _status = s; }); },
       );
       if (project != null && mounted) {

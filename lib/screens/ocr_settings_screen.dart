@@ -80,6 +80,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
   }
 
   Future<void> _testConnection() async {
+    if (!mounted) return;
     setState(() => _isTesting = true);
 
     try {

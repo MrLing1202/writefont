@@ -84,6 +84,7 @@ class _AiFontGeneratorScreenState extends State<AiFontGeneratorScreen> {
       final json = prefs.getString('ai_font_gen_history');
       if (json != null) {
         final list = jsonDecode(json) as List;
+        if (!mounted) return;
         setState(() {
           // 最多加载 20 条历史
           _history = list.take(20).map((e) => _GenerationRecord.fromJson(e)).toList();

@@ -1221,6 +1221,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final prefs = await SharedPreferences.getInstance();
       final hasSeenGuide = prefs.getBool('home_onboarding_seen') ?? false;
       if (mounted && !hasSeenGuide) {
+        if (!mounted) return;
         setState(() {
           _showOnboarding = true;
         });
@@ -1248,6 +1249,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final prefs = await SharedPreferences.getInstance();
       _completedFeatureGuides.add(guideId);
       await prefs.setStringList('completed_feature_guides', _completedFeatureGuides);
+      if (!mounted) return;
       if (mounted) setState(() {});
     } catch (_) {}
   }
@@ -1340,6 +1342,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       final prefs = await SharedPreferences.getInstance();
       final json = prefs.getString('push_settings');
       if (json != null && mounted) {
+        if (!mounted) return;
         setState(() {
           _pushSettings = PushSettings.fromJson(
             Map<String, dynamic>.from(
@@ -1362,6 +1365,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// 加载未读通知数量
   void _loadNotificationCount() {
+    if (!mounted) return;
     setState(() {
       _unreadNotificationCount = NotificationService.instance.unreadCount;
     });
@@ -1428,6 +1432,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       );
                       if (picked != null) {
                         setSheetState(() => _pushSettings.reminderTime = picked);
+                        if (!mounted) return;
                         setState(() {});
                         _savePushSettings();
                       }
@@ -1802,6 +1807,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     HapticFeedback.lightImpact(); // 触觉反馈
     await _loadProjectData();
     await _loadAppVersion();
+    if (!mounted) return;
     if (mounted) setState(() => _isRefreshing = false);
   }
 
