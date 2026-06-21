@@ -225,9 +225,9 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         final char = _getCharAt(i);
         if (char != null && char.isNotEmpty) finalAssignments[i] = char;
       }
+      if (!mounted) return;
       final project = await generateFontFromCells(
         _cells, finalAssignments, _params, widget.imageBytes,
-        if (!mounted) return;
         onProgress: (p, s) { if (mounted) setState(() { _progress = p; _status = s; }); },
       );
       if (project != null && mounted) {
