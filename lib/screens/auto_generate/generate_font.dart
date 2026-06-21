@@ -35,13 +35,20 @@ Future<FontProject?> generateFontFromCells(
     }
 
     try {
-      // 外层超时保护：单字符最多 20 秒
-      final contours = await ImageProcessor.extractContours(
-        cells[i], params,
-        timeout: const Duration(seconds: 15),
-      ).timeout(const Duration(seconds: 20), onTimeout: () {
-        throw TimeoutException('字符 $char 处理超时');
-      });
+      // Isolate 轮廓提取（后台线程，不阻塞 UI）
+      List<Contour> contours;
+      try {
+        contours = await ImageProcessor.extractContours(
+          cells[i], params,
+          timeout: const Duration(seconds: 15),
+        ).timeout(const Duration(seconds: 20), onTimeout: () {
+          throw TimeoutException('字符 $char Isolate超时');
+        });
+      } catch (e) {
+        // Isolate 超时或失败时，降级为同步轮廓提取（不丢字符）
+        print('[字体生成] 字符 "$char" Isolate 失败，降级同步提取: $e');
+        contours = ImageProcessor.extractContoursSync(cells[i], params);
+      }
 
       final glyph = GlyphData(
         character: char,
@@ -51,8 +58,8 @@ Future<FontProject?> generateFontFromCells(
       glyph.advanceWidth = glyph.calculateAdvanceWidth();
       project.glyphs[char] = glyph;
     } catch (e) {
-      // 单个字符处理失败时继续处理其他字符
-      print('[字体生成] 字符 "$char" 处理失败，跳过: $e');
+      // 同步提取也失败时记录错误，但仍继续处理其他字符
+      print('[字体生成] 字符 "$char" 处理失败: $e');
     }
 
     completed++;

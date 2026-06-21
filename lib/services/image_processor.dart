@@ -1145,6 +1145,52 @@ class ImageProcessor {
     }
   }
 
+  /// 同步轮廓提取：直接在当前 Isolate 执行，不创建新 Isolate。
+  /// 用作 Isolate 超时/失败时的降级方案，确保始终能产出结果。
+  static List<Contour> extractContoursSync(
+    Uint8List imageBytes,
+    ProcessingParams params,
+  ) {
+    _recordUsage('extractContoursSync');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      // 缓存命中检查
+      final cacheKey = _fastHash(imageBytes, params);
+      if (_contourCache.containsKey(cacheKey)) {
+        debugPrint('轮廓提取(同步): 命中缓存 (hash=$cacheKey)');
+        return _contourCache[cacheKey]!;
+      }
+
+      final contourDataList = _computeContours({
+        'imageBytes': imageBytes,
+        'threshold': params.threshold,
+        'strokeWidth': params.strokeWidth,
+        'smoothness': params.smoothness,
+        'invertColors': params.invertColors,
+      });
+
+      final allContours = contourDataList.map(_deserializeContour).toList();
+
+      debugPrint('轮廓提取(同步)完成: 共 ${allContours.length} 个轮廓');
+
+      // 写入缓存
+      if (_contourCache.length >= _maxContourCacheSize) {
+        _contourCache.remove(_contourCache.keys.first);
+      }
+      _contourCache[cacheKey] = allContours;
+
+      return allContours;
+    } catch (e) {
+      _recordError('extractContoursSync', e, context: 'imageSize=${imageBytes.length}');
+      rethrow;
+    } finally {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordPerfTiming('extractContoursSync', sw.elapsed);
+    }
+  }
+
   /// Extract contour points from a binary character image.
   /// Returns contours scaled to font units (0-1000).
   /// 核心计算在后台 Isolate 中执行，避免阻塞 UI 线程。
