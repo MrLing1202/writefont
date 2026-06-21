@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:ui' show ImageByteFormat;
+import 'dart:ui' show ImageByteFormat, PictureRecorder, Canvas, Color, Rect;
 import 'package:archive/archive.dart';
 import 'package:flutter/painting.dart';
 import '../models/project.dart';

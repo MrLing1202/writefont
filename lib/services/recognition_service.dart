@@ -11,6 +11,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'image_processor.dart';
 import 'user_feedback_service.dart';
 import 'dictionary_service.dart';
+import 'stroke_analyzer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'api_key.dart';
@@ -432,6 +433,22 @@ class RecognitionService {
         });
         debugPrint('识别: 字典后处理 "$result" → "$dictResult"');
         result = dictResult;
+      }
+
+      // ── 笔画特征辅助选择：低置信度时用笔画特征优化结果 ──
+      if (confidence < 0.75 && result != null) {
+        final strokeResult = await StrokeAnalyzer.instance.assistRecognition(
+          imageBytes, result, confidence,
+        );
+        if (strokeResult != null && strokeResult != result) {
+          _addDebugLog('recognition', '笔画特征辅助', data: {
+            'original': result,
+            'corrected': strokeResult,
+            'confidence': confidence,
+          });
+          debugPrint('识别: 笔画辅助 "$result" → "$strokeResult"');
+          result = strokeResult;
+        }
       }
 
       // 记录用户识别的字符，更新用户常用字缓存（异步，不阻塞返回）

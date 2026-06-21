@@ -532,7 +532,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                           icon: Icons.undo,
                           label: '撤销',
                           isActive: false,
-                          onTap: undoStack.isNotEmpty ? undo : null,
+                          onTap: undoRedoService.canUndo ? undo : null,
                           colorScheme: colorScheme,
                         ),
                         // 重做
@@ -540,7 +540,7 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                           icon: Icons.redo,
                           label: '重做',
                           isActive: false,
-                          onTap: redoStack.isNotEmpty ? redo : null,
+                          onTap: undoRedoService.canRedo ? redo : null,
                           colorScheme: colorScheme,
                         ),
                         // 清除
