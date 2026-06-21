@@ -16,6 +16,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onCharRecommendTap;
   final VoidCallback onGlyphQualityTap;
   final VoidCallback onWebExportTap;
+  final VoidCallback onFontFamilyTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -32,6 +33,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onCharRecommendTap,
     required this.onGlyphQualityTap,
     required this.onWebExportTap,
+    required this.onFontFamilyTap,
   });
 
   @override
@@ -152,6 +154,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '网页导出',
             subtitle: '生成 @font-face CSS · HTML · Flutter 代码',
             onTap: onWebExportTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.font_download,
+            iconColor: const Color(0xFF2ECC71),
+            title: '字体家族',
+            subtitle: '一键生成 Bold · Italic 变体',
+            onTap: onFontFamilyTap,
           ),
         ],
       ),
