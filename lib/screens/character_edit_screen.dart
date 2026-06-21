@@ -471,6 +471,15 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
                               setState(() => currentTool = DrawTool.eraser),
                           colorScheme: colorScheme,
                         ),
+                        // 平滑工具
+                        ToolButton(
+                          icon: Icons.auto_fix_high,
+                          label: '平滑',
+                          isActive: currentTool == DrawTool.smooth,
+                          onTap: () =>
+                              setState(() => currentTool = DrawTool.smooth),
+                          colorScheme: colorScheme,
+                        ),
                         // 画笔粗细
                         ToolButton(
                           icon: Icons.line_weight,
