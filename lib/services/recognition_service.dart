@@ -61,6 +61,9 @@ class RecognitionService {
   // ML Kit 识别器（懒加载）
   TextRecognizer? _mlKitRecognizer;
 
+  /// 最近一次本地识别的投票置信度（供 recognizeCharacter 判断是否需要云端二次确认）
+  double _lastLocalConfidence = 0.0;
+
   // 原子计数器，用于临时文件名防碰撞
   static int _fileCounter = 0;
 
@@ -349,9 +352,37 @@ class RecognitionService {
     _cacheMisses++;
     _addDebugLog('recognition', '开始识别', data: {'mode': useCloud ? 'cloud' : 'local', 'imageSize': imageBytes.length});
 
-    final result = useCloud
-        ? await _recognizeCloud(imageBytes)
-        : await _recognizeLocal(imageBytes);
+    String? result;
+    if (useCloud) {
+      result = await _recognizeCloud(imageBytes);
+    } else {
+      // 本地识别
+      result = await _recognizeLocal(imageBytes);
+
+      // 手写体优化：低置信度时自动请求云端二次确认
+      if (result != null && _lastLocalConfidence < 0.65) {
+        debugPrint('识别: 本地置信度 ${(_lastLocalConfidence * 100).toStringAsFixed(0)}% < 65%，请求云端二次确认');
+        _addDebugLog('recognition', '低置信度触发云端二次确认', data: {
+          'localResult': result,
+          'confidence': _lastLocalConfidence,
+        });
+
+        final cloudResult = await _recognizeCloud(imageBytes);
+        if (cloudResult != null) {
+          if (cloudResult == result) {
+            // 本地与云端一致，提升置信度
+            _confidenceCache[cacheKey] = 0.85;
+            debugPrint('识别: 本地与云端一致 "$result"，置信度提升至 85%');
+          } else {
+            // 结果不一致，采用云端结果（云端对手写体识别更准确）
+            debugPrint('识别: 本地="$result" vs 云端="$cloudResult"，采用云端结果');
+            result = cloudResult;
+            _confidenceCache[cacheKey] = 0.75;
+          }
+        }
+        // 云端失败时保留本地结果
+      }
+    }
 
     // 写入缓存，超出上限时使用 LRU 策略淘汰最久未访问的条目
     // 内存优化：同时检查条目数和内存占用
@@ -667,6 +698,190 @@ class RecognitionService {
     return img.adjustColor(src, contrast: 1.5, brightness: 1.1);
   }
 
+  /// 手写体专用预处理：笔画增强（膨胀+细化）
+  ///
+  /// 针对手写汉字特征优化：
+  /// 1. 自适应二值化（小窗口，对手写笔画更敏感）
+  /// 2. 形态学膨胀：连接断笔、增强笔画连通性
+  /// 3. 中值滤波：去除手写毛刺和飞白噪声
+  /// 4. 骨架化：恢复标准笔画宽度
+  img.Image _handwritingEnhance(img.Image src) {
+    debugPrint('  手写体增强: 开始笔画增强处理');
+    final gray = img.grayscale(src);
+    // 使用更小的 blockSize 对手写体笔画更敏感
+    final binary = _adaptiveBinarize(gray, blockSize: 25, c: 8);
+    // 膨胀连接断笔
+    final dilated = _morphologicalDilate(binary, radius: 1);
+    // 中值滤波去毛刺
+    final smoothed = _medianFilter(dilated);
+    // 细化回标准宽度
+    final result = _skeletonize(smoothed);
+    debugPrint('  手写体增强: 完成');
+    return result;
+  }
+
+  /// 倾斜校正（投影法，±15度范围自动检测）
+  ///
+  /// 对二值化图片在 -15°~+15° 范围内逐角度旋转，
+  /// 计算每次旋转后水平投影的方差。方差最大时文字行最整齐，
+  /// 即为最佳校正角度。
+  img.Image _skewCorrection(img.Image src) {
+    debugPrint('  倾斜校正: 检测倾斜角度 (±15°)');
+    final gray = img.grayscale(src);
+    final binary = _adaptiveBinarize(gray, blockSize: 31, c: 10);
+
+    double bestAngle = 0;
+    double maxVariance = 0;
+
+    // 以 1 度步长搜索最佳角度
+    for (double angle = -15; angle <= 15; angle += 1.0) {
+      final rotated = img.copyRotate(binary, angle: angle);
+      final variance = _horizontalProjectionVariance(rotated);
+      if (variance > maxVariance) {
+        maxVariance = variance;
+        bestAngle = angle;
+      }
+    }
+
+    debugPrint('  倾斜校正: 最佳角度 ${bestAngle.toStringAsFixed(1)}°');
+
+    // 倾斜不足 1 度时跳过校正，避免无意义的旋转损失
+    if (bestAngle.abs() < 1.0) {
+      debugPrint('  倾斜校正: 倾斜过小，跳过');
+      return src;
+    }
+
+    return img.copyRotate(src, angle: -bestAngle);
+  }
+
+  /// 笔画粗细归一化
+  ///
+  /// 估算当前平均笔画宽度，与目标宽度（3px）比较，
+  /// 通过膨胀或腐蚀将笔画调整到统一粗细，提升识别一致性。
+  img.Image _strokeNormalization(img.Image src) {
+    debugPrint('  笔画归一化: 分析笔画粗细');
+    final gray = img.grayscale(src);
+    final binary = _adaptiveBinarize(gray, blockSize: 31, c: 10);
+    final strokeWidth = _estimateStrokeWidth(binary);
+    const targetWidth = 3.0;
+
+    debugPrint('  笔画归一化: 当前 ${strokeWidth.toStringAsFixed(1)}px → 目标 ${targetWidth}px');
+
+    if ((strokeWidth - targetWidth).abs() < 0.5) {
+      debugPrint('  笔画归一化: 已接近目标，跳过');
+      return src;
+    }
+
+    if (strokeWidth < targetWidth) {
+      final r = ((targetWidth - strokeWidth) / 2).round().clamp(1, 3);
+      debugPrint('  笔画归一化: 膨胀 $r 像素');
+      return _morphologicalDilate(binary, radius: r);
+    } else {
+      final r = ((strokeWidth - targetWidth) / 2).round().clamp(1, 3);
+      debugPrint('  笔画归一化: 腐蚀 $r 像素');
+      return _morphologicalErode(binary, radius: r);
+    }
+  }
+
+  /// 形态学膨胀（邻域内存在黑色像素则当前像素变黑）
+  /// 用于连接断笔、增强笔画连通性
+  img.Image _morphologicalDilate(img.Image binary, {int radius = 1}) {
+    final gray = img.grayscale(binary);
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        bool hasBlack = false;
+        for (int dy = -radius; dy <= radius && !hasBlack; dy++) {
+          for (int dx = -radius; dx <= radius && !hasBlack; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            if (gray.getPixel(nx, ny).r.toInt() < 128) hasBlack = true;
+          }
+        }
+        final v = hasBlack ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 形态学腐蚀（邻域内全部为黑色时当前像素才保持黑色）
+  /// 用于细化笔画
+  img.Image _morphologicalErode(img.Image binary, {int radius = 1}) {
+    final gray = img.grayscale(binary);
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        bool allBlack = true;
+        for (int dy = -radius; dy <= radius && allBlack; dy++) {
+          for (int dx = -radius; dx <= radius && allBlack; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            if (gray.getPixel(nx, ny).r.toInt() >= 128) allBlack = false;
+          }
+        }
+        final v = allBlack ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 水平投影方差（用于倾斜检测）
+  /// 方差越大说明文字行越整齐（倾斜越小）
+  double _horizontalProjectionVariance(img.Image binary) {
+    final gray = img.grayscale(binary);
+    final w = gray.width, h = gray.height;
+    if (h == 0) return 0;
+
+    final projections = List.filled(h, 0);
+    for (int y = 0; y < h; y++) {
+      int count = 0;
+      for (int x = 0; x < w; x++) {
+        if (gray.getPixel(x, y).r.toInt() < 128) count++;
+      }
+      projections[y] = count;
+    }
+
+    final mean = projections.reduce((a, b) => a + b) / h;
+    double variance = 0;
+    for (final p in projections) {
+      variance += (p - mean) * (p - mean);
+    }
+    return variance / h;
+  }
+
+  /// 估算平均笔画宽度（水平扫描法）
+  /// 统计每行连续黑色游程的平均长度
+  double _estimateStrokeWidth(img.Image binary) {
+    final gray = img.grayscale(binary);
+    final w = gray.width, h = gray.height;
+
+    int totalWidth = 0;
+    int runCount = 0;
+
+    for (int y = 0; y < h; y += 2) {
+      int runLength = 0;
+      for (int x = 0; x < w; x++) {
+        if (gray.getPixel(x, y).r.toInt() < 128) {
+          runLength++;
+        } else if (runLength > 0) {
+          totalWidth += runLength;
+          runCount++;
+          runLength = 0;
+        }
+      }
+      if (runLength > 0) {
+        totalWidth += runLength;
+        runCount++;
+      }
+    }
+
+    return runCount > 0 ? totalWidth / runCount : 3.0;
+  }
+
   /// 二值化（Otsu 自动阈值）
   img.Image _binarize(img.Image src) {
     final gray = img.grayscale(src);
@@ -693,6 +908,7 @@ class RecognitionService {
   /// 4. 置信度评分：低置信度时尝试更多变体
   Future<String?> _recognizeLocal(Uint8List imageBytes) async {
     try {
+      _lastLocalConfidence = 0.0;
       final decoded = img.decodeImage(imageBytes);
       if (decoded == null) return null;
 
@@ -708,6 +924,7 @@ class RecognitionService {
         final rawResult = await _recognizeFromImage(gray);
         final result = _validateResult(rawResult);
         if (result != null) {
+          _lastLocalConfidence = 0.85;
           debugPrint('ML Kit 识别: ✓ 快速尝试成功, 字符="$result"');
           return result;
         }
@@ -773,6 +990,14 @@ class RecognitionService {
           final denoised = _medianFilter(enhanced);
           return _binarize(denoised);
         },
+        // 手写体专用预处理策略
+        '手写体笔画增强': (src) => _handwritingEnhance(src),
+        '倾斜校正': (src) => _skewCorrection(src),
+        '笔画归一化': (src) => _strokeNormalization(src),
+        '手写体增强+对比度': (src) {
+          final enhanced = _handwritingEnhance(src);
+          return _enhanceContrast(enhanced);
+        },
       };
 
       int attempt = 0;
@@ -828,11 +1053,13 @@ class RecognitionService {
             return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
           });
         final winner = sorted.first;
-        debugPrint('ML Kit 识别: 投票结果 "$winner.key" (票数=${winner.value}, 置信度=${((confidenceMap[winner.key] ?? 0) * 100).toStringAsFixed(0)}%)');
+        _lastLocalConfidence = confidenceMap[winner.key] ?? 0.7;
+        debugPrint('ML Kit 识别: 投票结果 "$winner.key" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%)');
         return winner.key;
       }
 
       // ═══ 第三轮：失败回退策略 ═══
+      _lastLocalConfidence = 0.5;
       debugPrint('ML Kit 识别: 常规预处理均失败，尝试回退策略');
 
       // 确定回退用的基础图片
@@ -1082,10 +1309,12 @@ class RecognitionService {
     }
     if (modelName.isEmpty) modelName = defaultModel;
 
-    // 两轮 prompt：首轮简洁高效，重试时给出更强约束和示例
+    // 两轮 prompt：首轮简洁高效，重试时包含手写体变形示例和易混淆字参考
     final prompts = [
       '这是一个手写汉字图片。请识别其中唯一的汉字，直接输出该汉字，不要输出任何其他内容。如果无法识别，输出?',
-      '请仔细辨认这张手写汉字图片。要求：1) 只输出一个完整汉字 2) 不要输出偏旁、部首、标点、假名 3) 不要输出拼音或解释 4) 如果不确定就输出最可能的汉字。直接输出汉字即可。',
+      '请仔细辨认这张手写汉字图片。手写体常见变形：笔画连笔或断开、横不平竖不直、点写成短横、撇捺角度偏差、口写成圆圈。'
+      '易混淆字参考：已/己/巳、未/末、大/太/犬、日/目/且、土/士、刀/力、入/人、天/夫。'
+      '要求：只输出一个完整汉字，禁止输出偏旁、标点、拼音、解释。不确定就输出最可能的汉字。',
     ];
 
     for (int attempt = 0; attempt < prompts.length; attempt++) {
