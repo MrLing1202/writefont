@@ -11,6 +11,7 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/project.dart';
 import 'ttf_builder.dart';
+import 'woff_builder.dart';
 
 // ═══════════════════════════════════════════════════════════
 // 提醒服务：定时提醒、条件提醒、位置提醒、自定义提醒
@@ -733,6 +734,84 @@ class StorageService {
     final file = File(filePath);
     await file.writeAsBytes(ttfBytes);
 
+    return filePath;
+  }
+
+  /// Build and export a WOFF font file.
+  /// 返回导出文件的路径。
+  ///
+  /// WOFF 格式通过对 TTF 表数据进行 zlib 压缩来减小文件体积，
+  /// 适用于网页嵌入场景。
+  static Future<String> exportWoff(
+    FontProject project, {
+    String? familyName,
+    String? subfamilyName,
+    String? version,
+    String? copyright,
+    String? description,
+  }) async {
+    final effectiveName = familyName ?? project.name;
+    final expDir = await _exportsDir;
+    final fileName = '${effectiveName.replaceAll(RegExp(r'[^\w]'), '_')}.woff';
+    final filePath = p.join(expDir.path, fileName);
+
+    // 先构建 TTF 字节，再用 WoffBuilder 封装
+    final glyphs = project.glyphs.values.toList();
+    final builder = TtfBuilder(
+      glyphs: glyphs,
+      familyName: project.name,
+      unitsPerEm: 1000,
+      customFamilyName: familyName,
+      customSubfamilyName: subfamilyName,
+      customVersion: version,
+      customCopyright: copyright,
+      customDescription: description,
+    );
+
+    final ttfBytes = builder.build();
+    final woffBuilder = WoffBuilder(ttfBytes: ttfBytes);
+    final woffBytes = woffBuilder.build();
+
+    final file = File(filePath);
+    await file.writeAsBytes(woffBytes);
+    return filePath;
+  }
+
+  /// Build and export an OTF font file.
+  /// 返回导出文件的路径。
+  ///
+  /// OTF（OpenType）支持 TrueType 轮廓和 CFF 轮廓。
+  /// 当前实现使用 TrueType 轮廓（与 TTF 相同的二进制数据），
+  /// 仅将文件扩展名改为 .otf，这在规范上是合法的。
+  static Future<String> exportOtf(
+    FontProject project, {
+    String? familyName,
+    String? subfamilyName,
+    String? version,
+    String? copyright,
+    String? description,
+  }) async {
+    final effectiveName = familyName ?? project.name;
+    final expDir = await _exportsDir;
+    final fileName = '${effectiveName.replaceAll(RegExp(r'[^\w]'), '_')}.otf';
+    final filePath = p.join(expDir.path, fileName);
+
+    // OTF 使用与 TTF 相同的构建流程（TrueType 轮廓在 OTF 中同样合法）
+    final glyphs = project.glyphs.values.toList();
+    final builder = TtfBuilder(
+      glyphs: glyphs,
+      familyName: project.name,
+      unitsPerEm: 1000,
+      customFamilyName: familyName,
+      customSubfamilyName: subfamilyName,
+      customVersion: version,
+      customCopyright: copyright,
+      customDescription: description,
+    );
+
+    final otfBytes = builder.build();
+    final file = File(filePath);
+    await file.writeAsBytes(otfBytes);
     return filePath;
   }
 

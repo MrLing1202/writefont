@@ -250,9 +250,16 @@ Future<void> exportFontWithFormatSelection(
   _showBuildProgress(context, message: '正在生成 ${format.label} 字体文件...');
 
   try {
-    // 当前 StorageService 仅支持 TTF 导出，其他格式暂时回退到 TTF
-    // TODO: 当后端支持 OTF/WOFF 时切换为对应格式
-    final filePath = await StorageService.exportTtf(project);
+    // 根据用户选择的格式调用对应的导出方法
+    final String filePath;
+    switch (format) {
+      case ExportFormat.ttf:
+        filePath = await StorageService.exportTtf(project);
+      case ExportFormat.otf:
+        filePath = await StorageService.exportOtf(project);
+      case ExportFormat.woff:
+        filePath = await StorageService.exportWoff(project);
+    }
 
     // 关闭进度对话框
     if (context.mounted && Navigator.of(context).canPop()) {
@@ -260,9 +267,7 @@ Future<void> exportFontWithFormatSelection(
     }
 
     if (context.mounted) {
-      // 显示成功信息，包含实际导出格式
-      final actualFormat = format == ExportFormat.ttf ? 'TTF' : 'TTF（${format.label} 暂未支持，已回退为 TTF）';
-      showExportSuccessDialog(context, filePath, project, extraInfo: '格式: $actualFormat · 质量: ${quality.label}');
+      showExportSuccessDialog(context, filePath, project, extraInfo: '格式: ${format.label} · 质量: ${quality.label}');
     }
   } catch (e) {
     // 关闭进度对话框
