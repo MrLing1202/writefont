@@ -2119,8 +2119,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       },
                       onKerningEditorTap: () => _openKerningEditorWithProjectPicker(),
                       onGlyphQualityTap: () => _openGlyphQualityWithProjectPicker(),
-                      onCharRecommendTap: () {},
-                      onWebExportTap: () {},
+                      onCharRecommendTap: () => _openCharRecommendWithProjectPicker(),
+                      onWebExportTap: () => _openWebExportWithProjectPicker(),
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
@@ -4161,3 +4161,125 @@ class VRService {
     };
   }
 }
+
+  /// 打开智能字符推荐（先选择项目）
+  Future<void> _openCharRecommendWithProjectPicker() async {
+    try {
+      final projects = await StorageService.loadProjects();
+      if (!mounted) return;
+
+      if (projects.isEmpty) {
+        WFSnackBar.show(context, '请先创建一个字体项目');
+        return;
+      }
+
+      final available = projects.where((p) => p.glyphs.isNotEmpty).toList();
+      if (available.isEmpty) {
+        WFSnackBar.show(context, '暂无已编辑的字形，请先完成造字');
+        return;
+      }
+
+      if (available.length == 1) {
+        Navigator.push(
+          context,
+          WFAnimations.slideRoute(CharRecommendScreen(project: available.first)),
+        );
+        return;
+      }
+
+      showModalBottomSheet(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '选择字体项目',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              ...available.map((p) => ListTile(
+                    leading: const Icon(Icons.font_download),
+                    title: Text(p.name),
+                    subtitle: Text('${p.glyphs.length} 个字形'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        WFAnimations.slideRoute(CharRecommendScreen(project: p)),
+                      );
+                    },
+                  )),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Home] 打开字符推荐失败: $e');
+      if (mounted) WFSnackBar.error(context, '打开失败: $e');
+    }
+  }
+
+  /// 打开网页字体导出（先选择项目）
+  Future<void> _openWebExportWithProjectPicker() async {
+    try {
+      final projects = await StorageService.loadProjects();
+      if (!mounted) return;
+
+      if (projects.isEmpty) {
+        WFSnackBar.show(context, '请先创建一个字体项目');
+        return;
+      }
+
+      final available = projects.where((p) => p.glyphs.isNotEmpty).toList();
+      if (available.isEmpty) {
+        WFSnackBar.show(context, '暂无已编辑的字形，请先完成造字');
+        return;
+      }
+
+      if (available.length == 1) {
+        Navigator.push(
+          context,
+          WFAnimations.slideRoute(WebExportScreen(project: available.first)),
+        );
+        return;
+      }
+
+      showModalBottomSheet(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '选择字体项目',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              ...available.map((p) => ListTile(
+                    leading: const Icon(Icons.font_download),
+                    title: Text(p.name),
+                    subtitle: Text('${p.glyphs.length} 个字形'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        WFAnimations.slideRoute(WebExportScreen(project: p)),
+                      );
+                    },
+                  )),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Home] 打开网页导出失败: $e');
+      if (mounted) WFSnackBar.error(context, '打开失败: $e');
+    }
+  }
