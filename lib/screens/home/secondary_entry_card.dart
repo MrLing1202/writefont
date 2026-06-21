@@ -14,6 +14,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onPracticeModeTap;
   final VoidCallback onKerningEditorTap;
   final VoidCallback onCharRecommendTap;
+  final VoidCallback onGlyphQualityTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -28,6 +29,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onPracticeModeTap,
     required this.onKerningEditorTap,
     required this.onCharRecommendTap,
+    required this.onGlyphQualityTap,
   });
 
   @override
@@ -132,6 +134,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '智能推荐',
             subtitle: '查看待写字符与完成进度',
             onTap: onCharRecommendTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.assessment,
+            iconColor: const Color(0xFF9B59B6),
+            title: '字形质量',
+            subtitle: '四维评分 · 发现待改进字形',
+            onTap: onGlyphQualityTap,
           ),
         ],
       ),
