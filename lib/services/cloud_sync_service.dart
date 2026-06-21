@@ -75,6 +75,10 @@ class NetworkStatus {
   final NetworkType type;
   final bool isConnected;
   const NetworkStatus({this.type = NetworkType.none, this.isConnected = false});
+  Map<String, dynamic> toJson() => {
+    'type': type.name,
+    'isConnected': isConnected,
+  };
 }
 
 class NetworkMonitor {
@@ -82,22 +86,31 @@ class NetworkMonitor {
   NetworkMonitor._();
   NetworkStatus _status = const NetworkStatus();
   NetworkStatus get currentStatus => _status;
+  bool get isConnected => _status.isConnected;
   Stream<NetworkStatus> get statusStream => const Stream.empty();
   Future<void> start() async {}
   Future<void> stop() async {}
   Future<void> startMonitoring() async => start();
+  /// 获取网络质量评估
+  String getQualityAssessment() {
+    if (!_status.isConnected) return 'offline';
+    if (_status.type == NetworkType.wifi) return 'good';
+    if (_status.type == NetworkType.cellular) return 'fair';
+    return 'poor';
+  }
 }
 
 class _OfflineOperation {
   final String id;
   final String type;
+  final String projectId;
   final Map<String, dynamic> data;
   final DateTime createdAt;
-  _OfflineOperation({required this.id, required this.type, required this.data, DateTime? createdAt})
+  _OfflineOperation({required this.id, required this.type, this.projectId = '', required this.data, DateTime? createdAt})
       : createdAt = createdAt ?? DateTime.now();
-  Map<String, dynamic> toJson() => {'id': id, 'type': type, 'data': data, 'createdAt': createdAt.toIso8601String()};
+  Map<String, dynamic> toJson() => {'id': id, 'type': type, 'projectId': projectId, 'data': data, 'createdAt': createdAt.toIso8601String()};
   factory _OfflineOperation.fromJson(Map<String, dynamic> json) => _OfflineOperation(
-    id: json['id'] ?? '', type: json['type'] ?? '', data: Map<String, dynamic>.from(json['data'] ?? {}),
+    id: json['id'] ?? '', type: json['type'] ?? '', projectId: json['projectId'] ?? '', data: Map<String, dynamic>.from(json['data'] ?? {}),
     createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
   );
 }
@@ -948,6 +961,7 @@ class CloudSyncService {
         details: {'resolution': resolution.name});
 
     switch (resolution) {
+      case ConflictResolution.localWins:
       case ConflictResolution.keepLocal:
         // 上传本地版本覆盖远程
         final error = await _uploadProject(localProject);
@@ -963,6 +977,7 @@ class CloudSyncService {
         }
         return error;
 
+      case ConflictResolution.remoteWins:
       case ConflictResolution.keepRemote:
         // 下载远程版本覆盖本地
         final error = await _downloadAndSaveProject(remoteData);
@@ -1016,6 +1031,9 @@ class CloudSyncService {
           _addLog('error', '冲突解决失败: $e', projectId: localProject.id);
           return '解决冲突失败: $e';
         }
+      case ConflictResolution.manual:
+        // 手动解决，返回提示让用户选择
+        return '请手动选择冲突解决方式';
     }
   }
 

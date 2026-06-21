@@ -14,6 +14,8 @@ import 'glyph_quality_screen.dart';
 import 'web_export_screen.dart';
 import 'project_list_screen.dart';
 import 'settings_screen.dart';
+import 'template_generator_screen.dart';
+import 'font_compare_screen.dart';
 import 'writing_tips_screen.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
