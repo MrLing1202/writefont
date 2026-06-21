@@ -135,13 +135,13 @@ class _CharacterEditDialogState extends State<CharacterEditDialog>
             // 撤销按钮
             IconButton(
               icon: const Icon(Icons.undo),
-              onPressed: undoStack.isNotEmpty ? undo : null,
+              onPressed: undoRedoService.canUndo ? undo : null,
               tooltip: '撤销',
             ),
             // 重做按钮
             IconButton(
               icon: const Icon(Icons.redo),
-              onPressed: redoStack.isNotEmpty ? redo : null,
+              onPressed: undoRedoService.canRedo ? redo : null,
               tooltip: '重做',
             ),
             // 适应屏幕

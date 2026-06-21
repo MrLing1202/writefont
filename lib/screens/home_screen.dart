@@ -34,6 +34,8 @@ import 'home/recent_projects_section.dart';
 import 'home/secondary_entry_card.dart';
 import 'home/home_actions.dart';
 import 'batch_import_screen.dart';
+import 'font_test_suite_screen.dart';
+import 'font_package_screen.dart';
 import 'package:flutter/services.dart';
 import '../main.dart';
 
@@ -2538,6 +2540,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onMyFontsTap: () async {
                         await HomeActions.openProjectList(context);
                         _loadProjectData();
+                      },
+                      // 高级
+                      onFontTestSuiteTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const FontTestSuiteScreen()),
+                        );
+                      },
+                      onFontPackageTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const FontPackageScreen()),
+                        );
                       },
                     ),
                     delay: const Duration(milliseconds: 560),

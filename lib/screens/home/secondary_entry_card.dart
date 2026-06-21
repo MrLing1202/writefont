@@ -22,11 +22,11 @@ class _EntryItem {
 
 /// 首页功能入口卡片 — 分组网格布局
 ///
-/// 20 个功能分为 4 组，每组可折叠：
+/// 22 个功能分为 4 组，每组可折叠：
 /// - 📝 创建：拍照导入、批量导入、手写模板、练习模式
 /// - 👁 预览：字体预览、增强预览、自定义文本预览、字体对比
 /// - 🔧 编辑：字符总览、字形间距、智能推荐、字形质量、风格迁移、笔画顺序
-/// - 📦 导出：字体家族、网页导出、Google Fonts导出、字符集分析、字形补全、我的字体
+/// - 📦 导出：字体家族、网页导出、Google Fonts导出、字符集分析、字形补全、我的字体、字体测试套件、字体打包导出
 class SecondaryEntryCard extends StatefulWidget {
   final int savedProjectCount;
 
@@ -58,6 +58,10 @@ class SecondaryEntryCard extends StatefulWidget {
   final VoidCallback onGlyphCompletionTap;
   final VoidCallback onMyFontsTap;
 
+  // ── 高级 ──
+  final VoidCallback onFontTestSuiteTap;
+  final VoidCallback onFontPackageTap;
+
   const SecondaryEntryCard({
     super.key,
     required this.savedProjectCount,
@@ -81,6 +85,8 @@ class SecondaryEntryCard extends StatefulWidget {
     required this.onCharsetAnalysisTap,
     required this.onGlyphCompletionTap,
     required this.onMyFontsTap,
+    required this.onFontTestSuiteTap,
+    required this.onFontPackageTap,
   });
 
   @override
@@ -269,6 +275,20 @@ class _SecondaryEntryCardState extends State<SecondaryEntryCard> {
                     : '查看和管理已保存的字体项目',
                 onTap: widget.onMyFontsTap,
                 badge: widget.savedProjectCount,
+              ),
+              _EntryItem(
+                icon: Icons.science_outlined,
+                iconColor: const Color(0xFF00BCD4),
+                title: '字体测试套件',
+                subtitle: '多场景 · 多字号 · 多字重预览',
+                onTap: widget.onFontTestSuiteTap,
+              ),
+              _EntryItem(
+                icon: Icons.archive,
+                iconColor: const Color(0xFF795548),
+                title: '字体打包导出',
+                subtitle: 'TTF + WOFF + CSS 一键打包',
+                onTap: widget.onFontPackageTap,
               ),
             ],
           ),

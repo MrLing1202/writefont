@@ -18,6 +18,8 @@ import 'screens/charset_guide_screen.dart';
 import 'screens/ocr_settings_screen.dart';
 import 'screens/project_list_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/font_test_suite_screen.dart';
+import 'screens/font_package_screen.dart';
 import 'services/app_config_service.dart';
 import 'services/locale_service.dart';
 import 'services/recognition_service.dart';
@@ -1495,6 +1497,10 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             return WFAnimations.slideRoute(const CharsetGuideScreen());
           case '/ocr-settings':
             return WFAnimations.scaleFadeRoute(const OcrSettingsScreen());
+          case '/fontTestSuite':
+            return WFAnimations.slideRoute(const FontTestSuiteScreen());
+          case '/fontPackage':
+            return WFAnimations.slideRoute(const FontPackageScreen());
           case '/my-fonts':
             return WFAnimations.slideRoute(const ProjectListScreen());
           case '/settings':

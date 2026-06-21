@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../data/standard_charset.dart';
 import '../../models/project.dart';
 import '../../services/storage_service.dart';
+import '../../services/undo_redo_service.dart';
 import '../../theme/app_theme.dart';
 import 'drawing_models.dart';
 
@@ -54,10 +55,9 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
   final TransformationController transformController =
       TransformationController();
 
-  // === 撤销/重做 ===
-  static const int maxHistorySize = 30;
-  final List<List<StrokeRecord>> undoStack = [];
-  final List<List<StrokeRecord>> redoStack = [];
+  // === 撤销/重做（使用泛型 UndoRedoService）===
+  final UndoRedoService<List<StrokeRecord>> undoRedoService =
+      UndoRedoService<List<StrokeRecord>>(maxDepth: 30);
 
   // === 画布尺寸 ===
   static const double canvasSize = 500.0;
@@ -77,6 +77,7 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
     autoSave();
     charController.dispose();
     transformController.dispose();
+    undoRedoService.dispose();
   }
 
   /// 自动保存：将当前笔画同步到 GlyphData 轮廓
@@ -236,38 +237,38 @@ mixin CharacterEditLogic on State<CharacterEditDialog> {
     }
   }
 
-  // === 撤销/重做 ===
+  // === 撤销/重做（集成 UndoRedoService）===
 
   /// 保存当前状态到撤销栈
   void pushUndo() {
-    undoStack.add(List<StrokeRecord>.from(strokes));
-    if (undoStack.length > maxHistorySize) {
-      undoStack.removeAt(0);
-    }
-    redoStack.clear();
+    undoRedoService.push(List<StrokeRecord>.from(strokes));
   }
 
   /// 撤销
   void undo() {
-    if (undoStack.isEmpty) return;
-    redoStack.add(List<StrokeRecord>.from(strokes));
-    final previous = undoStack.removeLast();
-    setState(() {
-      strokes.clear();
-      strokes.addAll(previous);
-    });
+    if (!undoRedoService.canUndo) return;
+    undoRedoService.undo();
+    final previous = undoRedoService.currentState;
+    if (previous != null) {
+      setState(() {
+        strokes.clear();
+        strokes.addAll(previous);
+      });
+    }
   }
 
   /// 重做
   void redo() {
-    if (redoStack.isEmpty) return;
-    undoStack.add(List<StrokeRecord>.from(strokes));
-    final next = redoStack.removeLast();
-    setState(() {
-      strokes.clear();
-      strokes.addAll(next);
-      isDirty = true;
-    });
+    if (!undoRedoService.canRedo) return;
+    undoRedoService.redo();
+    final next = undoRedoService.currentState;
+    if (next != null) {
+      setState(() {
+        strokes.clear();
+        strokes.addAll(next);
+        isDirty = true;
+      });
+    }
   }
 
   /// 清除所有笔画
