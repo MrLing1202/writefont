@@ -66,9 +66,9 @@ class SyncHistoryEntry {
 
 enum SyncState { idle, syncing, error, completed }
 enum ProjectSyncStatus { pending, syncing, synced, conflict, error }
-enum ConflictResolution { localWins, remoteWins, manual }
+enum ConflictResolution { localWins, remoteWins, manual, keepLocal, keepRemote, keepBoth }
 enum SharePermission { view, edit, admin }
-enum MessageType { text, system, invite }
+enum MessageType { text, system, invite, notification }
 enum NetworkType { wifi, cellular, none }
 
 class NetworkStatus {
@@ -85,6 +85,7 @@ class NetworkMonitor {
   Stream<NetworkStatus> get statusStream => const Stream.empty();
   Future<void> start() async {}
   Future<void> stop() async {}
+  Future<void> startMonitoring() async => start();
 }
 
 class _OfflineOperation {
@@ -106,29 +107,115 @@ class SyncLogEntry {
   final String action;
   final DateTime timestamp;
   final bool success;
-  SyncLogEntry({required this.id, required this.action, DateTime? timestamp, this.success = true})
-      : timestamp = timestamp ?? DateTime.now();
-  Map<String, dynamic> toJson() => {'id': id, 'action': action, 'timestamp': timestamp.toIso8601String(), 'success': success};
+  final String level;
+  final String message;
+  final String? projectId;
+  final Map<String, dynamic>? details;
+  SyncLogEntry({
+    String? id,
+    this.action = '',
+    DateTime? timestamp,
+    this.success = true,
+    this.level = 'info',
+    this.message = '',
+    this.projectId,
+    this.details,
+  })  : id = id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+        timestamp = timestamp ?? DateTime.now();
+  Map<String, dynamic> toJson() => {
+        'id': id, 'action': action, 'timestamp': timestamp.toIso8601String(),
+        'success': success, 'level': level, 'message': message,
+        'projectId': projectId, 'details': details,
+      };
   factory SyncLogEntry.fromJson(Map<String, dynamic> json) => SyncLogEntry(
-    id: json['id'] ?? '', action: json['action'] ?? '',
-    timestamp: DateTime.tryParse(json['timestamp'] ?? '') ?? DateTime.now(),
-    success: json['success'] ?? true,
-  );
+        id: json['id'] ?? '', action: json['action'] ?? '',
+        timestamp: DateTime.tryParse(json['timestamp'] ?? '') ?? DateTime.now(),
+        success: json['success'] ?? true, level: json['level'] ?? 'info',
+        message: json['message'] ?? '', projectId: json['projectId'],
+        details: json['details'] != null ? Map<String, dynamic>.from(json['details']) : null,
+      );
 }
 
 class AppMessage {
   final String id;
+  final String title;
   final String content;
   final MessageType type;
   final DateTime timestamp;
-  AppMessage({required this.id, required this.content, this.type = MessageType.text, DateTime? timestamp})
-      : timestamp = timestamp ?? DateTime.now();
-  Map<String, dynamic> toJson() => {'id': id, 'content': content, 'type': type.index, 'timestamp': timestamp.toIso8601String()};
+  final String? actionUrl;
+  final Map<String, dynamic>? metadata;
+  bool isRead;
+  bool isDeleted;
+  AppMessage({
+    required this.id,
+    this.title = '',
+    required this.content,
+    this.type = MessageType.text,
+    DateTime? timestamp,
+    this.actionUrl,
+    this.metadata,
+    this.isRead = false,
+    this.isDeleted = false,
+  }) : timestamp = timestamp ?? DateTime.now();
+  Map<String, dynamic> toJson() => {
+        'id': id, 'title': title, 'content': content, 'type': type.index,
+        'timestamp': timestamp.toIso8601String(), 'actionUrl': actionUrl,
+        'metadata': metadata, 'isRead': isRead, 'isDeleted': isDeleted,
+      };
   factory AppMessage.fromJson(Map<String, dynamic> json) => AppMessage(
-    id: json['id'] ?? '', content: json['content'] ?? '',
-    type: MessageType.values[json['type'] ?? 0],
-    timestamp: DateTime.tryParse(json['timestamp'] ?? '') ?? DateTime.now(),
-  );
+        id: json['id'] ?? '', title: json['title'] ?? '', content: json['content'] ?? '',
+        type: MessageType.values[json['type'] ?? 0],
+        timestamp: DateTime.tryParse(json['timestamp'] ?? '') ?? DateTime.now(),
+        actionUrl: json['actionUrl'],
+        metadata: json['metadata'] != null ? Map<String, dynamic>.from(json['metadata']) : null,
+        isRead: json['isRead'] ?? false, isDeleted: json['isDeleted'] ?? false,
+      );
+}
+
+/// 分享统计数据模型
+class ShareStats {
+  final String projectId;
+  final String platform;
+  final String shareType;
+  final int shareCount;
+  final DateTime firstSharedAt;
+  final DateTime lastSharedAt;
+  ShareStats({
+    required this.projectId,
+    required this.platform,
+    this.shareType = 'project',
+    this.shareCount = 1,
+    DateTime? firstSharedAt,
+    DateTime? lastSharedAt,
+  })  : firstSharedAt = firstSharedAt ?? DateTime.now(),
+        lastSharedAt = lastSharedAt ?? DateTime.now();
+  Map<String, dynamic> toJson() => {
+        'projectId': projectId, 'platform': platform, 'shareType': shareType,
+        'shareCount': shareCount, 'firstSharedAt': firstSharedAt.toIso8601String(),
+        'lastSharedAt': lastSharedAt.toIso8601String(),
+      };
+  factory ShareStats.fromJson(Map<String, dynamic> json) => ShareStats(
+        projectId: json['projectId'] ?? '', platform: json['platform'] ?? '',
+        shareType: json['shareType'] ?? 'project', shareCount: json['shareCount'] ?? 1,
+        firstSharedAt: DateTime.tryParse(json['firstSharedAt'] ?? '') ?? DateTime.now(),
+        lastSharedAt: DateTime.tryParse(json['lastSharedAt'] ?? '') ?? DateTime.now(),
+      );
+}
+
+/// 分享推荐数据模型
+class ShareRecommendation {
+  final String projectId;
+  final String projectName;
+  final String reason;
+  final int priority;
+  final List<String> suggestedPlatforms;
+  ShareRecommendation({
+    required this.projectId,
+    required this.projectName,
+    required this.reason,
+    this.priority = 0,
+    this.suggestedPlatforms = const [],
+  });
 }
 
 class SupabaseConfig {

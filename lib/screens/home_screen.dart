@@ -2096,13 +2096,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onTemplateGeneratorTap: () {
                         Navigator.push(
                           context,
-                          WFAnimations.slideRoute(const TemplateGeneratorScreen()),
+                          WFAnimations.slideRoute(TemplateGeneratorScreen()),
                         );
                       },
                       onFontCompareTap: () {
                         Navigator.push(
                           context,
-                          WFAnimations.slideRoute(const FontCompareScreen()),
+                          WFAnimations.slideRoute(FontCompareScreen()),
                         );
                       },
                       onPracticeModeTap: () {
@@ -2111,6 +2111,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       },
                       onKerningEditorTap: () => _openKerningEditorWithProjectPicker(),
                       onGlyphQualityTap: () => _openGlyphQualityWithProjectPicker(),
+                      onCharRecommendTap: () {},
+                      onWebExportTap: () {},
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
