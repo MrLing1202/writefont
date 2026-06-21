@@ -29,6 +29,7 @@ import 'home/welcome_header.dart';
 import 'home/recent_projects_section.dart';
 import 'home/secondary_entry_card.dart';
 import 'home/home_actions.dart';
+import 'batch_import_screen.dart';
 import 'package:flutter/services.dart';
 import '../main.dart';
 
@@ -2373,6 +2374,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onTap: () => HomeActions.openAiFontGenerator(context),
                     ),
                     delay: const Duration(milliseconds: 480),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // ── 批量照片导入 ──
+                  WFAnimations.fadeInSlide(
+                    WFActionCard(
+                      icon: Icons.burst_mode_outlined,
+                      title: '批量照片导入',
+                      subtitle: '多张手写照片自动识别，一键生成字体',
+                      color: const Color(0xFF00897B), // 青色区分
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const BatchImportScreen()),
+                        );
+                      },
+                    ),
+                    delay: const Duration(milliseconds: 560),
                   ),
                   const SizedBox(height: 14),
 
