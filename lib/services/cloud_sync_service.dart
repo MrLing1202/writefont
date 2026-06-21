@@ -221,26 +221,99 @@ class ShareRecommendation {
 class SupabaseConfig {
   static const String url = 'TODO_SUPABASE_URL';
   static const String anonKey = 'TODO_SUPABASE_ANON_KEY';
+  static const String tableName = 'projects';
 }
 
 class ShareLink {
   final String id;
   final String projectId;
+  final String projectName;
   final String token;
+  final String shareUrl;
   final SharePermission permission;
+  final String createdBy;
+  final DateTime createdAt;
   final DateTime expiresAt;
-  ShareLink({required this.id, required this.projectId, required this.token,
-    this.permission = SharePermission.view, DateTime? expiresAt})
-      : expiresAt = expiresAt ?? DateTime.now().add(const Duration(days: 7));
-  Map<String, dynamic> toJson() => {};
-  factory ShareLink.fromJson(Map<String, dynamic> json) => ShareLink(id: '', projectId: '', token: '');
+  final bool isActive;
+  final int accessCount;
+  ShareLink({
+    required this.id,
+    required this.projectId,
+    this.projectName = '',
+    this.token = '',
+    this.shareUrl = '',
+    this.permission = SharePermission.view,
+    this.createdBy = '',
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    this.isActive = true,
+    this.accessCount = 0,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        expiresAt = expiresAt ?? DateTime.now().add(const Duration(days: 7));
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'projectId': projectId,
+        'projectName': projectName,
+        'token': token,
+        'shareUrl': shareUrl,
+        'permission': permission.index,
+        'createdBy': createdBy,
+        'createdAt': createdAt.toIso8601String(),
+        'expiresAt': expiresAt.toIso8601String(),
+        'isActive': isActive,
+        'accessCount': accessCount,
+      };
+  factory ShareLink.fromJson(Map<String, dynamic> json) => ShareLink(
+        id: json['id'] ?? '',
+        projectId: json['projectId'] ?? '',
+        projectName: json['projectName'] ?? '',
+        token: json['token'] ?? '',
+        shareUrl: json['shareUrl'] ?? '',
+        permission: SharePermission.values[json['permission'] ?? 0],
+        createdBy: json['createdBy'] ?? '',
+        createdAt: DateTime.tryParse(json['createdAt'] ?? ''),
+        expiresAt: DateTime.tryParse(json['expiresAt'] ?? ''),
+        isActive: json['isActive'] ?? true,
+        accessCount: json['accessCount'] ?? 0,
+      );
 }
 
 class CollaboratorInfo {
   final String userId;
   final String name;
+  final String email;
+  final String role;
   final SharePermission permission;
-  CollaboratorInfo({required this.userId, required this.name, this.permission = SharePermission.view});
+  final DateTime addedAt;
+  final bool isOnline;
+  CollaboratorInfo({
+    this.userId = '',
+    this.name = '',
+    this.email = '',
+    this.role = 'viewer',
+    this.permission = SharePermission.view,
+    DateTime? addedAt,
+    this.isOnline = false,
+  }) : addedAt = addedAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'userId': userId,
+        'name': name,
+        'email': email,
+        'role': role,
+        'permission': permission.index,
+        'addedAt': addedAt.toIso8601String(),
+        'isOnline': isOnline,
+      };
+  factory CollaboratorInfo.fromJson(Map<String, dynamic> json) => CollaboratorInfo(
+        userId: json['userId'] ?? '',
+        name: json['name'] ?? '',
+        email: json['email'] ?? '',
+        role: json['role'] ?? 'viewer',
+        permission: SharePermission.values[json['permission'] ?? 0],
+        addedAt: DateTime.tryParse(json['addedAt'] ?? ''),
+        isOnline: json['isOnline'] ?? false,
+      );
 }
 
 class CloudSyncService {
