@@ -20,6 +20,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onStrokeOrderTap;
   final VoidCallback onCharsetAnalysisTap;
   final VoidCallback onGlyphCompletionTap;
+  final VoidCallback onTextPreviewTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -40,6 +41,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onStrokeOrderTap,
     required this.onCharsetAnalysisTap,
     required this.onGlyphCompletionTap,
+    required this.onTextPreviewTap,
   });
 
   @override
@@ -192,6 +194,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字形自动补全',
             subtitle: '笔画模板组合生成缺失字形',
             onTap: onGlyphCompletionTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.text_snippet,
+            iconColor: const Color(0xFF3498DB),
+            title: '自定义文本预览',
+            subtitle: '输入任意文字查看字体效果',
+            onTap: onTextPreviewTap,
           ),
         ],
       ),
