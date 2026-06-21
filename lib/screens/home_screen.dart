@@ -4160,8 +4160,6 @@ class VRService {
       'viewPosition': _viewPosition,
     };
   }
-}
-
   /// 打开智能字符推荐（先选择项目）
   Future<void> _openCharRecommendWithProjectPicker() async {
     try {
@@ -4283,3 +4281,4 @@ class VRService {
       if (mounted) WFSnackBar.error(context, '打开失败: $e');
     }
   }
+}
