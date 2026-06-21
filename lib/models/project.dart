@@ -183,6 +183,51 @@ class ProcessingParams {
       );
 }
 
+/// 字体元数据数据类
+///
+/// 封装从元数据编辑页面返回的编辑结果。
+class FontMetadata {
+  final String familyName;
+  final String subfamilyName;
+  final String version;
+  final String copyright;
+  final String description;
+  final String author;
+  final String license;
+
+  const FontMetadata({
+    required this.familyName,
+    required this.subfamilyName,
+    required this.version,
+    this.copyright = '',
+    this.description = '',
+    this.author = '',
+    this.license = '',
+  });
+
+  /// 序列化为 JSON（用于项目持久化）
+  Map<String, dynamic> toJson() => {
+        'familyName': familyName,
+        'subfamilyName': subfamilyName,
+        'version': version,
+        'copyright': copyright,
+        'description': description,
+        'author': author,
+        'license': license,
+      };
+
+  /// 从 JSON 反序列化
+  factory FontMetadata.fromJson(Map<String, dynamic> json) => FontMetadata(
+        familyName: json['familyName'] as String? ?? '',
+        subfamilyName: json['subfamilyName'] as String? ?? 'Regular',
+        version: json['version'] as String? ?? 'Version 1.0',
+        copyright: json['copyright'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        author: json['author'] as String? ?? '',
+        license: json['license'] as String? ?? '',
+      );
+}
+
 /// Represents a font project containing all glyph data.
 class FontProject {
   String id;
@@ -197,6 +242,9 @@ class FontProject {
   /// key 为两个字符拼接（如 'AB'），value 为间距调整值（-100 到 +100，单位 font units）
   Map<String, int> kerningPairs;
 
+  /// 字体元数据（字体族名、版权、版本等）
+  FontMetadata? metadata;
+
   FontProject({
     required this.id,
     required this.name,
@@ -206,6 +254,7 @@ class FontProject {
     ProcessingParams? params,
     List<Uint8List>? sourceImages,
     Map<String, int>? kerningPairs,
+    this.metadata,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
         glyphs = glyphs ?? {},
@@ -222,6 +271,7 @@ class FontProject {
         'glyphs': glyphs.map((k, v) => MapEntry(k, v.toJson())),
         'params': params.toJson(),
         if (kerningPairs.isNotEmpty) 'kerningPairs': kerningPairs,
+        if (metadata != null) 'metadata': metadata!.toJson(),
       };
 
   /// 从 JSON 反序列化
@@ -242,6 +292,10 @@ class FontProject {
       }
     }
 
+    // 解析字体元数据（向后兼容：旧项目数据中不存在时默认 null）
+    final metadataJson = json['metadata'] as Map<String, dynamic>?;
+    final metadata = metadataJson != null ? FontMetadata.fromJson(metadataJson) : null;
+
     return FontProject(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -256,6 +310,7 @@ class FontProject {
           ? ProcessingParams.fromJson(json['params'] as Map<String, dynamic>)
           : null,
       kerningPairs: kerningMap,
+      metadata: metadata,
     );
   }
 }

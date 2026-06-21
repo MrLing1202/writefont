@@ -44,6 +44,9 @@ dependencies:
   # Crypto for API key obfuscation
   crypto: ^3.0.3
 
+  # Zip archive for Google Fonts export
+  archive: ^3.6.1
+
   # Local storage for settings
   shared_preferences: ^2.2.3
 

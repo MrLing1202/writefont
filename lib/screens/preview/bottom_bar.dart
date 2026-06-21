@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
-/// 预览页面底部操作栏 — 保存、备份、编辑元数据、导出 TTF
+/// 预览页面底部操作栏 — 保存、备份、编辑元数据、导出 TTF、导出 Google Fonts
 class PreviewBottomBar extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onExportBackup;
   final VoidCallback onEditMetadata;
   final VoidCallback onExportFont;
+  final VoidCallback onExportGoogleFonts;
   final bool isSaving;
   final bool isExporting;
   final String? metadataInfo;
@@ -17,6 +18,7 @@ class PreviewBottomBar extends StatelessWidget {
     required this.onExportBackup,
     required this.onEditMetadata,
     required this.onExportFont,
+    required this.onExportGoogleFonts,
     required this.isSaving,
     required this.isExporting,
     this.metadataInfo,
@@ -88,6 +90,20 @@ class PreviewBottomBar extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            // 导出 Google Fonts 格式
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: isExporting ? null : onExportGoogleFonts,
+                icon: const Icon(Icons.cloud_upload),
+                label: const Text('导出 Google Fonts'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
             ),
             // 元数据状态提示
             if (metadataInfo != null) ...[

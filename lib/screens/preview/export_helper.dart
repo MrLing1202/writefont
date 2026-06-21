@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import '../../models/project.dart';
 import '../../services/storage_service.dart';
+import '../../services/google_fonts_exporter.dart';
 import '../../theme/app_theme.dart';
 import 'export_dialogs.dart';
-import '../font_metadata_screen.dart';
 
 /// 导出格式枚举
 enum ExportFormat {
@@ -330,6 +333,54 @@ Future<void> exportBackupWithFeedback(BuildContext context, FontProject project)
   } catch (e) {
     if (context.mounted) {
       WFSnackBar.error(context, '备份导出失败: $e');
+    }
+  }
+}
+
+/// 导出 Google Fonts 格式 ZIP 包
+///
+/// 生成包含 TTF + METADATA.json + OFL.txt 的 ZIP 文件，
+/// 保存到导出目录并显示成功对话框。
+Future<void> exportGoogleFonts(BuildContext context, FontProject project) async {
+  _showBuildProgress(context, message: '正在生成 Google Fonts 格式...');
+
+  try {
+    // 生成 ZIP 字节
+    final zipBytes = GoogleFontsExporter.exportToZip(project);
+
+    // 保存到导出目录
+    final familyName = project.metadata?.familyName ?? project.name;
+    final safeName = familyName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final dir = await getApplicationDocumentsDirectory();
+    final expDir = Directory(p.join(dir.path, 'writefont', 'exports'));
+    if (!await expDir.exists()) {
+      await expDir.create(recursive: true);
+    }
+    final filePath = p.join(expDir.path, '${safeName}_google_fonts.zip');
+    final file = File(filePath);
+    await file.writeAsBytes(zipBytes);
+
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    if (context.mounted) {
+      showExportSuccessDialog(
+        context,
+        filePath,
+        project,
+        extraInfo: 'Google Fonts 格式 (TTF + METADATA.json + OFL.txt)',
+      );
+    }
+  } catch (e) {
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (context.mounted) {
+      final errorMsg = mapExportError(e.toString());
+      WFSnackBar.error(context, errorMsg);
     }
   }
 }

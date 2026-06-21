@@ -75,6 +75,20 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
+  /// 导出 Google Fonts 格式
+  Future<void> _exportGoogleFonts() async {
+    setState(() => _isExporting = true);
+    try {
+      await exportGoogleFonts(context, widget.project);
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, mapExportError(e.toString()));
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   /// 跳转到元数据编辑页面
   Future<void> _editMetadata() async {
     final result = await Navigator.push<FontMetadata>(
@@ -276,6 +290,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         onExportBackup: _exportProjectBackup,
         onEditMetadata: _editMetadata,
         onExportFont: _exportFont,
+        onExportGoogleFonts: _exportGoogleFonts,
         isSaving: _isSaving,
         isExporting: _isExporting,
         metadataInfo: _fontMetadata != null

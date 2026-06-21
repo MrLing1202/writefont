@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../theme/app_theme.dart';
 import '../widgets/glyph_widget.dart';
+// FontMetadata is now in project.dart
 
 /// 字体元数据编辑页面
 ///
@@ -24,6 +25,8 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
   final TextEditingController _versionController = TextEditingController();
   final TextEditingController _copyrightController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _authorController = TextEditingController();
+  final TextEditingController _licenseController = TextEditingController();
 
   // 字体子族名下拉选项
   String _subfamilyName = 'Regular';
@@ -32,8 +35,17 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
   @override
   void initState() {
     super.initState();
-    _familyNameController.text = widget.project.name;
-    _versionController.text = 'Version 1.0';
+    // 从项目已保存的元数据恢复（如有）
+    final saved = widget.project.metadata;
+    _familyNameController.text = saved?.familyName ?? widget.project.name;
+    _versionController.text = saved?.version ?? 'Version 1.0';
+    _copyrightController.text = saved?.copyright ?? '';
+    _descriptionController.text = saved?.description ?? '';
+    _authorController.text = saved?.author ?? '';
+    _licenseController.text = saved?.license ?? '';
+    if (saved != null) {
+      _subfamilyName = saved.subfamilyName;
+    }
   }
 
   @override
@@ -42,6 +54,8 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
     _versionController.dispose();
     _copyrightController.dispose();
     _descriptionController.dispose();
+    _authorController.dispose();
+    _licenseController.dispose();
     super.dispose();
   }
 
@@ -66,6 +80,8 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
       version: _versionController.text.trim(),
       copyright: _copyrightController.text.trim(),
       description: _descriptionController.text.trim(),
+      author: _authorController.text.trim(),
+      license: _licenseController.text.trim(),
     );
 
     // 确认导出
@@ -125,6 +141,8 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
     );
 
     if (confirmed == true && mounted) {
+      // 保存元数据到项目
+      widget.project.metadata = metadata;
       Navigator.pop(context, metadata);
     }
   }
@@ -459,21 +477,4 @@ class _FontMetadataScreenState extends State<FontMetadataScreen> {
   }
 }
 
-/// 字体元数据数据类
-///
-/// 封装从元数据编辑页面返回的编辑结果。
-class FontMetadata {
-  final String familyName;
-  final String subfamilyName;
-  final String version;
-  final String copyright;
-  final String description;
-
-  const FontMetadata({
-    required this.familyName,
-    required this.subfamilyName,
-    required this.version,
-    this.copyright = '',
-    this.description = '',
-  });
-}
+// FontMetadata class moved to models/project.dart
