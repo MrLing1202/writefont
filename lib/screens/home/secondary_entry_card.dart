@@ -19,6 +19,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onFontFamilyTap;
   final VoidCallback onStrokeOrderTap;
   final VoidCallback onCharsetAnalysisTap;
+  final VoidCallback onGlyphCompletionTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -38,6 +39,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onFontFamilyTap,
     required this.onStrokeOrderTap,
     required this.onCharsetAnalysisTap,
+    required this.onGlyphCompletionTap,
   });
 
   @override
@@ -182,6 +184,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字符集分析',
             subtitle: 'GB2312 覆盖率统计 · 缺失字符',
             onTap: onCharsetAnalysisTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.auto_fix_high,
+            iconColor: const Color(0xFFE74C3C),
+            title: '字形自动补全',
+            subtitle: '笔画模板组合生成缺失字形',
+            onTap: onGlyphCompletionTap,
           ),
         ],
       ),
