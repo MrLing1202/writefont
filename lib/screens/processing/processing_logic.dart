@@ -389,22 +389,33 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
       params: params,
     );
 
-    for (int i = 0; i < processedCells.length; i++) {
-      final char = charAssignments[i];
-      if (char == null) continue;
+    try {
+      for (int i = 0; i < processedCells.length; i++) {
+        final char = charAssignments[i];
+        if (char == null) continue;
 
-      final contours = await ImageProcessor.extractContours(
-        processedCells[i],
-        params,
-      );
+        final contours = await ImageProcessor.extractContours(
+          processedCells[i],
+          params,
+        );
 
-      project.glyphs[char] = GlyphData(
-        character: char,
-        unicode: char.codeUnitAt(0),
-        contours: contours,
-        advanceWidth: 500,
-      );
+        if (!mounted) return;
+
+        project.glyphs[char] = GlyphData(
+          character: char,
+          unicode: char.codeUnitAt(0),
+          contours: contours,
+          advanceWidth: 500,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '处理字符轮廓失败: $e');
+      }
+      return;
     }
+
+    if (!mounted) return;
 
     Navigator.of(context).pushNamed('/preview', arguments: {'project': project});
   }

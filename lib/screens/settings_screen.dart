@@ -819,7 +819,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       isDestructive: true,
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
 
     setState(() => _isRollingBack = true);
 
@@ -1068,7 +1068,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       trailing: Radio<String>(
         value: mode,
         groupValue: _themeMode,
-        onChanged: (v) => _setThemeMode(v!),
+        onChanged: (v) { if (v != null) _setThemeMode(v); },
         activeColor: WFColors.primary,
       ),
       onTap: () => _setThemeMode(mode),
@@ -1119,7 +1119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       trailing: Radio<String>(
         value: code,
         groupValue: localeService.locale.languageCode,
-        onChanged: (v) => _setLocale(v!),
+        onChanged: (v) { if (v != null) _setLocale(v); },
         activeColor: WFColors.primary,
       ),
       onTap: () => _setLocale(code),
@@ -1145,7 +1145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           RadioListTile<bool>(
             value: false,
             groupValue: _useCloud,
-            onChanged: (v) => _toggleUseCloud(v!),
+            onChanged: (v) { if (v != null) _toggleUseCloud(v); },
             title: const Text('本地识别'),
             subtitle: const Text('使用设备端 OCR 识别文字，无需网络'),
             secondary: Icon(
@@ -1158,7 +1158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           RadioListTile<bool>(
             value: true,
             groupValue: _useCloud,
-            onChanged: (v) => _toggleUseCloud(v!),
+            onChanged: (v) { if (v != null) _toggleUseCloud(v); },
             title: const Text('云端识别'),
             subtitle: const Text('使用云端 OCR 服务，需要网络连接'),
             secondary: Icon(

@@ -81,11 +81,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
       context,
       WFAnimations.slideRoute(FontMetadataScreen(project: widget.project)),
     );
-    if (result != null) {
+    if (result != null && mounted) {
       setState(() => _fontMetadata = result);
-      if (mounted) {
-        WFSnackBar.show(context, '元数据已更新，可直接导出字体');
-      }
+      WFSnackBar.show(context, '元数据已更新，可直接导出字体');
     }
   }
 

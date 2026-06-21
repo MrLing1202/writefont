@@ -478,20 +478,20 @@ class _CaptureScreenState extends State<CaptureScreen> {
             .where((q) => q != null && q.level == QualityLevel.poor)
             .length;
 
+        if (!mounted) return;
+
         setState(() {
           _selectedImages.addAll(photos);
         });
 
-        if (mounted) {
-          if (poorCount > 0) {
-            WFSnackBar.showWithDuration(
-              context,
-              '已添加 ${photos.length} 张图片，其中 $poorCount 张质量较差，可能影响识别效果',
-              duration: const Duration(seconds: 3),
-            );
-          } else {
-            WFSnackBar.show(context, '已添加 ${photos.length} 张图片');
-          }
+        if (poorCount > 0) {
+          WFSnackBar.showWithDuration(
+            context,
+            '已添加 ${photos.length} 张图片，其中 $poorCount 张质量较差，可能影响识别效果',
+            duration: const Duration(seconds: 3),
+          );
+        } else {
+          WFSnackBar.show(context, '已添加 ${photos.length} 张图片');
         }
       }
     } catch (e) {
