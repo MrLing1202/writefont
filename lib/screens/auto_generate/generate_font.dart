@@ -35,7 +35,13 @@ Future<FontProject?> generateFontFromCells(
     }
 
     try {
-      final contours = await ImageProcessor.extractContours(cells[i], params);
+      // 外层超时保护：单字符最多 20 秒
+      final contours = await ImageProcessor.extractContours(
+        cells[i], params,
+        timeout: const Duration(seconds: 15),
+      ).timeout(const Duration(seconds: 20), onTimeout: () {
+        throw TimeoutException('字符 $char 处理超时');
+      });
 
       final glyph = GlyphData(
         character: char,
@@ -46,7 +52,7 @@ Future<FontProject?> generateFontFromCells(
       project.glyphs[char] = glyph;
     } catch (e) {
       // 单个字符处理失败时继续处理其他字符
-      onProgress(completed / total, '字符 $char 处理失败，跳过');
+      print('[字体生成] 字符 "$char" 处理失败，跳过: $e');
     }
 
     completed++;
