@@ -18,6 +18,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onWebExportTap;
   final VoidCallback onFontFamilyTap;
   final VoidCallback onStrokeOrderTap;
+  final VoidCallback onCharsetAnalysisTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -36,6 +37,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onWebExportTap,
     required this.onFontFamilyTap,
     required this.onStrokeOrderTap,
+    required this.onCharsetAnalysisTap,
   });
 
   @override
@@ -172,6 +174,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '笔画顺序',
             subtitle: '演示汉字书写笔画顺序动画',
             onTap: onStrokeOrderTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.pie_chart,
+            iconColor: const Color(0xFF1ABC9C),
+            title: '字符集分析',
+            subtitle: 'GB2312 覆盖率统计 · 缺失字符',
+            onTap: onCharsetAnalysisTap,
           ),
         ],
       ),

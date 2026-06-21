@@ -13,6 +13,7 @@ import 'char_recommend_screen.dart';
 import 'glyph_quality_screen.dart';
 import 'web_export_screen.dart';
 import 'stroke_order_screen.dart';
+import 'charset_screen.dart';
 import 'font_family_screen.dart';
 import 'project_list_screen.dart';
 import 'settings_screen.dart';
@@ -1194,6 +1195,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// 打开字符集分析（先选择项目）
+  Future<void> _openCharsetAnalysisWithProjectPicker() async {
+    try {
+      final projects = await StorageService.loadProjects();
+      if (!mounted) return;
+      if (projects.isEmpty) {
+        WFSnackBar.show(context, '请先创建一个字体项目');
+        return;
+      }
+      final available = projects.where((p) => p.glyphs.isNotEmpty).toList();
+      if (available.isEmpty) {
+        WFSnackBar.show(context, '暂无已编辑的字形，请先完成造字');
+        return;
+      }
+      if (available.length == 1) {
+        Navigator.push(context, WFAnimations.slideRoute(CharsetScreen(project: available.first)));
+        return;
+      }
+      showModalBottomSheet(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(padding: EdgeInsets.all(16), child: Text('选择字体项目', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+              const Divider(height: 1),
+              ...available.map((p) => ListTile(
+                leading: const Icon(Icons.font_download),
+                title: Text(p.name),
+                subtitle: Text('${p.glyphs.length} 个字形'),
+                onTap: () { Navigator.pop(ctx); Navigator.push(context, WFAnimations.slideRoute(CharsetScreen(project: p))); },
+              )),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Home] 打开字符集分析失败: $e');
+    }
+  }
+
   /// 打开智能字符推荐（先选择项目）
   Future<void> _openCharRecommendWithProjectPicker() async {
     try {
@@ -2294,6 +2336,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       onWebExportTap: () => _openWebExportWithProjectPicker(),
                       onFontFamilyTap: () => _openFontFamilyWithProjectPicker(),
                       onStrokeOrderTap: () => _openStrokeOrderWithProjectPicker(),
+                      onCharsetAnalysisTap: () => _openCharsetAnalysisWithProjectPicker(),
                     ),
                     delay: const Duration(milliseconds: 560),
                   ),
