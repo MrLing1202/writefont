@@ -28,18 +28,33 @@ Future<FontProject?> generateFontFromCells(
     final i = entry.key;
     final char = entry.value;
 
-    final contours = await ImageProcessor.extractContours(cells[i], params);
+    // 检查索引是否有效
+    if (i < 0 || i >= cells.length) {
+      onProgress(completed / total, '跳过无效字符 $char');
+      continue;
+    }
 
-    final glyph = GlyphData(
-      character: char,
-      unicode: char.codeUnitAt(0),
-      contours: contours,
-    );
-    glyph.advanceWidth = glyph.calculateAdvanceWidth();
-    project.glyphs[char] = glyph;
+    try {
+      final contours = await ImageProcessor.extractContours(cells[i], params);
+
+      final glyph = GlyphData(
+        character: char,
+        unicode: char.codeUnitAt(0),
+        contours: contours,
+      );
+      glyph.advanceWidth = glyph.calculateAdvanceWidth();
+      project.glyphs[char] = glyph;
+    } catch (e) {
+      // 单个字符处理失败时继续处理其他字符
+      onProgress(completed / total, '字符 $char 处理失败，跳过');
+    }
 
     completed++;
     onProgress(completed / total, '正在生成字体 $completed/$total...');
+  }
+
+  if (project.glyphs.isEmpty) {
+    return null;
   }
 
   onProgress(1.0, '生成完成！');
