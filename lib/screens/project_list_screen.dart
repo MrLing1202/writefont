@@ -701,10 +701,17 @@ class _ProjectListScreenState extends State<ProjectListScreen>
 
   /// 直接删除项目（无确认对话框，用于滑动删除后）
   Future<void> _deleteProjectDirect(FontProject project) async {
-    await StorageService.deleteProject(project.id);
-    setState(() {
-      _projects.removeWhere((p) => p.id == project.id);
-    });
+    try {
+      await StorageService.deleteProject(project.id);
+      if (!mounted) return;
+      setState(() {
+        _projects.removeWhere((p) => p.id == project.id);
+      });
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, '操作失败: $e');
+      }
+    }
   }
 
   // === 批量删除 ===
@@ -917,6 +924,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
 
       // 分享文件
       await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目列表 CSV');
+      if (!mounted) return;
 
       if (mounted) {
         WFSnackBar.show(context, 'CSV 导出完成: ${projects.length} 个项目');
@@ -974,6 +982,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       await file.writeAsString(jsonString);
 
       await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目列表 JSON');
+      if (!mounted) return;
 
       if (mounted) {
         WFSnackBar.show(context, 'JSON 导出完成: ${projects.length} 个项目');
@@ -1054,6 +1063,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       await file.writeAsString(buffer.toString());
 
       await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目报告');
+      if (!mounted) return;
 
       if (mounted) {
         WFSnackBar.show(context, '报告导出完成: ${projects.length} 个项目');
@@ -1156,6 +1166,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       await file.writeAsString('\uFEFF${buffer.toString()}');
 
       await Share.shareXFiles([XFile(filePath)], subject: 'WriteFont 项目数据 Excel');
+      if (!mounted) return;
 
       if (mounted) {
         WFSnackBar.show(context, 'Excel 导出完成: ${projects.length} 个项目');
@@ -1333,6 +1344,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       );
 
       await StorageService.saveProject(newProject);
+      if (!mounted) return;
       await _loadProjects();
 
       if (mounted) {
@@ -1430,6 +1442,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       }
 
       final project = await StorageService.importProjectFromJson(json);
+      if (!mounted) return;
       if (project != null) {
         await _loadProjects();
         if (mounted) {
@@ -1571,6 +1584,7 @@ class _ProjectListScreenState extends State<ProjectListScreen>
       );
 
       await StorageService.saveProject(project);
+      if (!mounted) return;
       await _loadProjects();
 
       if (mounted) {

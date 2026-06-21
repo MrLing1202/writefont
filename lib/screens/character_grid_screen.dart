@@ -161,10 +161,16 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
         WFAnimations.slideRoute(CaptureScreen(charset: [char])),
       ).then((_) async {
         // 拍照返回后重新加载项目数据
-        final updated = await StorageService.loadProject(_project.id);
-        if (updated != null && mounted) {
+        try {
+          final updated = await StorageService.loadProject(_project.id);
           if (!mounted) return;
-          setState(() => _project = updated);
+          if (updated != null) {
+            setState(() => _project = updated);
+          }
+        } catch (e) {
+          if (mounted) {
+            WFSnackBar.error(context, '操作失败: $e');
+          }
         }
       });
     }
@@ -299,11 +305,17 @@ class _CharacterGridScreenState extends State<CharacterGridScreen> {
                 ),
                 IconButton(
                   onPressed: () async {
-                    final updated =
-                        await StorageService.loadProject(_project.id);
-                    if (updated != null && mounted) {
+                    try {
+                      final updated =
+                          await StorageService.loadProject(_project.id);
                       if (!mounted) return;
-                      setState(() => _project = updated);
+                      if (updated != null) {
+                        setState(() => _project = updated);
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        WFSnackBar.error(context, '操作失败: $e');
+                      }
                     }
                   },
                   icon: const Icon(Icons.refresh),
