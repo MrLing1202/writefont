@@ -135,8 +135,9 @@ class _CharRecommendScreenState extends State<CharRecommendScreen>
     int total,
     int percent,
   ) {
-    return WFCard(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: WFCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,6 +188,7 @@ class _CharRecommendScreenState extends State<CharRecommendScreen>
             ),
           ),
         ],
+      ),
       ),
     );
   }

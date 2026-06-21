@@ -378,7 +378,7 @@ class TemplatePainter extends CustomPainter {
     const gapLength = 4.0;
     final dx = end.dx - start.dx;
     final dy = end.dy - start.dy;
-    final length = (dx * dx + dy * dy * 1.0).abs()).sqrt();
+    final length = sqrt((dx * dx + dy * dy).abs());
     final count = (length / (dashLength + gapLength)).floor();
     final ux = dx / length;
     final uy = dy / length;

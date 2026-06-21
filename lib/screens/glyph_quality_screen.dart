@@ -354,8 +354,8 @@ class _GlyphQualityScreenState extends State<GlyphQualityScreen> {
 
     final scores = _scores.values.map((s) => s.total).toList();
     final avg = scores.reduce((a, b) => a + b) / scores.length;
-    final min = scores.reduce(min);
-    final max = scores.reduce(max);
+    final minVal = scores.reduce((a, b) => a < b ? a : b);
+    final maxVal = scores.reduce((a, b) => a > b ? a : b);
 
     // 找出需要改进的字符（低于平均分 - 15）
     final threshold = avg - 15;
@@ -366,8 +366,8 @@ class _GlyphQualityScreenState extends State<GlyphQualityScreen> {
 
     return _OverallStats(
       avgScore: avg,
-      minScore: min,
-      maxScore: max,
+      minScore: minVal,
+      maxScore: maxVal,
       needImprovement: needImprovement.map((e) => e.key).toList(),
       totalCount: _scores.length,
     );
@@ -383,20 +383,13 @@ class _GlyphQualityScreenState extends State<GlyphQualityScreen> {
     if (glyph == null || _currentProject == null) return;
 
     // 使用 CharacterEditDialog 进行编辑
-    CharacterEditDialog.show(
-      context,
-      character: char,
-      glyph: glyph,
-      projectId: _currentProject!.id,
-      onCharacterChanged: () {
-        // 编辑完成后重新分析
-        _analyzeAll();
-      },
-      onCharacterDeleted: () {
-        // 删除后重新分析
-        _analyzeAll();
-      },
-    );
+    showDialog(
+      context: context,
+      builder: (context) => CharacterEditDialog(
+        glyph: glyph,
+        project: _currentProject!,
+      ),
+    ).then((_) => _analyzeAll());
   }
 
   // ═══════════════════════════════════════════════════════════
