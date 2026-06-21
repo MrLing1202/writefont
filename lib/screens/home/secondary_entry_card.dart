@@ -12,6 +12,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onTemplateGeneratorTap;
   final VoidCallback onFontCompareTap;
   final VoidCallback onPracticeModeTap;
+  final VoidCallback onKerningEditorTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -24,6 +25,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onTemplateGeneratorTap,
     required this.onFontCompareTap,
     required this.onPracticeModeTap,
+    required this.onKerningEditorTap,
   });
 
   @override
@@ -112,6 +114,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '练习模式',
             subtitle: '针对弱字反复练习',
             onTap: onPracticeModeTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.space_bar,
+            iconColor: WFColors.primary,
+            title: '字形间距',
+            subtitle: '调整字形对之间的间距',
+            onTap: onKerningEditorTap,
           ),
         ],
       ),

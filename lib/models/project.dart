@@ -193,6 +193,10 @@ class FontProject {
   ProcessingParams params;
   List<Uint8List> sourceImages;
 
+  /// 字形间距调整数据（kerning pairs）
+  /// key 为两个字符拼接（如 'AB'），value 为间距调整值（-100 到 +100，单位 font units）
+  Map<String, int> kerningPairs;
+
   FontProject({
     required this.id,
     required this.name,
@@ -201,11 +205,13 @@ class FontProject {
     Map<String, GlyphData>? glyphs,
     ProcessingParams? params,
     List<Uint8List>? sourceImages,
+    Map<String, int>? kerningPairs,
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now(),
         glyphs = glyphs ?? {},
         params = params ?? ProcessingParams(),
-        sourceImages = sourceImages ?? [];
+        sourceImages = sourceImages ?? [],
+        kerningPairs = kerningPairs ?? {};
 
   /// 序列化为 JSON（不含 sourceImages 二进制数据，需单独存储）
   Map<String, dynamic> toJson() => {
@@ -215,6 +221,7 @@ class FontProject {
         'updatedAt': updatedAt.toIso8601String(),
         'glyphs': glyphs.map((k, v) => MapEntry(k, v.toJson())),
         'params': params.toJson(),
+        if (kerningPairs.isNotEmpty) 'kerningPairs': kerningPairs,
       };
 
   /// 从 JSON 反序列化
@@ -224,6 +231,15 @@ class FontProject {
     for (final entry in glyphsJson.entries) {
       glyphsMap[entry.key] =
           GlyphData.fromJson(entry.value as Map<String, dynamic>);
+    }
+
+    // 解析 kerning pairs（向后兼容：旧项目数据中不存在时默认空 map）
+    final kerningJson = json['kerningPairs'] as Map<String, dynamic>?;
+    final kerningMap = <String, int>{};
+    if (kerningJson != null) {
+      for (final entry in kerningJson.entries) {
+        kerningMap[entry.key] = (entry.value as num).toInt();
+      }
     }
 
     return FontProject(
@@ -239,6 +255,7 @@ class FontProject {
       params: json['params'] != null
           ? ProcessingParams.fromJson(json['params'] as Map<String, dynamic>)
           : null,
+      kerningPairs: kerningMap,
     );
   }
 }
