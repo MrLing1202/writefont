@@ -11,6 +11,7 @@ import 'font_preview_enhanced_screen.dart';
 import 'kerning_editor_screen.dart';
 import 'char_recommend_screen.dart';
 import 'glyph_quality_screen.dart';
+import 'web_export_screen.dart';
 import 'project_list_screen.dart';
 import 'settings_screen.dart';
 import 'writing_tips_screen.dart';

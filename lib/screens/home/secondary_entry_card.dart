@@ -15,6 +15,7 @@ class SecondaryEntryCard extends StatelessWidget {
   final VoidCallback onKerningEditorTap;
   final VoidCallback onCharRecommendTap;
   final VoidCallback onGlyphQualityTap;
+  final VoidCallback onWebExportTap;
 
   const SecondaryEntryCard({
     super.key,
@@ -30,6 +31,7 @@ class SecondaryEntryCard extends StatelessWidget {
     required this.onKerningEditorTap,
     required this.onCharRecommendTap,
     required this.onGlyphQualityTap,
+    required this.onWebExportTap,
   });
 
   @override
@@ -142,6 +144,14 @@ class SecondaryEntryCard extends StatelessWidget {
             title: '字形质量',
             subtitle: '四维评分 · 发现待改进字形',
             onTap: onGlyphQualityTap,
+          ),
+          const Divider(height: 1, indent: 56),
+          _SecondaryListTile(
+            icon: Icons.language,
+            iconColor: WFColors.info,
+            title: '网页导出',
+            subtitle: '生成 @font-face CSS · HTML · Flutter 代码',
+            onTap: onWebExportTap,
           ),
         ],
       ),
