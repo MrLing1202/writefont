@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/project.dart';
 import '../theme/app_theme.dart';
@@ -25,6 +28,7 @@ import 'writing_tips_screen.dart';
 import '../services/storage_service.dart';
 import '../services/recognition_service.dart';
 import '../services/image_processor.dart';
+import '../services/google_fonts_exporter.dart';
 import 'home/welcome_header.dart';
 import 'home/recent_projects_section.dart';
 import 'home/secondary_entry_card.dart';
@@ -1513,6 +1517,88 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// 打开 Google Fonts 导出（先选择项目）
+  Future<void> _openGoogleFontsWithProjectPicker() async {
+    try {
+      final projects = await StorageService.loadProjects();
+      if (!mounted) return;
+
+      if (projects.isEmpty) {
+        WFSnackBar.show(context, '请先创建一个字体项目');
+        return;
+      }
+
+      final available = projects.where((p) => p.glyphs.isNotEmpty).toList();
+      if (available.isEmpty) {
+        WFSnackBar.show(context, '暂无已编辑的字形，请先完成造字');
+        return;
+      }
+
+      if (available.length == 1) {
+        await _exportGoogleFonts(available.first);
+        return;
+      }
+
+      showModalBottomSheet(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  '选择字体项目',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              ...available.map((p) => ListTile(
+                    leading: const Icon(Icons.cloud_upload),
+                    title: Text(p.name),
+                    subtitle: Text('${p.glyphs.length} 个字形'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _exportGoogleFonts(p);
+                    },
+                  )),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Home] 打开 Google Fonts 导出失败: $e');
+    }
+  }
+
+  /// 导出项目为 Google Fonts 格式并分享
+  Future<void> _exportGoogleFonts(FontProject project) async {
+    try {
+      WFSnackBar.show(context, '正在生成 Google Fonts 格式...');
+
+      final zipBytes = GoogleFontsExporter.exportToZip(project);
+
+      final tempDir = await getTemporaryDirectory();
+      final familyName = project.metadata?.familyName ?? project.name;
+      final safeName = familyName.replaceAll(RegExp(r'[^\w\-]'), '_');
+      final file = File('${tempDir.path}/$safeName-google-fonts.zip');
+      await file.writeAsBytes(zipBytes);
+
+      if (!mounted) return;
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'Google Fonts 导出 - $familyName',
+        text: '手迹造字 · Google Fonts 格式导出',
+      );
+    } catch (e) {
+      if (mounted) {
+        WFSnackBar.error(context, 'Google Fonts 导出失败: $e');
+      }
+    }
+  }
+
   /// 检查是否需要显示新手引导
   Future<void> _checkOnboardingGuide() async {
     try {
@@ -2446,7 +2532,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       // 导出
                       onFontFamilyTap: () => _openFontFamilyWithProjectPicker(),
                       onWebExportTap: () => _openWebExportWithProjectPicker(),
-                      onGoogleFontsExportTap: () => _openWebExportWithProjectPicker(),
+                      onGoogleFontsExportTap: () => _openGoogleFontsWithProjectPicker(),
                       onCharsetAnalysisTap: () => _openCharsetAnalysisWithProjectPicker(),
                       onGlyphCompletionTap: () => _openGlyphCompletionWithProjectPicker(),
                       onMyFontsTap: () async {
