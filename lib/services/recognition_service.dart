@@ -1873,12 +1873,17 @@ class RecognitionService {
 
       // v2.6.0: 智能投票选出最佳结果
       if (voteMap.isNotEmpty) {
-        // 按票数排序，票数相同取置信度高的
+        // 按票数排序，票数相同取置信度高的，再相同取常见字优先（v3.0.0）
         final sorted = voteMap.entries.toList()
           ..sort((a, b) {
             final voteDiff = b.value.compareTo(a.value);
             if (voteDiff != 0) return voteDiff;
-            return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+            final confDiff = (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+            if (confDiff != 0) return confDiff;
+            // v3.0.0: 字频加权 — 常见字优先（字频越高值越大）
+            final freqA = DictionaryService.instance.getFrequency(a.key);
+            final freqB = DictionaryService.instance.getFrequency(b.key);
+            return freqB.compareTo(freqA);
           });
         var winner = sorted.first;
 
