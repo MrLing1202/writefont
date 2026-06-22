@@ -14,6 +14,7 @@ class ConfirmView extends StatelessWidget {
   final double progress;
   final String status;
   final Map<String, int> stats;
+  final Map<int, double> confidenceMap;
   final void Function(int index) onQuickEdit;
   final void Function(int index) onRetryRecognition;
   final VoidCallback onReidentify;
@@ -31,6 +32,7 @@ class ConfirmView extends StatelessWidget {
     required this.progress,
     required this.status,
     required this.stats,
+    this.confidenceMap = const {},
     required this.onQuickEdit,
     required this.onRetryRecognition,
     required this.onReidentify,
@@ -42,8 +44,12 @@ class ConfirmView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 顶部统计信息栏
-        StatsBar(stats: stats, colorScheme: colorScheme),
+        // 顶部统计信息栏（含低置信度警告）
+        StatsBar(
+          stats: stats,
+          colorScheme: colorScheme,
+          lowConfidenceCount: confidenceMap.values.where((c) => c < 0.6).length,
+        ),
 
         // 字符网格
         Expanded(
@@ -64,6 +70,7 @@ class ConfirmView extends StatelessWidget {
                 isFailed: isFailedRecognition(index),
                 isGenerating: isGenerating,
                 index: index,
+                confidence: confidenceMap[index] ?? 0.7,
                 onTap: () => onQuickEdit(index),
                 onRetry: () => onRetryRecognition(index),
               );

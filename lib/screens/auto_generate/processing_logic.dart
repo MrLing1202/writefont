@@ -11,6 +11,7 @@ class ProcessingResult {
   final Map<int, String> charAssignments;
   final Set<int> aiRecognized;
   final Set<int> failedRecognition;
+  final Map<int, double> confidenceMap;
   final String? error;
   final String? errorStatus;
 
@@ -19,6 +20,7 @@ class ProcessingResult {
     required this.charAssignments,
     required this.aiRecognized,
     required this.failedRecognition,
+    this.confidenceMap = const {},
     this.error,
     this.errorStatus,
   });
@@ -171,6 +173,16 @@ Future<ProcessingResult> runProcessing(
     }
   }
 
+  // 构建置信度映射（索引 → 置信度 0.0~1.0）
+  final confidenceMap = <int, double>{};
+  for (int i = 0; i < cells.length; i++) {
+    if (aiRecognized.contains(i)) {
+      confidenceMap[i] = RecognitionService.getConfidenceForImage(cells[i]);
+    } else if (failedRecognition.contains(i)) {
+      confidenceMap[i] = 0.3; // 识别失败的低置信度
+    }
+  }
+
   onProgress(1.0, '识别完成');
 
   return ProcessingResult(
@@ -178,5 +190,6 @@ Future<ProcessingResult> runProcessing(
     charAssignments: charAssignments,
     aiRecognized: aiRecognized,
     failedRecognition: failedRecognition,
+    confidenceMap: confidenceMap,
   );
 }

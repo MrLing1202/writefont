@@ -38,6 +38,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   // 处理结果
   List<Uint8List> _cells = [];
   final Map<int, String> _charAssignments = {};
+  final Map<int, double> _confidenceMap = {};
 
   // 确认模式相关状态
   bool _isConfirming = false;
@@ -108,6 +109,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
           _aiRecognized.add(index);
           _failedRecognition.remove(index);
           _editedAssignments.remove(index);
+          // 重试后更新置信度
+          _confidenceMap[index] = RecognitionService.getConfidenceForImage(_cells[index]);
           _status = '识别完成';
         });
       } else {
@@ -174,6 +177,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         _charAssignments..clear()..addAll(result.charAssignments);
         _aiRecognized..clear()..addAll(result.aiRecognized);
         _failedRecognition..clear()..addAll(result.failedRecognition);
+        _confidenceMap..clear()..addAll(result.confidenceMap);
         _progress = 1.0; _status = '识别完成'; _isConfirming = true;
       });
     } catch (e) {
@@ -247,6 +251,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       if (!mounted) return;
       setState(() {
         _editedAssignments[index] = newChar!;
+        _confidenceMap[index] = 1.0; // 用户修正 = 最高置信度
       });
       // 存入用户反馈学习系统，提升后续识别率
       RecognitionService.correctRecognition(_cells[index], newChar);
@@ -286,6 +291,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
     setState(() {
       _charAssignments.clear(); _editedAssignments.clear();
       _aiRecognized.clear(); _failedRecognition.clear();
+      _confidenceMap.clear();
       _isConfirming = false; _hasError = false; _errorMessage = null; _progress = 0.0;
     });
     _startProcessing();
@@ -330,6 +336,7 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                     _cells.length, _charAssignments, _aiRecognized,
                     _failedRecognition, _editedAssignments,
                   ),
+                  confidenceMap: _confidenceMap,
                   onQuickEdit: _quickEditCharacter,
                   onRetryRecognition: _retryRecognition,
                   onReidentify: _resetAndReidentify,

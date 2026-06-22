@@ -651,6 +651,14 @@ class RecognitionService {
           } else {
             results[index] = await _recognizeLocal(images[index]);
           }
+          // 批量识别成功后，为原始图片缓存结果和置信度
+          if (results[index] != null) {
+            final cacheKey = _hashBytes(images[index]);
+            _recognitionCache.putIfAbsent(cacheKey, () => results[index]!);
+            _cacheAccessOrder.remove(cacheKey);
+            _cacheAccessOrder.add(cacheKey);
+            _confidenceCache.putIfAbsent(cacheKey, () => 0.75);
+          }
           completed++;
           onProgress?.call(completed, images.length);
         } finally {
@@ -1947,6 +1955,12 @@ class RecognitionService {
 
   /// 获取识别置信度（最近一次识别的）
   double? getConfidence(int imageHash) => _confidenceCache[imageHash];
+
+  /// 获取指定图片的识别置信度（从缓存中读取，无缓存返回默认值 0.7）
+  static double getConfidenceForImage(Uint8List imageBytes) {
+    final cacheKey = _hashBytes(imageBytes);
+    return _confidenceCache[cacheKey] ?? 0.7;
+  }
 
   /// LRU 缓存淘汰：移除最久未访问的条目
   static void _evictLruCache() {

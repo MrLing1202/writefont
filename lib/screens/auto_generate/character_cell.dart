@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
-/// 单个字符格子 — 显示字符图片、识别结果标签、状态图标
+/// 单个字符格子 — 显示字符图片、识别结果标签、状态图标、置信度
 class CharacterCell extends StatelessWidget {
   final Uint8List cellImageBytes;
   final String char;
@@ -10,6 +10,7 @@ class CharacterCell extends StatelessWidget {
   final bool isFailed;
   final bool isGenerating;
   final int index;
+  final double confidence;
   final VoidCallback? onTap;
   final VoidCallback? onRetry;
 
@@ -22,9 +23,17 @@ class CharacterCell extends StatelessWidget {
     required this.isFailed,
     required this.isGenerating,
     required this.index,
+    this.confidence = 0.7,
     this.onTap,
     this.onRetry,
   });
+
+  /// 根据置信度返回对应颜色
+  Color get _confidenceColor {
+    if (confidence >= 0.85) return Colors.green;
+    if (confidence >= 0.6) return Colors.orange;
+    return Colors.red;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,27 +72,56 @@ class CharacterCell extends StatelessWidget {
               ),
             ),
 
-            // 识别结果标签（底部居中）
+            // 识别结果标签（底部居中）+ 置信度指示
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 2),
+                padding: const EdgeInsets.only(top: 2, bottom: 1),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.85),
                   border: Border(
                     top: BorderSide(color: borderColor.withValues(alpha: 0.3)),
                   ),
                 ),
-                child: Text(
-                  char,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      char,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    // 置信度指示：彩色圆点 + 百分比
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _confidenceColor,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${(confidence * 100).round()}%',
+                          style: TextStyle(
+                            fontSize: 8,
+                            color: _confidenceColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
