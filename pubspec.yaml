@@ -1,7 +1,7 @@
 name: writefont
 description: 手迹造字 - 拍照生成手写字体的工具
 publish_to: 'none'
-version: 4.1.0+43
+version: 4.2.0+44
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

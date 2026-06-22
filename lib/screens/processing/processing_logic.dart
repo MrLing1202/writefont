@@ -6,6 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../services/image_processor.dart';
 import '../../services/storage_service.dart';
 import '../../services/recognition_service.dart';
+import '../../services/dictionary_service.dart';
 import '../../services/app_config_service.dart';
 import '../widgets/edit_character_dialog.dart';
 import 'cell_result.dart';
@@ -279,6 +280,33 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
     }
 
     await Future.wait(futures);
+
+    // ── 同音字上下文纠错：利用前后字符的词组关系纠正识别结果 ──
+    for (int i = 0; i < cells.length; i++) {
+      if (!charAssignments.containsKey(i)) continue;
+      final current = charAssignments[i]!;
+      final confidence = cellResults[i]?.confidence == ConfidenceLevel.high
+          ? 0.95
+          : cellResults[i]?.confidence == ConfidenceLevel.medium
+              ? 0.75
+              : 0.55;
+      final prevChar = i > 0 ? charAssignments[i - 1] : null;
+      final nextChar = (i < cells.length - 1) ? charAssignments[i + 1] : null;
+      final corrected = DictionaryService.instance.correctWithHomophone(
+        current,
+        prevChar: prevChar,
+        nextChar: nextChar,
+        confidence: confidence,
+      );
+      if (corrected != current) {
+        charAssignments[i] = corrected;
+        cellResults[i] = CellResult(
+          character: corrected,
+          status: CellStatus.recognized,
+          confidence: cellResults[i]?.confidence ?? ConfidenceLevel.medium,
+        );
+      }
+    }
 
     // 代数不匹配，取消后续逻辑
     if (gen != null && generation != gen) return;

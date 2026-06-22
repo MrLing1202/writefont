@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/project.dart';
 import '../services/image_processor.dart';
 import '../services/recognition_service.dart';
+import '../services/dictionary_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import 'auto_generate/generate_font.dart';
@@ -229,6 +230,24 @@ class _BatchImportScreenState extends State<BatchImportScreen>
         }
       } catch (e) {
         debugPrint('[批量导入] 图${imageIndex + 1}-字${j + 1} 识别异常: $e');
+      }
+    }
+
+    // ── 同音字上下文纠错 ──
+    for (int j = 0; j < cells.length; j++) {
+      final current = result.recognitions[j];
+      if (current == null || current.isEmpty) continue;
+      final prevChar = j > 0 ? result.recognitions[j - 1] : null;
+      final nextChar = (j < cells.length - 1) ? result.recognitions[j + 1] : null;
+      final corrected = DictionaryService.instance.correctWithHomophone(
+        current,
+        prevChar: prevChar,
+        nextChar: nextChar,
+        confidence: 0.75, // 批量导入默认中等置信度
+      );
+      if (corrected != current) {
+        debugPrint('[批量导入] 同音字纠错: "$current" → "$corrected"');
+        result.recognitions[j] = corrected;
       }
     }
 
