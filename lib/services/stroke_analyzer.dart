@@ -899,5 +899,27 @@ class StrokeAnalyzer {
     '子': StrokeFeature(strokeCount: 3, directions: {'heng': 0.4, 'shu': 0.3, 'pie': 0.15, 'na': 0.15}, structure: CharStructure.single),
     '总': StrokeFeature(strokeCount: 9, directions: {'heng': 0.3, 'shu': 0.25, 'pie': 0.2, 'na': 0.25}, structure: CharStructure.topBottom),
     '最': StrokeFeature(strokeCount: 12, directions: {'heng': 0.35, 'shu': 0.25, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.topBottom),
-  };
+
+    // ── 补充常用字 ──
+    '个': StrokeFeature(strokeCount: 3, directions: {'heng': 0.1, 'shu': 0.5, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.topBottom),
+    '自': StrokeFeature(strokeCount: 6, directions: {'heng': 0.4, 'shu': 0.45, 'pie': 0.05, 'na': 0.1}, structure: CharStructure.single),
+    '东': StrokeFeature(strokeCount: 5, directions: {'heng': 0.3, 'shu': 0.3, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.single),
+    '西': StrokeFeature(strokeCount: 6, directions: {'heng': 0.35, 'shu': 0.35, 'pie': 0.15, 'na': 0.15}, structure: CharStructure.single),
+    '南': StrokeFeature(strokeCount: 9, directions: {'heng': 0.4, 'shu': 0.35, 'pie': 0.1, 'na': 0.15}, structure: CharStructure.topBottom),
+    '北': StrokeFeature(strokeCount: 5, directions: {'heng': 0.2, 'shu': 0.35, 'pie': 0.25, 'na': 0.2}, structure: CharStructure.leftRight),
+    '什': StrokeFeature(strokeCount: 4, directions: {'heng': 0.3, 'shu': 0.4, 'pie': 0.15, 'na': 0.15}, structure: CharStructure.leftRight),
+    '它': StrokeFeature(strokeCount: 5, directions: {'heng': 0.15, 'shu': 0.35, 'pie': 0.25, 'na': 0.25}, structure: CharStructure.topBottom),
+    '己': StrokeFeature(strokeCount: 3, directions: {'heng': 0.3, 'shu': 0.3, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.single),
+    '已': StrokeFeature(strokeCount: 3, directions: {'heng': 0.35, 'shu': 0.25, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.single),
+    '巳': StrokeFeature(strokeCount: 3, directions: {'heng': 0.3, 'shu': 0.35, 'pie': 0.15, 'na': 0.2}, structure: CharStructure.single),
+    '未': StrokeFeature(strokeCount: 5, directions: {'heng': 0.4, 'shu': 0.3, 'pie': 0.15, 'na': 0.15}, structure: CharStructure.single),
+    '末': StrokeFeature(strokeCount: 5, directions: {'heng': 0.45, 'shu': 0.25, 'pie': 0.15, 'na': 0.15}, structure: CharStructure.single),
+    '所': StrokeFeature(strokeCount: 8, directions: {'heng': 0.3, 'shu': 0.3, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.leftRight),
+    '新': StrokeFeature(strokeCount: 13, directions: {'heng': 0.35, 'shu': 0.25, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.leftRight),
+    '短': StrokeFeature(strokeCount: 12, directions: {'heng': 0.35, 'shu': 0.25, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.leftRight),
+    '少': StrokeFeature(strokeCount: 4, directions: {'heng': 0.15, 'shu': 0.4, 'pie': 0.25, 'na': 0.2}, structure: CharStructure.single),
+    '坏': StrokeFeature(strokeCount: 7, directions: {'heng': 0.3, 'shu': 0.3, 'pie': 0.2, 'na': 0.2}, structure: CharStructure.leftRight),
+    '低': StrokeFeature(strokeCount: 7, directions: {'heng': 0.25, 'shu': 0.3, 'pie': 0.25, 'na': 0.2}, structure: CharStructure.leftRight),
+    '旧': StrokeFeature(strokeCount: 5, directions: {'heng': 0.3, 'shu': 0.4, 'pie': 0.15, 'na': 0.15}, structure: CharStructure.leftRight),
+    };
 }
