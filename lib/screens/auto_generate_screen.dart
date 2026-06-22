@@ -95,6 +95,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
     if (index >= _cells.length) return;
     setState(() => _status = '正在重新识别第 ${index + 1} 个字符...');
     try {
+      // 清除该图片的旧缓存，避免重试时命中错误结果
+      RecognitionService.invalidateRecognitionCache(_cells[index]);
       final result = await retryCharacterRecognition(_cells[index])
           .timeout(const Duration(seconds: 15), onTimeout: () {
         throw TimeoutException('识别超时');
@@ -207,16 +209,44 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   /// 快速修改字符
   void _quickEditCharacter(int index) async {
     final currentChar = _getCharAt(index) ?? '';
-    final newChar = await showQuickEditCharacterDialog(
-      context,
-      cellImage: _cells[index],
-      index: index,
-      currentChar: currentChar,
-    );
+    String? newChar;
+
+    if (_isAiRecognized(index)) {
+      // AI 识别的字符：获取 top-3 候选让用户选择
+      final candidates = await RecognitionService.instance
+          .recognizeCharacterTopN(_cells[index], n: 3);
+      if (!mounted) return;
+      if (candidates.length > 1) {
+        newChar = await showCandidateSelectionDialog(
+          context,
+          cellImage: _cells[index],
+          index: index,
+          currentChar: currentChar,
+          candidates: candidates,
+        );
+      } else {
+        // 只有一个候选，走普通编辑对话框
+        newChar = await showQuickEditCharacterDialog(
+          context,
+          cellImage: _cells[index],
+          index: index,
+          currentChar: currentChar,
+        );
+      }
+    } else {
+      // 非 AI 识别（失败/手动），走普通编辑对话框
+      newChar = await showQuickEditCharacterDialog(
+        context,
+        cellImage: _cells[index],
+        index: index,
+        currentChar: currentChar,
+      );
+    }
+
     if (newChar != null && newChar.isNotEmpty && newChar != currentChar) {
       if (!mounted) return;
       setState(() {
-        _editedAssignments[index] = newChar;
+        _editedAssignments[index] = newChar!;
       });
       // 存入用户反馈学习系统，提升后续识别率
       RecognitionService.correctRecognition(_cells[index], newChar);

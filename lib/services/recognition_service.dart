@@ -474,6 +474,134 @@ class RecognitionService {
     return result;
   }
 
+  /// 识别单个字符图片，返回 Top-N 候选结果（按投票数降序）
+  ///
+  /// 复用 _recognizeLocal 的多级预处理 + 投票逻辑，
+  /// 返回去重后的候选列表（最多 [n] 个）。
+  /// 如果只有一个候选就返回长度 1 的列表；无候选返回空列表。
+  Future<List<String>> recognizeCharacterTopN(Uint8List imageBytes, {int n = 3}) async {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return [];
+
+      final w = decoded.width;
+      final h = decoded.height;
+      final maxDim = w > h ? w : h;
+
+      // 图像质量增强
+      final qualityReport = ImageQualityService.instance.assessQuality(decoded);
+      img.Image enhanced = decoded;
+      if (qualityReport.needsEnhancement) {
+        enhanced = ImageQualityService.instance.enhanceForRecognition(decoded, qualityReport);
+      }
+
+      // 分级放大策略
+      List<int> upscaleTargets;
+      if (maxDim < 50) {
+        upscaleTargets = [400, 600, 800];
+      } else if (maxDim < 100) {
+        upscaleTargets = [300, 500, 700];
+      } else if (maxDim < 200) {
+        upscaleTargets = [200, 400];
+      } else {
+        upscaleTargets = [0];
+      }
+
+      // 投票统计
+      final voteMap = <String, int>{};
+      final confidenceMap = <String, double>{};
+
+      // 预处理组合（与 _recognizeLocal 一致）
+      final preprocessors = <String, img.Image Function(img.Image)>{
+        '灰度': (src) => img.grayscale(src),
+        '灰度+对比度': (src) {
+          final gray = img.grayscale(src);
+          return img.adjustColor(gray, contrast: 1.5, brightness: 1.1);
+        },
+        '灰度+锐化': (src) {
+          final gray = img.grayscale(src);
+          return _sharpen(gray);
+        },
+        '灰度+去噪': (src) {
+          final gray = img.grayscale(src);
+          return _medianFilter(gray);
+        },
+        '灰度+自适应二值化': (src) {
+          final gray = img.grayscale(src);
+          return _adaptiveBinarize(gray, blockSize: 31, c: 10);
+        },
+        '灰度+对比度+二值化': (src) {
+          final gray = img.grayscale(src);
+          final e = img.adjustColor(gray, contrast: 1.5, brightness: 1.1);
+          return _binarize(e);
+        },
+        '灰度+去噪+锐化': (src) {
+          final gray = img.grayscale(src);
+          final denoised = _medianFilter(gray);
+          return _sharpen(denoised);
+        },
+        '灰度+去噪+自适应二值化': (src) {
+          final gray = img.grayscale(src);
+          final denoised = _medianFilter(gray);
+          return _adaptiveBinarize(denoised, blockSize: 31, c: 10);
+        },
+        '灰度+对比度+去噪+二值化': (src) {
+          final gray = img.grayscale(src);
+          final e = img.adjustColor(gray, contrast: 1.5, brightness: 1.1);
+          final denoised = _medianFilter(e);
+          return _binarize(denoised);
+        },
+        '手写体笔画增强': (src) => _handwritingEnhance(src),
+        '倾斜校正': (src) => _skewCorrection(src),
+        '笔画归一化': (src) => _strokeNormalization(src),
+        '手写体增强+对比度': (src) {
+          final e = _handwritingEnhance(src);
+          return _enhanceContrast(e);
+        },
+      };
+
+      for (final targetSize in upscaleTargets) {
+        img.Image base;
+        if (targetSize == 0) {
+          base = enhanced;
+        } else {
+          final scale = targetSize / maxDim;
+          final newW = (w * scale).round();
+          final newH = (h * scale).round();
+          base = img.copyResize(enhanced, width: newW, height: newH,
+              interpolation: img.Interpolation.cubic);
+        }
+
+        for (final entry in preprocessors.entries) {
+          final processed = entry.value(base);
+          final rawResult = await _recognizeFromImage(processed);
+          final result = _validateResult(rawResult);
+          if (result != null) {
+            voteMap[result] = (voteMap[result] ?? 0) + 1;
+            final hash = _hashBytes(img.encodePng(processed));
+            final conf = _confidenceCache[hash] ?? 0.7;
+            confidenceMap[result] = (confidenceMap[result] ?? 0) > conf
+                ? confidenceMap[result]!
+                : conf;
+          }
+        }
+      }
+
+      // 按票数降序，票数相同取置信度高的
+      final sorted = voteMap.entries.toList()
+        ..sort((a, b) {
+          final voteDiff = b.value.compareTo(a.value);
+          if (voteDiff != 0) return voteDiff;
+          return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+        });
+
+      return sorted.take(n).map((e) => e.key).toList();
+    } catch (e) {
+      debugPrint('recognizeCharacterTopN 失败: $e');
+      return [];
+    }
+  }
+
   /// 批量识别字符图片（带并发控制和进度回调）
   /// 改进：使用缓存预检优化，已缓存的结果直接返回，减少等待
   Future<List<String?>> recognizeBatch(
@@ -1785,6 +1913,16 @@ class RecognitionService {
     _cacheAccessOrder.clear();
     _confidenceCache.clear();
     _estimatedCacheBytes = 0; // 重置内存计数
+  }
+
+  /// 清除单条识别缓存（重试前调用，避免命中旧缓存返回错误结果）
+  static void invalidateRecognitionCache(Uint8List imageBytes) {
+    final cacheKey = _hashBytes(imageBytes);
+    _recognitionCache.remove(cacheKey);
+    _cacheAccessOrder.remove(cacheKey);
+    _confidenceCache.remove(cacheKey);
+    _addDebugLog('cache', '已清除单条缓存', data: {'hash': cacheKey});
+    debugPrint('识别缓存: 已清除单条缓存 hash=$cacheKey');
   }
 
   /// 获取缓存命中率（用于调试和统计）
