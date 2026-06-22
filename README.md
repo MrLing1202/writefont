@@ -4,7 +4,7 @@
 
 ## 📥 下载安装
 
-**最新版本：v3.7.0** | [全部版本](https://github.com/MrLing1202/writefont/releases)
+**最新版本：v3.8.0** | [全部版本](https://github.com/MrLing1202/writefont/releases)
 
 | 文件名 | 适用设备 |
 |--------|----------|

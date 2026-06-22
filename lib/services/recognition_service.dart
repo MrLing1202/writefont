@@ -2064,6 +2064,31 @@ class RecognitionService {
         );
 
         debugPrint('ML Kit 识别: 投票结果 "${winner.key}" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%, 策略=$strategyCount 种)');
+
+        // v3.8.0: 低置信度旋转重试 — 尝试90°/180°/270°旋转
+        if (_lastLocalConfidence < 0.5 && maxDim >= 80) {
+          debugPrint('ML Kit 识别: 置信度低，尝试旋转重试');
+          for (final angle in [90, 180, 270]) {
+            final rotated = img.copyRotate(enhanced, angle: angle);
+            final gray = img.grayscale(rotated);
+            final raw = await _recognizeFromImage(gray);
+            final r = _validateResult(raw);
+            if (r != null) {
+              debugPrint('ML Kit 识别: 旋转${angle}°识别到 "$r"');
+              // 如果旋转后识别到不同的字符，且该字符已有投票，提升其权重
+              if (r != winner.key && voteMap.containsKey(r)) {
+                voteMap[r] = (voteMap[r] ?? 0) + 2;
+                if (voteMap[r]! > winner.value) {
+                  winner = MapEntry(r, voteMap[r]!);
+                  _lastLocalConfidence = 0.6;
+                  debugPrint('ML Kit 识别: 旋转重试翻转结果为 "$r"');
+                  break;
+                }
+              }
+            }
+          }
+        }
+
         return winner.key;
       }
 
