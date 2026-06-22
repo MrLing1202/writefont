@@ -1887,7 +1887,7 @@ class RecognitionService {
           });
         var winner = sorted.first;
 
-        // ── 平局决胜：top-2 票数差仅为 1 时，用新预处理重新识别 ──
+        // ── 平局决胜：top-2 票数差仅为 1 时，用多种预处理投票决胜（v3.2.0） ──
         if (sorted.length >= 2 && (winner.value - sorted[1].value) <= 1) {
           debugPrint('ML Kit 识别: 平局决胜触发 (top1="${winner.key}"=${winner.value}票, top2="${sorted[1].key}"=${sorted[1].value}票)');
           final candidateA = winner.key;
@@ -1895,17 +1895,22 @@ class RecognitionService {
           int tieBreakA = 0;
           int tieBreakB = 0;
 
-          // 用对比度+锐化组合做决胜预处理
-          final tieBreakerBase = enhanced;
-          final tieBreakProcessed = _sharpen(img.adjustColor(img.grayscale(tieBreakerBase), contrast: 1.8, brightness: 1.2));
-          final tieRawResult = await _recognizeFromImage(tieBreakProcessed);
-          final tieResult = _validateResult(tieRawResult);
-          if (tieResult == candidateA) {
-            tieBreakA++;
-            debugPrint('ML Kit 识别: 平局决胜 → 倾向 "$candidateA"');
-          } else if (tieResult == candidateB) {
-            tieBreakB++;
-            debugPrint('ML Kit 识别: 平局决胜 → 倾向 "$candidateB"');
+          // v3.2.0: 用3种不同预处理做决胜投票（而非原来只用1种）
+          final tieBreakers = [
+            _sharpen(img.adjustColor(img.grayscale(enhanced), contrast: 1.8, brightness: 1.2)),
+            _adaptiveBinarize(img.grayscale(enhanced), blockSize: 25, c: 8),
+            _clahe(enhanced),
+          ];
+          for (final tieProcessed in tieBreakers) {
+            final tieRawResult = await _recognizeFromImage(tieProcessed);
+            final tieResult = _validateResult(tieRawResult);
+            if (tieResult == candidateA) {
+              tieBreakA++;
+              debugPrint('ML Kit 识别: 平局决胜 → 倾向 "$candidateA"');
+            } else if (tieResult == candidateB) {
+              tieBreakB++;
+              debugPrint('ML Kit 识别: 平局决胜 → 倾向 "$candidateB"');
+            }
           }
 
           // 决胜结果影响最终选择
