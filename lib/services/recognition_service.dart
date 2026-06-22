@@ -1680,6 +1680,36 @@ class RecognitionService {
         }
       }
 
+      // v3.6.0: 快速通道 — 额外跑2个策略，3个一致直接返回
+      if (voteMap.isNotEmpty && maxDim >= 50) {
+        final quickStrategies = [
+          ('灰度+对比度', (img.Image src) => img.adjustColor(img.grayscale(src), contrast: 1.5, brightness: 1.1)),
+          ('灰度+锐化', (img.Image src) => _sharpen(img.grayscale(src))),
+        ];
+        for (final (label, fn) in quickStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+          }
+        }
+        // 3个快速策略一致 → 直接返回
+        if (voteMap.isNotEmpty) {
+          final topVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
+          if (topVotes >= 3) {
+            final quickWinner = voteMap.entries.reduce((a, b) => a.value >= b.value ? a : b);
+            _lastLocalConfidence = 0.92;
+            debugPrint('ML Kit 识别: 快速通道命中 "${quickWinner.key}" (${quickWinner.value}票)');
+            return quickWinner.key;
+          }
+        }
+      }
+
       // ═══ 第二轮：多级预处理 + 投票 ═══
       // 根据图片大小分级，定义放大目标尺寸序列
       List<int> upscaleTargets;
