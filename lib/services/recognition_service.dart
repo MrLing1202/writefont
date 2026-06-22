@@ -1752,6 +1752,60 @@ class RecognitionService {
         '局部阈值二值化': (src) => _localThresholdBinarize(src),
       };
 
+      // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
+      final filteredPreprocessors = <String, img.Image Function(img.Image)>{};
+      final features = imageFeatures;
+      // 基础策略始终保留
+      filteredPreprocessors['灰度'] = preprocessors['灰度']!;
+      filteredPreprocessors['灰度+对比度'] = preprocessors['灰度+对比度']!;
+      // 根据特征添加相关策略
+      if (features.contrast < 0.4) {
+        // 低对比度：加对比度增强类策略
+        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', '自适应直方图均衡', '背景归一化']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+      }
+      if (features.noise > 0.5) {
+        // 高噪声：加降噪类策略
+        for (final k in ['灰度+去噪', '灰度+去噪+锐化', '高斯模糊去噪+锐化']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+      }
+      if (features.blur > 0.5) {
+        // 模糊：加锐化类策略
+        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+      }
+      if (features.lineThickness < 0.3) {
+        // 细线条：加增粗策略
+        for (final k in ['手写体笔画增强', '笔画归一化']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+      }
+      if (features.lineThickness > 0.7) {
+        // 粗线条：加细化策略
+        for (final k in ['形态学骨架化']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+      }
+      if (features.connection > 0.6) {
+        // 连笔：加分离策略
+        for (final k in ['形态学骨架化', '局部阈值二值化']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+      }
+      // 确保至少有5个策略
+      if (filteredPreprocessors.length < 5) {
+        for (final k in ['灰度+自适应二值化', '灰度+去噪+自适应二值化', '手写体增强+对比度', '倾斜校正']) {
+          if (!filteredPreprocessors.containsKey(k) && preprocessors.containsKey(k)) {
+            filteredPreprocessors[k] = preprocessors[k]!;
+          }
+          if (filteredPreprocessors.length >= 5) break;
+        }
+      }
+      debugPrint('ML Kit 识别: 智能策略选择 ${filteredPreprocessors.length}/${preprocessors.length} 种 (对比度=${features.contrast.toStringAsFixed(2)}, 噪声=${features.noise.toStringAsFixed(2)}, 模糊=${features.blur.toStringAsFixed(2)})');
+
       int attempt = 0;
 
       for (final targetSize in upscaleTargets) {
@@ -1767,7 +1821,7 @@ class RecognitionService {
           debugPrint('ML Kit 识别: 放大到 ${base.width}x${base.height}');
         }
 
-        for (final entry in preprocessors.entries) {
+        for (final entry in filteredPreprocessors.entries) {
           attempt++;
           final label = entry.key;
           final preprocessor = entry.value;
@@ -1797,7 +1851,7 @@ class RecognitionService {
                 : conf;
             debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]}, 策略=$label, 权重=$voteWeight)');
             // 提前终止：票数过半时无需继续
-            final totalAttempts = upscaleTargets.length * preprocessors.length;
+            final totalAttempts = upscaleTargets.length * filteredPreprocessors.length;
             if (voteMap[result]! >= 3) {
               earlyTerminated = true;
               debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票');
@@ -1813,7 +1867,6 @@ class RecognitionService {
         // 如果已经提前终止（票数过半），跳出外层循环
         if (voteMap.isNotEmpty) {
           final maxVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
-          final totalAttempts = upscaleTargets.length * preprocessors.length;
           if (maxVotes >= 3) break; // v2.8.0: 降低阈值
         }
       }
