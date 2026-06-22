@@ -2188,11 +2188,13 @@ class RecognitionService {
                 ? confidenceMap[result]!
                 : conf;
             debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]}, 策略=$label, 权重=$voteWeight)');
-            // 提前终止：票数过半时无需继续
+            // v4.2.0: 自适应提前终止 — 根据总策略数动态调整阈值
+            // 小图（策略少）用低阈值，大图（策略多）用高阈值，避免过早终止
             final totalAttempts = upscaleTargets.length * filteredPreprocessors.length;
-            if (voteMap[result]! >= 3) {
+            final earlyThreshold = totalAttempts <= 6 ? 2 : (totalAttempts <= 12 ? 3 : 4);
+            if (voteMap[result]! >= earlyThreshold) {
               earlyTerminated = true;
-              debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票');
+              debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票 (阈值=$earlyThreshold)');
               break;
             }
           } else {
@@ -2299,7 +2301,7 @@ class RecognitionService {
           // 若决胜仍平手，保持原排序（置信度高的优先）
         }
 
-        // ── 置信度校准 ──
+        // ── 置信度校准（v4.2.0 增强） ──
         double calibratedConf = confidenceMap[winner.key] ?? 0.7;
 
         // 1. 票数差距：winner 票数 >= 2x runner-up → +0.1
@@ -2321,7 +2323,7 @@ class RecognitionService {
         // 3. 提前终止：票数过半 → 置信度设为 0.95
         if (earlyTerminated) {
           calibratedConf = 0.95;
-          debugPrint('ML Kit 识别: 置信度校准 — 提前终止 (=0.95)');
+          debugPrint('ML Kit 识别: 置信度校准 — 提前终止 (=0.0.95)');
         }
 
         // 4. 图像质量调整（v3.1.0）：低质量图片降低置信度，高质量提升
@@ -2346,6 +2348,34 @@ class RecognitionService {
         if (sizeCount >= 2) {
           calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
           debugPrint('ML Kit 识别: 置信度校准 — 多尺度一致 $sizeCount 种尺寸 (+0.05)');
+        }
+
+        // 7. v4.2.0: 共识强度 — winner票数占总票数比例越高，置信度越高
+        final totalVotes = voteMap.values.reduce((a, b) => a + b);
+        if (totalVotes > 0) {
+          final consensusRatio = winner.value / totalVotes;
+          if (consensusRatio >= 0.7) {
+            calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 高共识度 ${(consensusRatio * 100).toStringAsFixed(0)}% (+0.05)');
+          } else if (consensusRatio < 0.4) {
+            calibratedConf = (calibratedConf - 0.05).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 低共识度 ${(consensusRatio * 100).toStringAsFixed(0)}% (-0.05)');
+          }
+        }
+
+        // 8. v4.2.0: TFLite 一致性 — 如果 TFLite 与 ML Kit 结果一致，提升置信度
+        if (tfliteUsed && voteMap.containsKey(winner.key)) {
+          // TFLite 已经通过投票参与，额外检查是否为 Top-1
+          final tfliteStrategies = resultStrategies[winner.key]?.contains('TFLite模型') ?? false;
+          if (tfliteStrategies) {
+            calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — TFLite 一致 (+0.05)');
+          }
+        }
+
+        // 9. v4.2.0: 字典验证 — 如果结果在常用字表中，额外提升
+        if (DictionaryService.instance.isCommonChar(winner.key)) {
+          calibratedConf = (calibratedConf + 0.02).clamp(0.0, 1.0);
         }
 
         _lastLocalConfidence = calibratedConf;
