@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'whats_new_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -192,6 +193,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
     _doubleTapScale = Tween<double>(begin: 1.0, end: 1.0).animate(
       CurvedAnimation(parent: _doubleTapAnimController, curve: Curves.easeOutBack),
+    );
+    // v2.7.0: 首次启动新版本时显示更新提示
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showWhatsNewIfNeeded();
+    });
+  }
+
+  void _showWhatsNewIfNeeded() {
+    WhatsNewDialog.checkAndShow(
+      context,
+      version: 'v2.7.0',
+      subtitle: '用起来就不一样了',
+      items: const [
+        WhatsNewItem(icon: '🔍', title: '识别引擎全面升级', description: '覆盖更多手写场景，识别更准更快'),
+        WhatsNewItem(icon: '📊', title: '识别过程全程可见', description: '实时显示策略尝试进度和用时'),
+        WhatsNewItem(icon: '🎯', title: '投票详情一目了然', description: '点击查看每个字是怎么选出来的'),
+        WhatsNewItem(icon: '🎨', title: '界面全面优化', description: '更清晰的操作流程和视觉反馈'),
+      ],
     );
   }
 
@@ -2405,6 +2424,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       title: '一键生成',
                       subtitle: '拍照即生成，全自动无需手动操作',
                       color: WFColors.primary,
+                      badge: 'NEW',
                       onTap: () => HomeActions.quickCapture(context),
                     ),
                     delay: const Duration(milliseconds: 160),

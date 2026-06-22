@@ -390,6 +390,7 @@ class WFActionCard extends StatelessWidget {
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
+  final String? badge;
 
   const WFActionCard({
     super.key,
@@ -398,6 +399,7 @@ class WFActionCard extends StatelessWidget {
     required this.subtitle,
     required this.color,
     required this.onTap,
+    this.badge,
   });
 
   @override
@@ -437,13 +439,28 @@ class WFActionCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (badge != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade400,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(badge!, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87)),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(

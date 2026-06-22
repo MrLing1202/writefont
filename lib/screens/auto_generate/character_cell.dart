@@ -28,6 +28,13 @@ class CharacterCell extends StatelessWidget {
     this.onRetry,
   });
 
+  /// 置信度背景色 — 热力图效果（v2.7.0）
+  Color _confidenceBg(ColorScheme cs) {
+    if (confidence >= 0.85) return Color.lerp(cs.surface, Colors.green.shade50, 0.6)!;
+    if (confidence >= 0.6) return Color.lerp(cs.surface, Colors.amber.shade50, 0.5)!;
+    return Color.lerp(cs.surface, Colors.red.shade50, 0.5)!;
+  }
+
   /// 根据置信度返回对应颜色
   Color get _confidenceColor {
     if (confidence >= 0.85) return Colors.green;
@@ -54,7 +61,7 @@ class CharacterCell extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: borderColor, width: 1.5),
-          color: Theme.of(context).colorScheme.surface,
+          color: _confidenceBg(Theme.of(context).colorScheme),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
