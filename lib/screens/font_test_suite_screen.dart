@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/storage_service.dart';
@@ -122,7 +122,7 @@ class _FontTestSuiteScreenState extends State<FontTestSuiteScreen> {
 
       // 使用 FontLoader 注册字体供运行时预览
       final familyName = project.metadata?.familyName ?? project.name;
-      final fontLoader = ui.FontLoader(familyName);
+      final fontLoader = FontLoader(familyName);
       fontLoader.addFont(
         Future.value(ByteData.view(ttfBytes.buffer)),
       );

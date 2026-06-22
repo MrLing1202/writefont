@@ -341,11 +341,11 @@ class StrokeAnalyzer {
     // 包围结构：中心占比高，四周墨量均匀
     if (centerRatio > 0.25 && borderInk > totalInk * 0.5) {
       // 检查四周是否均匀（上、下、左、右墨量相近）
-      final topRatio = totalInk > 0 ? topInk / totalInk : 0;
-      final bottomRatio = totalInk > 0 ? bottomInk / totalInk : 0;
-      final leftRatio = totalInk > 0 ? leftInk / totalInk : 0;
-      final rightRatio = totalInk > 0 ? rightInk / totalInk : 0;
-      final borderVariance = _variance([topRatio, bottomRatio, leftRatio, rightRatio]).toDouble();
+      final topRatio = totalInk > 0 ? topInk / totalInk : 0.0;
+      final bottomRatio = totalInk > 0 ? bottomInk / totalInk : 0.0;
+      final leftRatio = totalInk > 0 ? leftInk / totalInk : 0.0;
+      final rightRatio = totalInk > 0 ? rightInk / totalInk : 0.0;
+      final borderVariance = _variance([topRatio, bottomRatio, leftRatio, rightRatio]);
       if (borderVariance < 0.02) {
         return CharStructure.surround;
       }

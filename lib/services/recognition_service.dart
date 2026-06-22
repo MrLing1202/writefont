@@ -9,6 +9,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'image_processor.dart';
+import 'image_quality_service.dart';
 import 'user_feedback_service.dart';
 import 'dictionary_service.dart';
 import 'stroke_analyzer.dart';
@@ -972,10 +973,26 @@ class RecognitionService {
       final maxDim = w > h ? w : h;
       debugPrint('ML Kit 识别: 原始图片 ${w}x$h，最大边 $maxDim');
 
-      // ═══ 第一轮：快速尝试（灰度原图，跳过放大和复杂预处理） ═══
+      // ═══ 图像质量评估与自动增强 ═══
+      final qualityReport = ImageQualityService.instance.assessQuality(decoded);
+      img.Image enhanced = decoded;
+      if (qualityReport.needsEnhancement) {
+        debugPrint('ML Kit 识别: 图像质量偏低，执行自动增强 $qualityReport');
+        enhanced = ImageQualityService.instance.enhanceForRecognition(decoded, qualityReport);
+        _addDebugLog('recognition', '图像质量增强', data: {
+          'qualityScore': qualityReport.overallScore,
+          'contrast': qualityReport.contrastScore,
+          'sharpness': qualityReport.sharpnessScore,
+          'noise': qualityReport.noiseScore,
+          'stroke': qualityReport.strokeScore,
+          'skew': qualityReport.skewAngle,
+        });
+      }
+
+      // ═══ 第一轮：快速尝试（灰度原图或增强图，跳过放大和复杂预处理） ═══
       if (maxDim >= 50) {
         debugPrint('ML Kit 识别: 快速尝试 | 原图灰度');
-        final gray = img.grayscale(decoded);
+        final gray = img.grayscale(enhanced);
         final rawResult = await _recognizeFromImage(gray);
         final result = _validateResult(rawResult);
         if (result != null) {
@@ -1060,12 +1077,12 @@ class RecognitionService {
       for (final targetSize in upscaleTargets) {
         img.Image base;
         if (targetSize == 0) {
-          base = decoded;
+          base = enhanced;
         } else {
           final scale = targetSize / maxDim;
           final newW = (w * scale).round();
           final newH = (h * scale).round();
-          base = img.copyResize(decoded, width: newW, height: newH,
+          base = img.copyResize(enhanced, width: newW, height: newH,
               interpolation: img.Interpolation.cubic);
           debugPrint('ML Kit 识别: 放大到 ${base.width}x${base.height}');
         }
@@ -1117,13 +1134,13 @@ class RecognitionService {
       _lastLocalConfidence = 0.5;
       debugPrint('ML Kit 识别: 常规预处理均失败，尝试回退策略');
 
-      // 确定回退用的基础图片
+      // 确定回退用的基础图片（使用增强后的图像）
       final fallbackBase = upscaleTargets.isNotEmpty && upscaleTargets.first > 0
-          ? img.copyResize(decoded,
+          ? img.copyResize(enhanced,
               width: (w * upscaleTargets.first / maxDim).round(),
               height: (h * upscaleTargets.first / maxDim).round(),
               interpolation: img.Interpolation.cubic)
-          : decoded;
+          : enhanced;
 
       // 回退策略 1：裁剪边缘空白后再识别
       debugPrint('ML Kit 识别: 回退策略1 - 裁剪边缘空白');
