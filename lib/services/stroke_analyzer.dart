@@ -672,6 +672,7 @@ class StrokeAnalyzer {
     '刀': StrokeFeature(strokeCount: 2, directions: {'heng': 0.15, 'shu': 0.4, 'pie': 0.3, 'na': 0.15}, structure: CharStructure.single),
     '又': StrokeFeature(strokeCount: 2, directions: {'heng': 0.1, 'shu': 0.1, 'pie': 0.4, 'na': 0.4}, structure: CharStructure.single),
     '七': StrokeFeature(strokeCount: 2, directions: {'heng': 0.5, 'shu': 0.3, 'pie': 0.1, 'na': 0.1}, structure: CharStructure.single),
+    '丁': StrokeFeature(strokeCount: 2, directions: {'heng': 0.6, 'shu': 0.35, 'pie': 0.025, 'na': 0.025}, structure: CharStructure.single),
 
     // ── 3 画 ──
     '三': StrokeFeature(strokeCount: 3, directions: {'heng': 0.9, 'shu': 0.0, 'pie': 0.05, 'na': 0.05}, structure: CharStructure.topBottom),

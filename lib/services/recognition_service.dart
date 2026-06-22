@@ -437,7 +437,7 @@ class RecognitionService {
       }
 
       // ── 笔画特征辅助选择：低置信度时用笔画特征优化结果 ──
-      if (confidence < 0.75 && result != null) {
+      if (confidence < 0.85 && result != null) {
         final strokeResult = await StrokeAnalyzer.instance.assistRecognition(
           imageBytes, result, confidence,
         );
