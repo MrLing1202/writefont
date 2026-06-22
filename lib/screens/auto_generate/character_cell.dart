@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../../services/image_analyzer.dart';
 
 /// 单个字符格子 — 显示字符图片、识别结果标签、状态图标、置信度
 class CharacterCell extends StatelessWidget {
@@ -11,6 +12,7 @@ class CharacterCell extends StatelessWidget {
   final bool isGenerating;
   final int index;
   final double confidence;
+  final ImageFeatures? imageFeatures;
   final VoidCallback? onTap;
   final VoidCallback? onRetry;
 
@@ -24,6 +26,7 @@ class CharacterCell extends StatelessWidget {
     required this.isGenerating,
     required this.index,
     this.confidence = 0.7,
+    this.imageFeatures,
     this.onTap,
     this.onRetry,
   });
@@ -78,6 +81,17 @@ class CharacterCell extends StatelessWidget {
                 cacheHeight: 200,
               ),
             ),
+
+            // 图像质量指示器（v2.8.0）
+            if (imageFeatures != null)
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Text(
+                  imageFeatures!.qualityEmoji,
+                  style: const TextStyle(fontSize: 10),
+                ),
+              ),
 
             // 识别结果标签（底部居中）+ 置信度指示
             Positioned(

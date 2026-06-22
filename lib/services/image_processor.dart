@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../models/project.dart';
+import 'image_analyzer.dart';
 
 /// 进度回调类型：progress 范围 0.0 ~ 1.0，message 描述当前步骤
 typedef ProgressCallback = void Function(double progress, String message);
@@ -321,6 +322,40 @@ class ImageProcessor {
   // ── 轮廓提取结果缓存（避免重复计算相同图片的轮廓） ──
   static final Map<int, List<Contour>> _contourCache = {};
   static const int _maxContourCacheSize = 50;
+
+  /// 根据图像特征智能选择预处理策略（v2.8.0）
+  List<String> selectStrategies(ImageFeatures features) {
+    final selected = <String>[];
+    
+    if (features.contrast < 0.4) {
+      selected.addAll(['adaptiveThreshold', 'clahe', 'localContrast']);
+    }
+    if (features.noise > 0.5) {
+      selected.addAll(['gaussianBlur', 'medianBlur', 'nlMeansDenoise']);
+    }
+    if (features.blur > 0.5) {
+      selected.addAll(['unsharpMask', 'highPassFilter', 'edgeEnhance']);
+    }
+    if (features.lineThickness < 0.3) {
+      selected.addAll(['dilate', 'morphClose', 'thicken']);
+    }
+    if (features.lineThickness > 0.7) {
+      selected.addAll(['erode', 'thin']);
+    }
+    if (features.connection > 0.6) {
+      selected.addAll(['componentSeparation', 'skeletonize']);
+    }
+    
+    final unique = selected.toSet().toList();
+    if (unique.length < 5) {
+      final fallbacks = ['otsuThreshold', 'adaptiveThreshold', 'morphClose', 'edgeEnhance', 'clahe'];
+      for (final f in fallbacks) {
+        if (!unique.contains(f)) unique.add(f);
+        if (unique.length >= 5) break;
+      }
+    }
+    return unique.take(12).toList();
+  }
 
   // ═══════════════════════════════════════════════════════════
   // 监控功能：性能、错误、使用、资源

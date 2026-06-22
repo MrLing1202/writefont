@@ -14,6 +14,7 @@ import 'image_quality_service.dart';
 import 'user_feedback_service.dart';
 import 'dictionary_service.dart';
 import 'stroke_analyzer.dart';
+import 'image_analyzer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'api_key.dart';
@@ -38,6 +39,8 @@ class RecognitionDetail {
   final String? topStrategy;
   /// 最可靠策略的历史成功率
   final double topStrategyReliability;
+  /// 图像特征分析结果（v2.8.0）
+  final ImageFeatures? imageFeatures;
 
   const RecognitionDetail({
     required this.result,
@@ -49,6 +52,7 @@ class RecognitionDetail {
     required this.strategiesUsed,
     this.topStrategy,
     required this.topStrategyReliability,
+    this.imageFeatures,
   });
 }
 
@@ -1613,6 +1617,8 @@ class RecognitionService {
   Future<String?> _recognizeLocal(Uint8List imageBytes) async {
     try {
       _lastLocalConfidence = 0.0;
+      // v2.8.0: 分析图像特征，智能选择预处理策略
+      final imageFeatures = await ImageAnalyzer().analyzeImage(imageBytes);
       final decoded = img.decodeImage(imageBytes);
       if (decoded == null) return null;
 
@@ -1912,6 +1918,7 @@ class RecognitionService {
           strategiesUsed: strategyCount,
           topStrategy: topStrat,
           topStrategyReliability: topReliability,
+          imageFeatures: imageFeatures,
         );
 
         debugPrint('ML Kit 识别: 投票结果 "${winner.key}" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%, 策略=$strategyCount 种)');
