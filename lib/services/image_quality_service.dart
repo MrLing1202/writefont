@@ -91,8 +91,8 @@ class ImageQualityService {
     // 模糊 → 锐化 + 去噪
     if (report.sharpnessScore < 0.4) {
       result = _medianFilter(result); // 先去噪
-      result = _sharpen(result); // 再锐化
-      actions.add('锐化+去噪');
+      result = _unsharpMaskSharpen(result, amount: 1.5); // v4.0.0 USM笔画锐化
+      actions.add('USM锐化+去噪');
     }
 
     // 噪声大 → 中值滤波（如果前面没有去噪过）
@@ -608,6 +608,70 @@ class ImageQualityService {
           b.clamp(0, 255).toInt(),
           255,
         );
+      }
+    }
+    return result;
+  }
+
+  /// 多尺度 Unsharp Masking 笔画锐化（v4.0.0）
+  img.Image _unsharpMaskSharpen(img.Image src, {double amount = 1.5}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 第一层 3x3 高斯核 (sigma≈1.0)
+    const k3 = [[1, 2, 1], [2, 4, 2], [1, 2, 1]];
+    const d3 = 16;
+    final blur1 = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        int sum = 0;
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            sum += gray.getPixel(nx, ny).r.toInt() * k3[dy + 1][dx + 1];
+          }
+        }
+        final v = (sum / d3).round().clamp(0, 255);
+        blur1.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+
+    // 第二层 5x5 高斯核 (sigma≈2.0)
+    const k5 = [
+      [1, 4, 7, 4, 1], [4, 16, 26, 16, 4], [7, 26, 41, 26, 7],
+      [4, 16, 26, 16, 4], [1, 4, 7, 4, 1],
+    ];
+    const d5 = 273;
+    final blur2 = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        int sum = 0;
+        for (int dy = -2; dy <= 2; dy++) {
+          for (int dx = -2; dx <= 2; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            sum += gray.getPixel(nx, ny).r.toInt() * k5[dy + 2][dx + 2];
+          }
+        }
+        final v = (sum / d5).round().clamp(0, 255);
+        blur2.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+
+    // 多尺度合成
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final b1 = blur1.getPixel(x, y).r.toDouble();
+        final b2 = blur2.getPixel(x, y).r.toDouble();
+        final detail = orig - b1;
+        final structure = b1 - b2;
+        final strokeWeight = orig < 128 ? amount * 1.2 : amount * 0.6;
+        var v = orig + detail * strokeWeight + structure * (strokeWeight * 0.5);
+        v = v.clamp(0, 255);
+        result.setPixelRgba(x, y, v.toInt(), v.toInt(), v.toInt(), 255);
       }
     }
     return result;

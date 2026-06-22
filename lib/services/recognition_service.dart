@@ -615,6 +615,13 @@ class RecognitionService {
         '方向边缘增强': (src) => _directionalEdgeEnhance(src),
         // v3.9.0: CLAHE 自适应参数（根据对比度自动选 clipLimit）
         'CLAHE自适应': (src) => ImageQualityService.instance.enhanceContrastAdaptive(src),
+        // v4.0.0: 多尺度 USM 笔画锐化
+        'USM笔画锐化': (src) => _unsharpMaskSharpen(src, amount: 1.5),
+        'USM强锐化': (src) => _unsharpMaskSharpen(src, amount: 2.0),
+        'USM锐化+CLAHE': (src) {
+          final sharpened = _unsharpMaskSharpen(src, amount: 1.5);
+          return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+        },
         // v2.6.0 新增 4 种预处理策略
         '自适应直方图均衡': (src) => _adaptiveHistogramEqualizeQuadrants(src),
         '形态学骨架化': (src) => _morphologicalSkeletonize(src),
@@ -942,6 +949,91 @@ class RecognitionService {
           g.clamp(0, 255).toInt(),
           b.clamp(0, 255).toInt(),
           255);
+      }
+    }
+    return result;
+  }
+
+  /// 多尺度 Unsharp Masking 笔画锐化（v4.0.0）
+  ///
+  /// 针对手写汉字笔画优化的锐化算法：
+  /// 1. 多尺度高斯模糊分离高频细节和中频结构
+  /// 2. 自适应锐化强度（笔画暗像素区域增强更多，背景保护）
+  /// 3. 笔画边缘保护防止过度锐化振铃效应
+  img.Image _unsharpMaskSharpen(img.Image src, {double amount = 1.5}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 两层高斯模糊：σ=1 (3x3) 细节层，σ=2 (5x5) 结构层
+    // 第一层 3x3 高斯核 (sigma≈1.0)
+    const k3 = [
+      [1, 2, 1],
+      [2, 4, 2],
+      [1, 2, 1],
+    ];
+    const d3 = 16;
+    final blur1 = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        int sum = 0;
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            sum += gray.getPixel(nx, ny).r.toInt() * k3[dy + 1][dx + 1];
+          }
+        }
+        final v = (sum / d3).round().clamp(0, 255);
+        blur1.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+
+    // 第二层 5x5 高斯核 (sigma≈2.0)
+    const k5 = [
+      [1, 4, 7, 4, 1],
+      [4, 16, 26, 16, 4],
+      [7, 26, 41, 26, 7],
+      [4, 16, 26, 16, 4],
+      [1, 4, 7, 4, 1],
+    ];
+    const d5 = 273;
+    final blur2 = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        int sum = 0;
+        for (int dy = -2; dy <= 2; dy++) {
+          for (int dx = -2; dx <= 2; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            sum += gray.getPixel(nx, ny).r.toInt() * k5[dy + 2][dx + 2];
+          }
+        }
+        final v = (sum / d5).round().clamp(0, 255);
+        blur2.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+
+    // 多尺度合成：细节层 + 结构层
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final b1 = blur1.getPixel(x, y).r.toDouble();
+        final b2 = blur2.getPixel(x, y).r.toDouble();
+
+        // 细节层 = 原图 - 细模糊（高频笔画边缘）
+        final detail = orig - b1;
+        // 结构层 = 细模糊 - 粗模糊（中频笔画结构）
+        final structure = b1 - b2;
+
+        // 自适应强度：笔画区域（暗像素）增强更多，背景（亮像素）保护
+        final strokeWeight = orig < 128 ? amount * 1.2 : amount * 0.6;
+
+        // 合成：原图 + 细节增强 + 结构增强
+        var v = orig + detail * strokeWeight + structure * (strokeWeight * 0.5);
+        v = v.clamp(0, 255);
+
+        result.setPixelRgba(x, y, v.toInt(), v.toInt(), v.toInt(), 255);
       }
     }
     return result;
@@ -1693,7 +1785,7 @@ class RecognitionService {
       if (voteMap.isNotEmpty && maxDim >= 50) {
         final quickStrategies = [
           ('CLAHE自适应', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
-          ('灰度+锐化', (img.Image src) => _sharpen(img.grayscale(src))),
+          ('USM笔画锐化', (img.Image src) => _unsharpMaskSharpen(src, amount: 1.5)),
         ];
         for (final (label, fn) in quickStrategies) {
           final processed = fn(enhanced);
@@ -1793,6 +1885,13 @@ class RecognitionService {
         '方向边缘增强': (src) => _directionalEdgeEnhance(src),
         // v3.9.0: CLAHE 自适应参数（根据对比度自动选 clipLimit）
         'CLAHE自适应': (src) => ImageQualityService.instance.enhanceContrastAdaptive(src),
+        // v4.0.0: 多尺度 USM 笔画锐化
+        'USM笔画锐化': (src) => _unsharpMaskSharpen(src, amount: 1.5),
+        'USM强锐化': (src) => _unsharpMaskSharpen(src, amount: 2.0),
+        'USM锐化+CLAHE': (src) {
+          final sharpened = _unsharpMaskSharpen(src, amount: 1.5);
+          return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+        },
         // v2.6.0 新增 4 种预处理策略
         '自适应直方图均衡': (src) => _adaptiveHistogramEqualizeQuadrants(src),
         '形态学骨架化': (src) => _morphologicalSkeletonize(src),
@@ -1820,8 +1919,8 @@ class RecognitionService {
         }
       }
       if (features.blur > 0.5) {
-        // 模糊：加锐化类策略
-        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强']) {
+        // 模糊：加锐化类策略（含 v4.0.0 USM）
+        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
