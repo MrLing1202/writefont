@@ -1973,9 +1973,18 @@ class RecognitionService {
           // 指数移动平均，向成功方向微调
           _strategyReliability[strat] = (old * 0.8 + 0.2).clamp(0.0, 1.0);
         }
+        // v3.3.0: 惩罚产生错误结果的策略
+        for (final entry in resultStrategies.entries) {
+          if (entry.key != winner.key) {
+            for (final strat in entry.value) {
+              final old = _strategyReliability[strat] ?? 0.5;
+              _strategyReliability[strat] = (old * 0.9).clamp(0.0, 1.0);
+            }
+          }
+        }
 
         // v2.7.0: 存储识别投票详情（供 UI 展示）
-        final totalPossibleAttempts = upscaleTargets.length * preprocessors.length;
+        final totalPossibleAttempts = upscaleTargets.length * filteredPreprocessors.length;
         final attemptsSaved = earlyTerminated ? (totalPossibleAttempts - actualAttempts) : 0;
         // 找出最可靠策略
         String? topStrat;
