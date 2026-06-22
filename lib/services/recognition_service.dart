@@ -17,6 +17,7 @@ import 'stroke_analyzer.dart';
 import 'image_analyzer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'tflite_recognition_service.dart';
 import 'api_key.dart';
 
 /// 单次识别的投票详情（v2.7.0）— 供 UI 展示投票过程
@@ -87,6 +88,7 @@ class RecognitionService {
   static const String _prefKeyCustomModel = 'ocr_custom_model';
   static const String _prefKeyOfflineMode = 'ocr_offline_mode';
   static const String _prefKeyOfflineCache = 'ocr_offline_cache';
+  static const String _prefKeyUseTflite = 'ocr_use_tflite';
 
   // DeepSeek-OCR (硅基流动) 默认配置
   static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
@@ -108,6 +110,7 @@ class RecognitionService {
   bool? _useCloud;
   String? _cloudUrl;
   String? _cloudKey;
+  bool? _useTflite;
 
   // ML Kit 识别器（懒加载）
   TextRecognizer? _mlKitRecognizer;
@@ -242,6 +245,10 @@ class RecognitionService {
       'maxCacheBytes': _maxCacheBytes,
       'activeMode': await instance.getUseCloud() ? 'cloud' : 'local',
       'debugLogCount': _debugLogBuffer.length,
+      // v4.1.0: TFLite 模型状态
+      'tfliteEnabled': await instance.getUseTflite(),
+      'tfliteModelAvailable': instance.isTfliteModelAvailable,
+      'tfliteStatus': TfliteRecognitionService.instance.getStatus(),
     };
   }
 
@@ -682,7 +689,39 @@ class RecognitionService {
           return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
         });
 
-      return sorted.take(n).map((e) => e.key).toList();
+      // ═══ v4.1.0: TFLite 模型补充 Top-N 投票 ═══
+      try {
+        final useTflite = await getUseTflite();
+        if (useTflite) {
+          final tfliteService = TfliteRecognitionService.instance;
+          final tfliteLoaded = await tfliteService.loadModel();
+          if (tfliteLoaded && tfliteService.isModelLoaded) {
+            final tflitePredictions = await tfliteService.recognizeWithConfidence(
+              imageBytes,
+              topN: n,
+            );
+            for (final pred in tflitePredictions) {
+              voteMap[pred.character] = (voteMap[pred.character] ?? 0) + 1;
+              confidenceMap[pred.character] = (confidenceMap[pred.character] ?? 0) > pred.confidence
+                  ? confidenceMap[pred.character]!
+                  : pred.confidence;
+            }
+            debugPrint('TopN: TFLite 补充 ${tflitePredictions.length} 个候选');
+          }
+        }
+      } catch (e) {
+        debugPrint('TopN: TFLite 补充投票异常: $e');
+      }
+
+      // 重新排序（包含 TFLite 投票）
+      final finalSorted = voteMap.entries.toList()
+        ..sort((a, b) {
+          final voteDiff = b.value.compareTo(a.value);
+          if (voteDiff != 0) return voteDiff;
+          return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+        });
+
+      return finalSorted.take(n).map((e) => e.key).toList();
     } catch (e) {
       debugPrint('recognizeCharacterTopN 失败: $e');
       return [];
@@ -2172,6 +2211,45 @@ class RecognitionService {
 
       // v2.6.0: 智能投票选出最佳结果
       if (voteMap.isNotEmpty) {
+
+        // ═══ v4.1.0: TFLite 模型投票（补充投票者）═══
+        // 在 ML Kit 投票完成后，尝试使用 TFLite 模型进行补充识别
+        // TFLite 结果以 1.0x 权重计入投票（低于 ML Kit 主流程）
+        bool tfliteUsed = false;
+        try {
+          final useTflite = await getUseTflite();
+          if (useTflite) {
+            final tfliteService = TfliteRecognitionService.instance;
+            final tfliteLoaded = await tfliteService.loadModel();
+            if (tfliteLoaded && tfliteService.isModelLoaded) {
+              debugPrint('ML Kit 识别: TFLite 模型可用，执行补充识别');
+              final tflitePredictions = await tfliteService.recognizeWithConfidence(
+                imageBytes,
+                topN: 3,
+              );
+              if (tflitePredictions.isNotEmpty) {
+                tfliteUsed = true;
+                for (final pred in tflitePredictions) {
+                  final tfliteVote = pred.confidence >= 0.7 ? 2 : 1; // 高置信度额外加分
+                  voteMap[pred.character] = (voteMap[pred.character] ?? 0) + tfliteVote;
+                  resultStrategies.putIfAbsent(pred.character, () => <String>{});
+                  resultStrategies[pred.character]!.add('TFLite模型');
+                  strategyVotes.putIfAbsent(pred.character, () => {});
+                  strategyVotes[pred.character]!['TFLite模型'] = (strategyVotes[pred.character]!['TFLite模型'] ?? 0) + tfliteVote;
+                  debugPrint('TFLite 投票: "${pred.character}" 置信度 ${(pred.confidence * 100).toStringAsFixed(1)}% → +$tfliteVote 票');
+                }
+                _addDebugLog('recognition', 'TFLite 补充投票', data: {
+                  'predictions': tflitePredictions.map((p) => {'char': p.character, 'conf': p.confidence}).toList(),
+                });
+              }
+            } else {
+              debugPrint('TFLite: 模型不可用，跳过补充投票');
+            }
+          }
+        } catch (e) {
+          debugPrint('TFLite: 补充投票异常（不影响主流程）: $e');
+        }
+
         // 按票数排序，票数相同取置信度高的，再相同取常见字优先（v3.0.0）
         final sorted = voteMap.entries.toList()
           ..sort((a, b) {
@@ -2762,15 +2840,37 @@ class RecognitionService {
     await prefs.setString(_prefKeyCustomModel, model);
   }
 
+  /// TFLite 模型识别开关
+  Future<bool> getUseTflite() async {
+    if (_useTflite != null) return _useTflite!;
+    final prefs = await SharedPreferences.getInstance();
+    // 默认：模型可用时启用
+    _useTflite = prefs.getBool(_prefKeyUseTflite) ?? true;
+    return _useTflite!;
+  }
+
+  Future<void> setUseTflite(bool value) async {
+    _useTflite = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefKeyUseTflite, value);
+  }
+
+  /// TFLite 模型是否实际可用（已加载且非占位符）
+  bool get isTfliteModelAvailable => TfliteRecognitionService.instance.isModelLoaded
+      ? TfliteRecognitionService.instance.isModelAvailable
+      : false; // 未加载时返回 false，延迟判断
+
   /// 释放资源（应在 app 退出时调用）
   void dispose() {
     _mlKitRecognizer?.close();
     _mlKitRecognizer = null;
+    // v4.1.0: 释放 TFLite 资源
+    TfliteRecognitionService.instance.dispose();
     _recognitionCache.clear();
-    _cacheAccessOrder.clear();
     _confidenceCache.clear();
     _detailCache.clear();
-    _estimatedCacheBytes = 0; // 重置内存计数
+    _cacheAccessOrder.clear();
+    _estimatedCacheBytes = 0;
     _strategyReliability.clear(); // 重置策略可靠性
     // 重置调试统计
     _totalRecognitions = 0;

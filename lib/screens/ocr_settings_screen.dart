@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../services/recognition_service.dart';
+import '../services/tflite_recognition_service.dart';
 import '../theme/app_theme.dart';
 
 /// OCR 识别设置页面
@@ -18,6 +19,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
   final _customModelController = TextEditingController();
 
   bool _useCloud = false;
+  bool _useTflite = true;
   bool _isLoading = true;
   bool _isTesting = false;
   String _selectedModel = RecognitionService.defaultModel;
@@ -49,10 +51,12 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
     final cloudUrl = await _recognitionService.getCloudUrl();
     final savedModel = await _recognitionService.getModel();
     final savedCustomModel = await _recognitionService.getCustomModel();
+    final useTflite = await _recognitionService.getUseTflite();
 
     if (!mounted) return;
     setState(() {
       _useCloud = useCloud;
+      _useTflite = useTflite;
       _urlController.text = cloudUrl ?? '';
       _selectedModel = savedModel;
       _customModelController.text = savedCustomModel;
@@ -62,6 +66,7 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
 
   Future<void> _saveSettings({bool showSnackbar = true}) async {
     await _recognitionService.setUseCloud(_useCloud);
+    await _recognitionService.setUseTflite(_useTflite);
     final userKey = _keyController.text.trim();
     await _recognitionService.setCloudConfig(
       _urlController.text.trim(),
@@ -200,6 +205,54 @@ class _OcrSettingsScreenState extends State<OcrSettingsScreen> {
                               ),
                             ],
                           ),
+                        ),
+                      ],
+                    ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // v4.1.0: TFLite 本地模型识别
+                WFCard(
+                  accentColor: WFColors.success,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.psychology, color: WFColors.success),
+                            const SizedBox(width: 12),
+                            Text(
+                              'TFLite 本地模型',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: WFColors.textPrimaryColor(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '内置轻量级手写识别 AI 模型，与 ML Kit 双引擎投票，提升形近字、模糊字识别准确率。',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: WFColors.textSecondaryColor(context),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SwitchListTile(
+                          title: const Text('启用 TFLite 模型'),
+                          subtitle: Text(
+                            _recognitionService.isTfliteModelAvailable
+                                ? '模型已加载，双引擎模式运行中'
+                                : '模型未加载（需要 .tflite 模型文件）',
+                          ),
+                          value: _useTflite,
+                          onChanged: (value) {
+                            setState(() => _useTflite = value);
+                            _saveSettings(showSnackbar: false);
+                          },
                         ),
                       ],
                     ),

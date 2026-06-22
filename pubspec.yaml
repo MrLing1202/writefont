@@ -1,7 +1,7 @@
 name: writefont
 description: 手迹造字 - 拍照生成手写字体的工具
 publish_to: 'none'
-version: 4.0.1+42
+version: 4.1.0+43
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -56,6 +56,9 @@ dependencies:
   # OCR - Local text recognition (ML Kit)
   google_mlkit_text_recognition: ^0.15.1
 
+  # TFLite - Local handwriting recognition model (v4.1.0)
+  tflite_flutter: ^0.10.4
+
   # App info for dynamic version display
   package_info_plus: ^8.0.0
 
@@ -79,3 +82,5 @@ flutter:
 
   assets:
     - assets/
+    - assets/models/
+    - assets/labels.txt
