@@ -558,6 +558,10 @@ class RecognitionService {
           final e = _handwritingEnhance(src);
           return _enhanceContrast(e);
         },
+        // CLAHE / 背景归一化 / 方向边缘增强（v2.5.0 新增）
+        '自适应对比度增强': (src) => _clahe(src),
+        '背景归一化': (src) => _normalizeBackground(src),
+        '方向边缘增强': (src) => _directionalEdgeEnhance(src),
       };
 
       for (final targetSize in upscaleTargets) {
@@ -1091,6 +1095,215 @@ class RecognitionService {
     return result;
   }
 
+  /// CLAHE（自适应直方图均衡化）
+  ///
+  /// 将图像分为 8×8 瓦片，对每个瓦片独立做直方图均衡化（clip limit 3.0），
+  /// 瓦片边界双线性插值消除块效应。对纸面光照不均的手写体效果显著。
+  img.Image _clahe(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    const tileSize = 8;
+    const clipLimit = 3.0;
+
+    final tilesX = (w / tileSize).ceil().clamp(1, w);
+    final tilesY = (h / tileSize).ceil().clamp(1, h);
+
+    // 每个瓦片的映射表（256 级）
+    final tileMaps = List.generate(tilesY, (_) =>
+        List.generate(tilesX, (_) => List.filled(256, 0)));
+
+    // 对每个瓦片计算带 clip limit 的均衡化映射
+    for (int ty = 0; ty < tilesY; ty++) {
+      for (int tx = 0; tx < tilesX; tx++) {
+        final x0 = tx * tileSize;
+        final y0 = ty * tileSize;
+        final x1 = ((tx + 1) * tileSize).clamp(0, w);
+        final y1 = ((ty + 1) * tileSize).clamp(0, h);
+        final tileW = x1 - x0;
+        final tileH = y1 - y0;
+        final pixelCount = tileW * tileH;
+
+        // 直方图
+        final hist = List.filled(256, 0);
+        for (int y = y0; y < y1; y++) {
+          for (int x = x0; x < x1; x++) {
+            hist[gray.getPixel(x, y).r.toInt()]++;
+          }
+        }
+
+        // Clip limit 裁剪 + 均匀分摊
+        int excess = 0;
+        for (int i = 0; i < 256; i++) {
+          if (hist[i] > clipLimit) {
+            excess += hist[i] - clipLimit.toInt();
+            hist[i] = clipLimit.toInt();
+          }
+        }
+        final redistribPerBin = excess ~/ 256;
+        final residual = excess % 256;
+        for (int i = 0; i < 256; i++) {
+          hist[i] += redistribPerBin;
+          if (i < residual) hist[i]++;
+        }
+
+        // 累积分布函数 → 映射表
+        int cdf = 0;
+        int cdfMin = 0;
+        bool foundMin = false;
+        for (int i = 0; i < 256; i++) {
+          cdf += hist[i];
+          if (!foundMin && cdf > 0) {
+            cdfMin = cdf;
+            foundMin = true;
+          }
+        }
+        cdf = 0;
+        for (int i = 0; i < 256; i++) {
+          cdf += hist[i];
+          if (cdfMin == pixelCount) {
+            tileMaps[ty][tx][i] = i;
+          } else {
+            tileMaps[ty][tx][i] = ((cdf - cdfMin) * 255 / (pixelCount - cdfMin)).round().clamp(0, 255);
+          }
+        }
+      }
+    }
+
+    // 双线性插值输出
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final val = gray.getPixel(x, y).r.toInt();
+        final txf = (x / tileSize - 0.5).clamp(0.0, (tilesX - 1).toDouble());
+        final tyf = (y / tileSize - 0.5).clamp(0.0, (tilesY - 1).toDouble());
+        final tx0 = txf.floor();
+        final ty0 = tyf.floor();
+        final tx1 = (tx0 + 1).clamp(0, tilesX - 1);
+        final ty1 = (ty0 + 1).clamp(0, tilesY - 1);
+        final fx = txf - tx0;
+        final fy = tyf - ty0;
+
+        final v00 = tileMaps[ty0][tx0][val].toDouble();
+        final v10 = tileMaps[ty0][tx1][val].toDouble();
+        final v01 = tileMaps[ty1][tx0][val].toDouble();
+        final v11 = tileMaps[ty1][tx1][val].toDouble();
+
+        final v = (v00 * (1 - fx) * (1 - fy) +
+                   v10 * fx * (1 - fy) +
+                   v01 * (1 - fx) * fy +
+                   v11 * fx * fy).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 背景归一化（Retinex 思路）
+  ///
+  /// 用 3×3 中值滤波估算背景亮度，逐像素除以背景估计值后重映射到 0-255。
+  /// 有效消除阴影、折痕、光照不均对手写识别的干扰。
+  img.Image _normalizeBackground(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 3×3 中值滤波估算背景
+    final bg = List.generate(h, (_) => List.filled(w, 0));
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final values = <int>[];
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            values.add(gray.getPixel(nx, ny).r.toInt());
+          }
+        }
+        values.sort();
+        bg[y][x] = values[4];
+      }
+    }
+
+    // Retinex: original / background * 128，归一化到 0-255
+    double minVal = 255, maxVal = 0;
+    final raw = List.generate(h, (_) => List.filled(w, 0.0));
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final background = bg[y][x].toDouble().clamp(1.0, 255.0);
+        final ratio = orig / background * 128.0;
+        raw[y][x] = ratio;
+        if (ratio < minVal) minVal = ratio;
+        if (ratio > maxVal) maxVal = ratio;
+      }
+    }
+
+    final range = (maxVal - minVal).clamp(1.0, 255.0);
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = ((raw[y][x] - minVal) / range * 255).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 方向边缘增强（Sobel）
+  ///
+  /// 分别计算 X/Y 方向 Sobel 梯度幅值，以 0.5 权重叠加回灰度原图。
+  /// 能增强被噪声淹没的细笔画，提升低对比度手写体的识别率。
+  img.Image _directionalEdgeEnhance(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        // Sobel X: [-1 0 1; -2 0 2; -1 0 1]
+        int sx = 0;
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            final v = gray.getPixel(nx, ny).r.toInt();
+            final weightX = (dx == -1 ? -1 : dx == 1 ? 1 : 0) * (dy == 0 ? 2 : 1);
+            sx += v * weightX;
+          }
+        }
+
+        // Sobel Y: [-1 -2 -1; 0 0 0; 1 2 1]
+        int sy = 0;
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            final v = gray.getPixel(nx, ny).r.toInt();
+            final weightY = (dy == -1 ? -1 : dy == 1 ? 1 : 0) * (dx == 0 ? 2 : 1);
+            sy += v * weightY;
+          }
+        }
+
+        final magnitude = (sx * sx + sy * sy).toDouble();
+        final edge = (magnitude > 0 ? _sqrt(magnitude) : 0.0).clamp(0.0, 255.0);
+
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final v = (orig + 0.5 * edge).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 简易平方根（Newton 迭代，避免引入 dart:math 依赖）
+  static double _sqrt(double x) {
+    if (x <= 0) return 0;
+    double guess = x / 2;
+    for (int i = 0; i < 10; i++) {
+      guess = (guess + x / guess) / 2;
+    }
+    return guess;
+  }
+
   /// 本地 ML Kit 识别（多级预处理 + 多轮投票 + 自适应增强）
   ///
   /// 策略：
@@ -1210,6 +1423,10 @@ class RecognitionService {
           final enhanced = _handwritingEnhance(src);
           return _enhanceContrast(enhanced);
         },
+        // CLAHE / 背景归一化 / 方向边缘增强（v2.5.0 新增）
+        '自适应对比度增强': (src) => _clahe(src),
+        '背景归一化': (src) => _normalizeBackground(src),
+        '方向边缘增强': (src) => _directionalEdgeEnhance(src),
       };
 
       int attempt = 0;
