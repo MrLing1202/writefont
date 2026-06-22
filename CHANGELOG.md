@@ -4,6 +4,12 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [3.7.0] - 2026-06-22
+
+### 优化
+- recognizeCharacterTopN 接入图像特征分析和高质量图片跳过放大
+- 与主识别管线 _recognizeLocal 保持一致的优化策略
+
 ## [3.6.0] - 2026-06-22
 
 ### 新增

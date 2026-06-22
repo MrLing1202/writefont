@@ -540,6 +540,9 @@ class RecognitionService {
         enhanced = ImageQualityService.instance.enhanceForRecognition(decoded, qualityReport);
       }
 
+      // v3.7.0: 图像特征分析
+      final imageFeatures = await ImageAnalyzer().analyzeImage(imageBytes);
+
       // 分级放大策略
       List<int> upscaleTargets;
       if (maxDim < 50) {
@@ -549,6 +552,9 @@ class RecognitionService {
       } else if (maxDim < 200) {
         upscaleTargets = [200, 400];
       } else {
+        upscaleTargets = [0];
+      }
+      if (imageFeatures.qualityLevel == 'high' && maxDim >= 150) {
         upscaleTargets = [0];
       }
 
