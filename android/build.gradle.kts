@@ -16,15 +16,6 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// 修复 tflite_flutter 等插件的 JVM target 兼容性问题
-subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
-        }
-    }
-}
-
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
