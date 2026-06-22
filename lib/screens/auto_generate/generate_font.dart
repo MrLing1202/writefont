@@ -45,9 +45,12 @@ Future<FontProject?> generateFontFromCells(
           throw TimeoutException('字符 $char Isolate超时');
         });
       } catch (e) {
-        // Isolate 超时或失败时，降级为同步轮廓提取（不丢字符）
-        print('[字体生成] 字符 "$char" Isolate 失败，降级同步提取: $e');
-        contours = ImageProcessor.extractContoursSync(cells[i], params);
+        // Isolate 超时或失败时，降级为后台 Isolate 提取（不阻塞主线程）
+        print('[字体生成] 字符 "$char" Isolate 失败，降级后台提取: $e');
+        contours = await ImageProcessor.extractContoursInBackground(cells[i], params)
+            .timeout(const Duration(seconds: 30), onTimeout: () {
+          throw TimeoutException('字符 $char 降级提取超时');
+        });
       }
 
       final glyph = GlyphData(

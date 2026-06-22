@@ -91,10 +91,14 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
 
   /// 重试单个字符的识别
   Future<void> _retryRecognition(int index) async {
+    if (!mounted) return;
     if (index >= _cells.length) return;
     setState(() => _status = '正在重新识别第 ${index + 1} 个字符...');
     try {
-      final result = await retryCharacterRecognition(_cells[index]);
+      final result = await retryCharacterRecognition(_cells[index])
+          .timeout(const Duration(seconds: 15), onTimeout: () {
+        throw TimeoutException('识别超时');
+      });
       if (!mounted) return;
       if (result != null && result.isNotEmpty) {
         setState(() {

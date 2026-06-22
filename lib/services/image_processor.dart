@@ -1191,6 +1191,52 @@ class ImageProcessor {
     }
   }
 
+  /// 后台 Isolate 轮廓提取：作为 extractContoursSync 的非阻塞替代。
+  /// 用于 Isolate 超时/失败时的降级方案，避免阻塞主线程。
+  static Future<List<Contour>> extractContoursInBackground(
+    Uint8List imageBytes,
+    ProcessingParams params,
+  ) async {
+    _recordUsage('extractContoursInBackground');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      // 缓存命中检查
+      final cacheKey = _fastHash(imageBytes, params);
+      if (_contourCache.containsKey(cacheKey)) {
+        debugPrint('轮廓提取(后台降级): 命中缓存 (hash=$cacheKey)');
+        return _contourCache[cacheKey]!;
+      }
+
+      final contourDataList = await Isolate.run(() => _computeContours({
+        'imageBytes': imageBytes,
+        'threshold': params.threshold,
+        'strokeWidth': params.strokeWidth,
+        'smoothness': params.smoothness,
+        'invertColors': params.invertColors,
+      }));
+
+      final allContours = contourDataList.map(_deserializeContour).toList();
+
+      debugPrint('轮廓提取(后台降级)完成: 共 ${allContours.length} 个轮廓');
+
+      // 写入缓存
+      if (_contourCache.length >= _maxContourCacheSize) {
+        _contourCache.remove(_contourCache.keys.first);
+      }
+      _contourCache[cacheKey] = allContours;
+
+      return allContours;
+    } catch (e) {
+      _recordError('extractContoursInBackground', e, context: 'imageSize=${imageBytes.length}');
+      rethrow;
+    } finally {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordPerfTiming('extractContoursInBackground', sw.elapsed);
+    }
+  }
+
   /// Extract contour points from a binary character image.
   /// Returns contours scaled to font units (0-1000).
   /// 核心计算在后台 Isolate 中执行，避免阻塞 UI 线程。
