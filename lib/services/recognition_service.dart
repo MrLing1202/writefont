@@ -1117,6 +1117,11 @@ class RecognitionService {
         });
       }
 
+      // 投票统计：字符 → 出现次数
+      final voteMap = <String, int>{};
+      // 记录每个字符的最高置信度
+      final confidenceMap = <String, double>{};
+
       // ═══ 第一轮：快速尝试（灰度原图，结果计入投票，不再直接返回） ═══
       if (maxDim >= 50) {
         debugPrint('ML Kit 识别: 快速尝试 | 原图灰度');
@@ -1147,11 +1152,6 @@ class RecognitionService {
         upscaleTargets = [0]; // 0 = 不放大，用原图
       }
       debugPrint('ML Kit 识别: 分级策略 targets=$upscaleTargets');
-
-      // 投票统计：字符 → 出现次数
-      final voteMap = <String, int>{};
-      // 记录每个字符的最高置信度
-      final confidenceMap = <String, double>{};
 
       // 预处理组合列表（覆盖更多场景）
       final preprocessors = <String, img.Image Function(img.Image)>{
