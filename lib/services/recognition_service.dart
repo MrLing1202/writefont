@@ -1651,6 +1651,8 @@ class RecognitionService {
       final resultStrategies = <String, Set<String>>{};
       // v2.7.0: 每个策略对每个字符的投票数（用于 UI 展示投票明细）
       final strategyVotes = <String, Map<String, int>>{};
+      // v3.5.0: 记录每个字符在哪些放大尺寸下被识别到
+      final resultSizes = <String, Set<int>>{};
       // v2.6.0: 是否触发了提前终止
       bool earlyTerminated = false;
       // v2.7.0: 实际执行的尝试次数
@@ -1844,6 +1846,9 @@ class RecognitionService {
             // 记录策略来源
             resultStrategies.putIfAbsent(result, () => <String>{});
             resultStrategies[result]!.add(label);
+            // v3.5.0: 记录识别到该结果的放大尺寸
+            resultSizes.putIfAbsent(result, () => <int>{});
+            resultSizes[result]!.add(targetSize);
             // v2.7.0: 记录策略投票明细
             strategyVotes.putIfAbsent(result, () => {});
             strategyVotes[result]![label] = (strategyVotes[result]![label] ?? 0) + voteWeight;
@@ -1967,6 +1972,13 @@ class RecognitionService {
         if (freqRank >= 0 && freqRank < 500) {
           calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
           debugPrint('ML Kit 识别: 置信度校准 — 常见字Top500 (+0.03)');
+        }
+
+        // 6. 多尺度一致性（v3.5.0）：多个放大尺寸识别到相同结果 → +0.05
+        final sizeCount = resultSizes[winner.key]?.length ?? 0;
+        if (sizeCount >= 2) {
+          calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 多尺度一致 $sizeCount 种尺寸 (+0.05)');
         }
 
         _lastLocalConfidence = calibratedConf;
