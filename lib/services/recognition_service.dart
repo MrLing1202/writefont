@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
@@ -1272,7 +1273,7 @@ class RecognitionService {
     double sum = 0;
     for (int y = 0; y < kernelSize; y++) {
       for (int x = 0; x < kernelSize; x++) {
-        kernel[y][x] = _expDart(kernel[y][x]);
+        kernel[y][x] = math.exp(kernel[y][x]);
         sum += kernel[y][x];
       }
     }
@@ -1311,20 +1312,6 @@ class RecognitionService {
       }
     }
     return result;
-  }
-
-  /// dart:math 之外的 exp 实现（避免额外 import）
-  static double _expDart(double x) {
-    // 对于高斯核中 x <= 0 的值，使用泰勒级数近似
-    if (x < -20) return 0;
-    if (x > 20) return 1e8;
-    double sum = 1.0;
-    double term = 1.0;
-    for (int i = 1; i < 30; i++) {
-      term *= x / i;
-      sum += term;
-    }
-    return sum;
   }
 
   /// 局部阈值二值化（15x15 邻域均值法）— v2.6.0
