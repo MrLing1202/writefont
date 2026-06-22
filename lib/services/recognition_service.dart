@@ -1942,6 +1942,23 @@ class RecognitionService {
           debugPrint('ML Kit 识别: 置信度校准 — 提前终止 (=0.95)');
         }
 
+        // 4. 图像质量调整（v3.1.0）：低质量图片降低置信度，高质量提升
+        final qualityLevel = imageFeatures.qualityLevel;
+        if (qualityLevel == 'low') {
+          calibratedConf = (calibratedConf - 0.1).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 低质量图片 (-0.1)');
+        } else if (qualityLevel == 'high') {
+          calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 高质量图片 (+0.05)');
+        }
+
+        // 5. 字频加成（v3.1.0）：常见字置信度提升
+        final freqRank = DictionaryService.instance.getFrequency(winner.key);
+        if (freqRank >= 0 && freqRank < 500) {
+          calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 常见字Top500 (+0.03)');
+        }
+
         _lastLocalConfidence = calibratedConf;
 
         // ── 更新策略可靠性 ──
