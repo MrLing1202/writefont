@@ -240,7 +240,8 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
 
           String? result;
           try {
-            result = await recognitionService.recognizeCharacter(cells[i]);
+            result = await recognitionService.recognizeCharacter(cells[i])
+                .timeout(const Duration(seconds: 30), onTimeout: () => null);
           } catch (_) {
             result = null;
           }

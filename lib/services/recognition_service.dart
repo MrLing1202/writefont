@@ -1798,9 +1798,9 @@ class RecognitionService {
             debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]}, 策略=$label, 权重=$voteWeight)');
             // 提前终止：票数过半时无需继续
             final totalAttempts = upscaleTargets.length * preprocessors.length;
-            if (voteMap[result]! > totalAttempts ~/ 2) {
+            if (voteMap[result]! >= 3) {
               earlyTerminated = true;
-              debugPrint('ML Kit 识别: 提前终止，$result 票数过半 (${voteMap[result]}/$totalAttempts)');
+              debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票');
               break;
             }
           } else {
@@ -1814,7 +1814,7 @@ class RecognitionService {
         if (voteMap.isNotEmpty) {
           final maxVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
           final totalAttempts = upscaleTargets.length * preprocessors.length;
-          if (maxVotes > totalAttempts ~/ 2) break;
+          if (maxVotes >= 3) break; // v2.8.0: 降低阈值
         }
       }
 
