@@ -23,12 +23,3 @@ plugins {
 }
 
 include(":app")
-
-// 修复插件 JVM target 兼容性问题
-allprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
-        }
-    }
-}
