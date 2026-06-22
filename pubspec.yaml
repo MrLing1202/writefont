@@ -56,8 +56,7 @@ dependencies:
   # OCR - Local text recognition (ML Kit)
   google_mlkit_text_recognition: ^0.15.1
 
-  # TFLite - Local handwriting recognition model (v4.1.0)
-  tflite_flutter: ^0.10.4
+  # TFLite - 使用 SimpleInterpreter 占位实现，无需外部依赖
 
   # App info for dynamic version display
   package_info_plus: ^8.0.0
