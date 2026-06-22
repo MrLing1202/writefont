@@ -1238,12 +1238,24 @@ class RecognitionService {
                 ? confidenceMap[result]!
                 : conf;
             debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]})');
+            // 提前终止：票数过半时无需继续
+            final totalAttempts = upscaleTargets.length * preprocessors.length;
+            if (voteMap[result]! > totalAttempts ~/ 2) {
+              debugPrint('ML Kit 识别: 提前终止，$result 票数过半 (${voteMap[result]}/$totalAttempts)');
+              break;
+            }
           } else {
             if (rawResult != null && rawResult.isNotEmpty) {
               debugPrint('ML Kit 识别: 过滤非目标字符 "$rawResult" (U+${rawResult.codeUnitAt(0).toRadixString(16)})');
             }
             debugPrint('ML Kit 识别: ✗ 第${attempt}次未识别到文字');
           }
+        }
+        // 如果已经提前终止（票数过半），跳出外层循环
+        if (voteMap.isNotEmpty) {
+          final maxVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
+          final totalAttempts = upscaleTargets.length * preprocessors.length;
+          if (maxVotes > totalAttempts ~/ 2) break;
         }
       }
 
