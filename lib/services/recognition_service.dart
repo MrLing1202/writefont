@@ -18,6 +18,40 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'api_key.dart';
 
+/// 单次识别的投票详情（v2.7.0）— 供 UI 展示投票过程
+class RecognitionDetail {
+  /// 最终识别结果
+  final String result;
+  /// 校准后置信度
+  final double confidence;
+  /// 每个候选字符的投票明细 {策略名: 票数}
+  final Map<String, Map<String, int>> voteBreakdown;
+  /// 总尝试次数
+  final int totalAttempts;
+  /// 是否提前终止
+  final bool earlyTerminated;
+  /// 提前终止节省的估算尝试次数
+  final int attemptsSaved;
+  /// 参与投票的策略数
+  final int strategiesUsed;
+  /// 最可靠的策略名（历史成功率最高）
+  final String? topStrategy;
+  /// 最可靠策略的历史成功率
+  final double topStrategyReliability;
+
+  const RecognitionDetail({
+    required this.result,
+    required this.confidence,
+    required this.voteBreakdown,
+    required this.totalAttempts,
+    required this.earlyTerminated,
+    required this.attemptsSaved,
+    required this.strategiesUsed,
+    this.topStrategy,
+    required this.topStrategyReliability,
+  });
+}
+
 /// OCR 识别服务
 /// 默认：本地 ML Kit 离线识别（免费，无需网络）
 /// 可选：云端 API（用户填自己的 API 地址 + Key）
@@ -83,6 +117,8 @@ class RecognitionService {
   static final List<int> _cacheAccessOrder = [];
   // 识别置信度缓存（图片哈希 → 置信度 0.0~1.0）
   static final Map<int, double> _confidenceCache = {};
+  // v2.7.0: 识别详情缓存（图片哈希 → 投票详情）
+  static final Map<int, RecognitionDetail> _detailCache = {};
   // 内存监控：记录缓存占用的估算字节数
   static int _estimatedCacheBytes = 0;
   static const int _maxCacheBytes = 50 * 1024 * 1024; // 50MB 上限
@@ -1607,8 +1643,12 @@ class RecognitionService {
       final confidenceMap = <String, double>{};
       // v2.6.0: 记录每个字符由哪些策略识别（用于策略多样性和可靠性统计）
       final resultStrategies = <String, Set<String>>{};
+      // v2.7.0: 每个策略对每个字符的投票数（用于 UI 展示投票明细）
+      final strategyVotes = <String, Map<String, int>>{};
       // v2.6.0: 是否触发了提前终止
       bool earlyTerminated = false;
+      // v2.7.0: 实际执行的尝试次数
+      int actualAttempts = 0;
 
       // ═══ 第一轮：快速尝试（灰度原图，结果计入投票，不再直接返回） ═══
       if (maxDim >= 50) {
@@ -1623,6 +1663,11 @@ class RecognitionService {
           confidenceMap[result] = (confidenceMap[result] ?? 0) > conf
               ? confidenceMap[result]!
               : conf;
+          // v2.7.0: 记录快速尝试的策略投票
+          resultStrategies.putIfAbsent(result, () => <String>{});
+          resultStrategies[result]!.add('灰度');
+          strategyVotes.putIfAbsent(result, () => {});
+          strategyVotes[result]!['灰度'] = (strategyVotes[result]!['灰度'] ?? 0) + 1;
           debugPrint('ML Kit 识别: ✓ 快速尝试识别到 "$result" (计入投票)');
         }
       }
@@ -1734,6 +1779,10 @@ class RecognitionService {
             // 记录策略来源
             resultStrategies.putIfAbsent(result, () => <String>{});
             resultStrategies[result]!.add(label);
+            // v2.7.0: 记录策略投票明细
+            strategyVotes.putIfAbsent(result, () => {});
+            strategyVotes[result]![label] = (strategyVotes[result]![label] ?? 0) + voteWeight;
+            actualAttempts = attempt;
             // 更新置信度（取最高值）
             final hash = _hashBytes(img.encodePng(processed));
             final conf = _confidenceCache[hash] ?? 0.7;
@@ -1838,6 +1887,32 @@ class RecognitionService {
           // 指数移动平均，向成功方向微调
           _strategyReliability[strat] = (old * 0.8 + 0.2).clamp(0.0, 1.0);
         }
+
+        // v2.7.0: 存储识别投票详情（供 UI 展示）
+        final totalPossibleAttempts = upscaleTargets.length * preprocessors.length;
+        final attemptsSaved = earlyTerminated ? (totalPossibleAttempts - actualAttempts) : 0;
+        // 找出最可靠策略
+        String? topStrat;
+        double topReliability = 0.0;
+        for (final strat in winnerStrategies) {
+          final rel = _strategyReliability[strat] ?? 0.5;
+          if (rel > topReliability) {
+            topReliability = rel;
+            topStrat = strat;
+          }
+        }
+        final imageHash = _hashBytes(imageBytes);
+        _detailCache[imageHash] = RecognitionDetail(
+          result: winner.key,
+          confidence: calibratedConf,
+          voteBreakdown: strategyVotes,
+          totalAttempts: totalPossibleAttempts,
+          earlyTerminated: earlyTerminated,
+          attemptsSaved: attemptsSaved,
+          strategiesUsed: strategyCount,
+          topStrategy: topStrat,
+          topStrategyReliability: topReliability,
+        );
 
         debugPrint('ML Kit 识别: 投票结果 "${winner.key}" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%, 策略=$strategyCount 种)');
         return winner.key;
@@ -2267,6 +2342,7 @@ class RecognitionService {
     _recognitionCache.clear();
     _cacheAccessOrder.clear();
     _confidenceCache.clear();
+    _detailCache.clear();
     _estimatedCacheBytes = 0; // 重置内存计数
     _strategyReliability.clear(); // 重置策略可靠性
     // 重置调试统计
@@ -2507,6 +2583,7 @@ class RecognitionService {
     _recognitionCache.remove(cacheKey);
     _cacheAccessOrder.remove(cacheKey);
     _confidenceCache.remove(cacheKey);
+    _detailCache.remove(cacheKey);
     _addDebugLog('cache', '已清除单条缓存', data: {'hash': cacheKey});
     debugPrint('识别缓存: 已清除单条缓存 hash=$cacheKey');
   }
@@ -2524,6 +2601,16 @@ class RecognitionService {
     return _confidenceCache[cacheKey] ?? 0.7;
   }
 
+  /// v2.7.0: 获取指定图片的识别投票详情（从缓存中读取）
+  static RecognitionDetail? getDetailForImage(Uint8List imageBytes) {
+    final cacheKey = _hashBytes(imageBytes);
+    return _detailCache[cacheKey];
+  }
+
+  /// v2.7.0: 获取策略可靠性数据（供 UI 展示）
+  static Map<String, double> get strategyReliability =>
+      Map.unmodifiable(_strategyReliability);
+
   /// LRU 缓存淘汰：移除最久未访问的条目
   static void _evictLruCache() {
     // 淘汰最旧的 20% 条目以减少频繁淘汰
@@ -2532,6 +2619,7 @@ class RecognitionService {
       final oldestKey = _cacheAccessOrder.removeAt(0);
       _recognitionCache.remove(oldestKey);
       _confidenceCache.remove(oldestKey);
+      _detailCache.remove(oldestKey);
     }
   }
 
