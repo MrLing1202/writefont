@@ -1690,6 +1690,11 @@ class RecognitionService {
       } else {
         upscaleTargets = [0]; // 0 = 不放大，用原图
       }
+      // v3.4.0: 高质量大图跳过放大（原图已足够清晰）
+      if (imageFeatures.qualityLevel == 'high' && maxDim >= 150) {
+        upscaleTargets = [0];
+        debugPrint('ML Kit 识别: 高质量大图，跳过放大');
+      }
       debugPrint('ML Kit 识别: 分级策略 targets=$upscaleTargets');
 
       // 预处理组合列表（覆盖更多场景）
