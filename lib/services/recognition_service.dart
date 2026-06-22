@@ -68,6 +68,10 @@ class RecognitionService {
   /// 最近一次本地识别的投票置信度（供 recognizeCharacter 判断是否需要云端二次确认）
   double _lastLocalConfidence = 0.0;
 
+  /// 策略可靠性追踪（策略名 → 历史成功率 0.0~1.0）— v2.6.0
+  /// 用于加权投票：高可靠性策略的投票获得 1.2x 权重加成
+  static final Map<String, double> _strategyReliability = {};
+
   // 原子计数器，用于临时文件名防碰撞
   static int _fileCounter = 0;
 
@@ -201,7 +205,7 @@ class RecognitionService {
 
     final exportData = <String, dynamic>{
       'exportDate': DateTime.now().toIso8601String(),
-      'appVersion': 'v2.8.0',
+      'appVersion': 'v2.6.0',
       'stats': stats,
       'debugLogs': logs,
       'config': {
@@ -562,6 +566,11 @@ class RecognitionService {
         '自适应对比度增强': (src) => _clahe(src),
         '背景归一化': (src) => _normalizeBackground(src),
         '方向边缘增强': (src) => _directionalEdgeEnhance(src),
+        // v2.6.0 新增 4 种预处理策略
+        '自适应直方图均衡': (src) => _adaptiveHistogramEqualizeQuadrants(src),
+        '形态学骨架化': (src) => _morphologicalSkeletonize(src),
+        '高斯模糊去噪+锐化': (src) => _gaussianBlurSharpen(src),
+        '局部阈值二值化': (src) => _localThresholdBinarize(src),
       };
 
       for (final targetSize in upscaleTargets) {
@@ -1095,6 +1104,273 @@ class RecognitionService {
     return result;
   }
 
+  /// 自适应直方图均衡（四象限法）— v2.6.0
+  ///
+  /// 将图像分为 4 个象限，对每个象限独立做直方图均衡化，
+  /// 然后合并回原图。有效处理纸面光照不均匀的场景。
+  img.Image _adaptiveHistogramEqualizeQuadrants(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+
+    // 四象限边界
+    final midX = w ~/ 2;
+    final midY = h ~/ 2;
+
+    // 对每个象限计算直方图均衡化映射表
+    _equalizeQuadrant(gray, result, 0, 0, midX, midY);         // 左上
+    _equalizeQuadrant(gray, result, midX, 0, w - midX, midY);  // 右上
+    _equalizeQuadrant(gray, result, 0, midY, midX, h - midY);  // 左下
+    _equalizeQuadrant(gray, result, midX, midY, w - midX, h - midY); // 右下
+
+    return result;
+  }
+
+  /// 对指定矩形区域执行直方图均衡化并写入结果图
+  void _equalizeQuadrant(img.Image src, img.Image dst,
+      int x0, int y0, int regionW, int regionH) {
+    // 直方图
+    final hist = List.filled(256, 0);
+    int pixelCount = 0;
+    for (int y = y0; y < y0 + regionH; y++) {
+      for (int x = x0; x < x0 + regionW; x++) {
+        if (x < src.width && y < src.height) {
+          hist[src.getPixel(x, y).r.toInt()]++;
+          pixelCount++;
+        }
+      }
+    }
+    if (pixelCount == 0) return;
+
+    // 累积分布函数
+    final cdf = List.filled(256, 0);
+    cdf[0] = hist[0];
+    for (int i = 1; i < 256; i++) {
+      cdf[i] = cdf[i - 1] + hist[i];
+    }
+    final cdfMin = cdf.firstWhere((v) => v > 0, orElse: () => 0);
+
+    // 映射表
+    final map = List.filled(256, 0);
+    for (int i = 0; i < 256; i++) {
+      if (pixelCount == cdfMin) {
+        map[i] = i;
+      } else {
+        map[i] = ((cdf[i] - cdfMin) * 255 / (pixelCount - cdfMin)).round().clamp(0, 255);
+      }
+    }
+
+    // 写入结果
+    for (int y = y0; y < y0 + regionH; y++) {
+      for (int x = x0; x < x0 + regionW; x++) {
+        if (x < src.width && y < src.height) {
+          final v = map[src.getPixel(x, y).r.toInt()];
+          dst.setPixelRgba(x, y, v, v, v, 255);
+        }
+      }
+    }
+  }
+
+  /// 形态学骨架化（反复腐蚀法）— v2.6.0
+  ///
+  /// 通过反复执行腐蚀操作，直到图像不再变化，得到 1 像素宽的骨架。
+  /// 与 Zhang-Suen 骨架化互补，对粗笔画效果更好。
+  img.Image _morphologicalSkeletonize(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 转为二值前景（黑色=前景）
+    var foreground = List.generate(h, (y) =>
+        List.generate(w, (x) => gray.getPixel(x, y).r.toInt() < 128));
+
+    final skeleton = List.generate(h, (_) => List.filled(w, false));
+    bool changed = true;
+    int iterations = 0;
+    const maxIterations = 50;
+
+    while (changed && iterations < maxIterations) {
+      changed = false;
+      iterations++;
+
+      // 腐蚀当前前景
+      final eroded = List.generate(h, (_) => List.filled(w, false));
+      for (int y = 1; y < h - 1; y++) {
+        for (int x = 1; x < w - 1; x++) {
+          if (!foreground[y][x]) continue;
+          // 3x3 邻域全部为前景才保留
+          bool allForeground = true;
+          for (int dy = -1; dy <= 1 && allForeground; dy++) {
+            for (int dx = -1; dx <= 1 && allForeground; dx++) {
+              if (!foreground[y + dy][x + dx]) allForeground = false;
+            }
+          }
+          eroded[y][x] = allForeground;
+        }
+      }
+
+      // 对腐蚀结果做一次膨胀（形态学开运算）
+      final opened = List.generate(h, (_) => List.filled(w, false));
+      for (int y = 1; y < h - 1; y++) {
+        for (int x = 1; x < w - 1; x++) {
+          if (!eroded[y][x]) continue;
+          // 3x3 邻域存在前景即膨胀
+          bool hasForeground = false;
+          for (int dy = -1; dy <= 1 && !hasForeground; dy++) {
+            for (int dx = -1; dx <= 1 && !hasForeground; dx++) {
+              if (eroded[y + dy][x + dx]) hasForeground = true;
+            }
+          }
+          opened[y][x] = hasForeground;
+        }
+      }
+
+      // skeleton = skeleton ∪ (foreground - opened)
+      for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+          if (foreground[y][x] && !opened[y][x]) {
+            skeleton[y][x] = true;
+            changed = true;
+          }
+        }
+      }
+
+      // 下一轮用开运算结果作为前景
+      foreground = opened;
+    }
+
+    // 转回图片
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = skeleton[y][x] ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    debugPrint('  形态学骨架化: $iterations 次迭代');
+    return result;
+  }
+
+  /// 高斯模糊去噪 + 锐化（Unsharp Mask）— v2.6.0
+  ///
+  /// 先用 sigma=1.5 的高斯核模糊去噪，再用 Unsharp Mask 恢复边缘。
+  /// 对平滑手写体效果优于中值滤波。
+  img.Image _gaussianBlurSharpen(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 构建 5x5 高斯核 (sigma=1.5)
+    const sigma = 1.5;
+    const kernelSize = 5;
+    const half = kernelSize ~/ 2;
+    final kernel = List.generate(kernelSize, (y) =>
+        List.generate(kernelSize, (x) {
+          final dx = x - half;
+          final dy = y - half;
+          return (-(dx * dx + dy * dy) / (2 * sigma * sigma)).toDouble();
+        }));
+    // 归一化
+    double sum = 0;
+    for (int y = 0; y < kernelSize; y++) {
+      for (int x = 0; x < kernelSize; x++) {
+        kernel[y][x] = _expDart(kernel[y][x]);
+        sum += kernel[y][x];
+      }
+    }
+    for (int y = 0; y < kernelSize; y++) {
+      for (int x = 0; x < kernelSize; x++) {
+        kernel[y][x] /= sum;
+      }
+    }
+
+    // 高斯模糊
+    final blurred = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        double val = 0;
+        for (int ky = -half; ky <= half; ky++) {
+          for (int kx = -half; kx <= half; kx++) {
+            final nx = (x + kx).clamp(0, w - 1);
+            final ny = (y + ky).clamp(0, h - 1);
+            val += gray.getPixel(nx, ny).r.toDouble() * kernel[ky + half][kx + half];
+          }
+        }
+        final v = val.round().clamp(0, 255);
+        blurred.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+
+    // Unsharp Mask: result = original + amount * (original - blurred)
+    const amount = 1.5;
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final blur = blurred.getPixel(x, y).r.toDouble();
+        final v = (orig + amount * (orig - blur)).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// dart:math 之外的 exp 实现（避免额外 import）
+  static double _expDart(double x) {
+    // 对于高斯核中 x <= 0 的值，使用泰勒级数近似
+    if (x < -20) return 0;
+    if (x > 20) return 1e8;
+    double sum = 1.0;
+    double term = 1.0;
+    for (int i = 1; i < 30; i++) {
+      term *= x / i;
+      sum += term;
+    }
+    return sum;
+  }
+
+  /// 局部阈值二值化（15x15 邻域均值法）— v2.6.0
+  ///
+  /// 对每个像素，以其 15x15 邻域的均值作为阈值进行二值化。
+  /// 比全局 Otsu 更适合处理不均匀背景。
+  img.Image _localThresholdBinarize(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    const blockSize = 15;
+    const half = blockSize ~/ 2;
+    const c = 10; // 阈值偏移量
+
+    // 积分图加速均值计算
+    final integral = List.generate(h, (_) => List.filled(w, 0));
+    for (int y = 0; y < h; y++) {
+      int rowSum = 0;
+      for (int x = 0; x < w; x++) {
+        rowSum += gray.getPixel(x, y).r.toInt();
+        integral[y][x] = rowSum + (y > 0 ? integral[y - 1][x] : 0);
+      }
+    }
+
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final x1 = (x - half).clamp(0, w - 1);
+        final y1 = (y - half).clamp(0, h - 1);
+        final x2 = (x + half).clamp(0, w - 1);
+        final y2 = (y + half).clamp(0, h - 1);
+        final count = (x2 - x1 + 1) * (y2 - y1 + 1);
+
+        int areaSum = integral[y2][x2];
+        if (x1 > 0) areaSum -= integral[y2][x1 - 1];
+        if (y1 > 0) areaSum -= integral[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) areaSum += integral[y1 - 1][x1 - 1];
+
+        final localMean = areaSum / count;
+        final brightness = gray.getPixel(x, y).r.toInt();
+        final v = brightness < (localMean - c) ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
   /// CLAHE（自适应直方图均衡化）
   ///
   /// 将图像分为 8×8 瓦片，对每个瓦片独立做直方图均衡化（clip limit 3.0），
@@ -1342,6 +1618,10 @@ class RecognitionService {
       final voteMap = <String, int>{};
       // 记录每个字符的最高置信度
       final confidenceMap = <String, double>{};
+      // v2.6.0: 记录每个字符由哪些策略识别（用于策略多样性和可靠性统计）
+      final resultStrategies = <String, Set<String>>{};
+      // v2.6.0: 是否触发了提前终止
+      bool earlyTerminated = false;
 
       // ═══ 第一轮：快速尝试（灰度原图，结果计入投票，不再直接返回） ═══
       if (maxDim >= 50) {
@@ -1427,6 +1707,11 @@ class RecognitionService {
         '自适应对比度增强': (src) => _clahe(src),
         '背景归一化': (src) => _normalizeBackground(src),
         '方向边缘增强': (src) => _directionalEdgeEnhance(src),
+        // v2.6.0 新增 4 种预处理策略
+        '自适应直方图均衡': (src) => _adaptiveHistogramEqualizeQuadrants(src),
+        '形态学骨架化': (src) => _morphologicalSkeletonize(src),
+        '高斯模糊去噪+锐化': (src) => _gaussianBlurSharpen(src),
+        '局部阈值二值化': (src) => _localThresholdBinarize(src),
       };
 
       int attempt = 0;
@@ -1455,17 +1740,24 @@ class RecognitionService {
           final rawResult = await _recognizeFromImage(processed);
           final result = _validateResult(rawResult);
           if (result != null) {
-            voteMap[result] = (voteMap[result] ?? 0) + 1;
+            // v2.6.0: 加权投票 — 高可靠性策略获得 1.2x 权重
+            final reliability = _strategyReliability[label] ?? 0.5;
+            final voteWeight = reliability >= 0.7 ? 2 : 1; // 高可靠性策略多计 1 票
+            voteMap[result] = (voteMap[result] ?? 0) + voteWeight;
+            // 记录策略来源
+            resultStrategies.putIfAbsent(result, () => <String>{});
+            resultStrategies[result]!.add(label);
             // 更新置信度（取最高值）
             final hash = _hashBytes(img.encodePng(processed));
             final conf = _confidenceCache[hash] ?? 0.7;
             confidenceMap[result] = (confidenceMap[result] ?? 0) > conf
                 ? confidenceMap[result]!
                 : conf;
-            debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]})');
+            debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]}, 策略=$label, 权重=$voteWeight)');
             // 提前终止：票数过半时无需继续
             final totalAttempts = upscaleTargets.length * preprocessors.length;
             if (voteMap[result]! > totalAttempts ~/ 2) {
+              earlyTerminated = true;
               debugPrint('ML Kit 识别: 提前终止，$result 票数过半 (${voteMap[result]}/$totalAttempts)');
               break;
             }
@@ -1484,7 +1776,7 @@ class RecognitionService {
         }
       }
 
-      // 投票选出最佳结果
+      // v2.6.0: 智能投票选出最佳结果
       if (voteMap.isNotEmpty) {
         // 按票数排序，票数相同取置信度高的
         final sorted = voteMap.entries.toList()
@@ -1493,9 +1785,74 @@ class RecognitionService {
             if (voteDiff != 0) return voteDiff;
             return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
           });
-        final winner = sorted.first;
-        _lastLocalConfidence = confidenceMap[winner.key] ?? 0.7;
-        debugPrint('ML Kit 识别: 投票结果 "$winner.key" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%)');
+        var winner = sorted.first;
+
+        // ── 平局决胜：top-2 票数差仅为 1 时，用新预处理重新识别 ──
+        if (sorted.length >= 2 && (winner.value - sorted[1].value) <= 1) {
+          debugPrint('ML Kit 识别: 平局决胜触发 (top1="${winner.key}"=${winner.value}票, top2="${sorted[1].key}"=${sorted[1].value}票)');
+          final candidateA = winner.key;
+          final candidateB = sorted[1].key;
+          int tieBreakA = 0;
+          int tieBreakB = 0;
+
+          // 用对比度+锐化组合做决胜预处理
+          final tieBreakerBase = enhanced;
+          final tieBreakProcessed = _sharpen(img.adjustColor(img.grayscale(tieBreakerBase), contrast: 1.8, brightness: 1.2));
+          final tieRawResult = await _recognizeFromImage(tieBreakProcessed);
+          final tieResult = _validateResult(tieRawResult);
+          if (tieResult == candidateA) {
+            tieBreakA++;
+            debugPrint('ML Kit 识别: 平局决胜 → 倾向 "$candidateA"');
+          } else if (tieResult == candidateB) {
+            tieBreakB++;
+            debugPrint('ML Kit 识别: 平局决胜 → 倾向 "$candidateB"');
+          }
+
+          // 决胜结果影响最终选择
+          if (tieBreakA > tieBreakB) {
+            winner = MapEntry(candidateA, winner.value);
+          } else if (tieBreakB > tieBreakA) {
+            winner = MapEntry(candidateB, sorted[1].value);
+          }
+          // 若决胜仍平手，保持原排序（置信度高的优先）
+        }
+
+        // ── 置信度校准 ──
+        double calibratedConf = confidenceMap[winner.key] ?? 0.7;
+
+        // 1. 票数差距：winner 票数 >= 2x runner-up → +0.1
+        if (sorted.length >= 2) {
+          final runnerUpVotes = sorted[1].value;
+          if (runnerUpVotes > 0 && winner.value >= runnerUpVotes * 2) {
+            calibratedConf = (calibratedConf + 0.1).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 票数优势 (+0.1)');
+          }
+        }
+
+        // 2. 策略多样性：winner 获得 3+ 种不同策略投票 → +0.05
+        final strategyCount = resultStrategies[winner.key]?.length ?? 0;
+        if (strategyCount >= 3) {
+          calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 策略多样性 $strategyCount 种 (+0.05)');
+        }
+
+        // 3. 提前终止：票数过半 → 置信度设为 0.95
+        if (earlyTerminated) {
+          calibratedConf = 0.95;
+          debugPrint('ML Kit 识别: 置信度校准 — 提前终止 (=0.95)');
+        }
+
+        _lastLocalConfidence = calibratedConf;
+
+        // ── 更新策略可靠性 ──
+        final winnerStrategies = resultStrategies[winner.key] ?? {};
+        for (final strat in winnerStrategies) {
+          final old = _strategyReliability[strat] ?? 0.5;
+          // 指数移动平均，向成功方向微调
+          _strategyReliability[strat] = (old * 0.8 + 0.2).clamp(0.0, 1.0);
+        }
+
+        debugPrint('ML Kit 识别: 投票结果 "${winner.key}" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%, 策略=$strategyCount 种)');
         return winner.key;
       }
 
@@ -1924,6 +2281,7 @@ class RecognitionService {
     _cacheAccessOrder.clear();
     _confidenceCache.clear();
     _estimatedCacheBytes = 0; // 重置内存计数
+    _strategyReliability.clear(); // 重置策略可靠性
     // 重置调试统计
     _totalRecognitions = 0;
     _successfulRecognitions = 0;
@@ -2195,7 +2553,7 @@ class RecognitionService {
   // ═══════════════════════════════════════════════════════════
 
   /// 当前识别引擎版本
-  static const String _currentEngineVersion = 'v2.15.0';
+  static const String _currentEngineVersion = 'v2.16.0';
 
   /// 版本历史记录存储 key
   static const String _prefKeyVersionHistory = 'recognition_version_history';
