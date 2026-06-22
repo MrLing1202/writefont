@@ -56,6 +56,14 @@ class RecognitionDetail {
   });
 }
 
+/// v4.0.1: 智能白边裁剪结果
+class _TrimResult {
+  final img.Image image;
+  final bool wasTrimmed;
+  final double trimmedPercent;
+  _TrimResult(this.image, this.wasTrimmed, this.trimmedPercent);
+}
+
 /// OCR 识别服务
 /// 默认：本地 ML Kit 离线识别（免费，无需网络）
 /// 可选：云端 API（用户填自己的 API 地址 + Key）
@@ -533,11 +541,19 @@ class RecognitionService {
       final h = decoded.height;
       final maxDim = w > h ? w : h;
 
+      // v4.0.1: 白边裁剪（TopN 路径）
+      img.Image trimmedForTopN = decoded;
+      final topNTrimResult = _smartTrimWhitespace(decoded);
+      if (topNTrimResult.wasTrimmed) {
+        trimmedForTopN = topNTrimResult.image;
+        debugPrint('TopN: 白边裁剪 ${decoded.width}x${decoded.height} → ${trimmedForTopN.width}x${trimmedForTopN.height}');
+      }
+
       // 图像质量增强
-      final qualityReport = ImageQualityService.instance.assessQuality(decoded);
-      img.Image enhanced = decoded;
+      final qualityReport = ImageQualityService.instance.assessQuality(trimmedForTopN);
+      img.Image enhanced = trimmedForTopN;
       if (qualityReport.needsEnhancement) {
-        enhanced = ImageQualityService.instance.enhanceForRecognition(decoded, qualityReport);
+        enhanced = ImageQualityService.instance.enhanceForRecognition(trimmedForTopN, qualityReport);
       }
 
       // v3.7.0: 图像特征分析
@@ -627,6 +643,8 @@ class RecognitionService {
         '形态学骨架化': (src) => _morphologicalSkeletonize(src),
         '高斯模糊去噪+锐化': (src) => _gaussianBlurSharpen(src),
         '局部阈值二值化': (src) => _localThresholdBinarize(src),
+        // v4.0.1: 笔画粗细自适应
+        '笔画粗细自适应': (src) => _strokeThicknessAdaptive(src),
       };
 
       for (final targetSize in upscaleTargets) {
@@ -806,6 +824,119 @@ class RecognitionService {
     final cropH = (contentH + padY * 2).clamp(1, src.height - cropY);
 
     return img.copyCrop(src, x: cropX, y: cropY, width: cropW, height: cropH);
+  }
+
+  /// v4.0.1: 智能白边裁剪结果
+  static _TrimResult _smartTrimWhitespace(img.Image src, {double paddingRatio = 0.08}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    if (w < 10 || h < 10) return _TrimResult(src, false, 0);
+
+    // 自适应阈值：检测背景色（可能是白色、浅灰、米色等）
+    // 采样四边的像素取众数作为背景色
+    int bgSum = 0, bgCount = 0;
+    // 上边
+    for (int y = 0; y < h ~/ 8; y++) {
+      for (int x = 0; x < w; x += 3) {
+        bgSum += gray.getPixel(x, y).r.toInt();
+        bgCount++;
+      }
+    }
+    // 下边
+    for (int y = h - h ~/ 8; y < h; y++) {
+      for (int x = 0; x < w; x += 3) {
+        bgSum += gray.getPixel(x, y).r.toInt();
+        bgCount++;
+      }
+    }
+    // 左边
+    for (int y = 0; y < h; y += 3) {
+      for (int x = 0; x < w ~/ 8; x++) {
+        bgSum += gray.getPixel(x, y).r.toInt();
+        bgCount++;
+      }
+    }
+    // 右边
+    for (int y = 0; y < h; y += 3) {
+      for (int x = w - w ~/ 8; x < w; x++) {
+        bgSum += gray.getPixel(x, y).r.toInt();
+        bgCount++;
+      }
+    }
+    // 背景亮度 + 容差（30 灰度级内的都算背景）
+    final bgLevel = bgCount > 0 ? bgSum ~/ bgCount : 245;
+    final threshold = bgLevel - 30;
+
+    // 扫描内容边界
+    int minX = w, maxX = 0, minY = h, maxY = 0;
+    for (int y = 0; y < h; y += 2) {
+      for (int x = 0; x < w; x += 2) {
+        if (gray.getPixel(x, y).r.toInt() < threshold) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (minX > maxX || minY > maxY) return _TrimResult(src, false, 0);
+
+    // 计算裁剪比例
+    final contentW = maxX - minX + 1;
+    final contentH = maxY - minY + 1;
+    final contentArea = contentW * contentH;
+    final totalArea = w * h;
+    final blankRatio = 1.0 - contentArea / totalArea;
+
+    // 空白太少不需要裁剪（< 15%）
+    if (blankRatio < 0.15) return _TrimResult(src, false, blankRatio * 100);
+
+    // 加 padding（裁剪越少 padding 越大，保证字符不被切到）
+    final padX = (contentW * paddingRatio).round();
+    final padY = (contentH * paddingRatio).round();
+    final cropX = (minX - padX).clamp(0, w - 1);
+    final cropY = (minY - padY).clamp(0, h - 1);
+    final cropW = (contentW + padX * 2).clamp(1, w - cropX);
+    final cropH = (contentH + padY * 2).clamp(1, h - cropY);
+
+    // 裁剪后至少要有 30x30，避免裁太小影响识别
+    if (cropW < 30 || cropH < 30) return _TrimResult(src, false, blankRatio * 100);
+
+    final cropped = img.copyCrop(src, x: cropX, y: cropY, width: cropW, height: cropH);
+    return _TrimResult(cropped, true, blankRatio * 100);
+  }
+
+  /// v4.0.1: 笔画粗细自适应预处理策略
+  /// 根据图像的笔画粗细特征，自动选择膨胀/腐蚀来归一化笔画宽度
+  img.Image _strokeThicknessAdaptive(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    if (w < 20 || h < 20) return gray;
+
+    // 二值化
+    final binary = _adaptiveBinarize(gray, blockSize: 31, c: 10);
+
+    // 统计前景像素比来估算笔画粗细
+    int fgCount = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (binary.getPixel(x, y).r.toInt() < 128) fgCount++;
+      }
+    }
+    final fgRatio = fgCount / (w * h);
+
+    // 笔画太细（前景 < 8%）→ 膨胀
+    if (fgRatio < 0.08) {
+      debugPrint('笔画自适应: 笔画太细 (${(fgRatio * 100).toStringAsFixed(1)}%) → 膨胀增强');
+      return _morphologicalDilate(gray, radius: 1);
+    }
+    // 笔画太粗（前景 > 30%）→ 腐蚀
+    if (fgRatio > 0.30) {
+      debugPrint('笔画自适应: 笔画太粗 (${(fgRatio * 100).toStringAsFixed(1)}%) → 腐蚀细化');
+      return _morphologicalErode(gray, radius: 1);
+    }
+    // 正常范围 → 灰度输出
+    return gray;
   }
 
   /// 形态学细化（骨架化）- Zhang-Suen 算法简化版
@@ -1727,12 +1858,28 @@ class RecognitionService {
       final maxDim = w > h ? w : h;
       debugPrint('ML Kit 识别: 原始图片 ${w}x$h，最大边 $maxDim');
 
+      // ═══ v4.0.1: 白边裁剪（pad去除）— 优先级最高的预处理 ═══
+      // 在所有处理之前先裁剪白边，让字符占据更大比例，
+      // 提升后续 CLAHE、锐化、二值化等策略的效果
+      img.Image trimmed = decoded;
+      final trimResult = _smartTrimWhitespace(decoded);
+      if (trimResult.wasTrimmed) {
+        trimmed = trimResult.image;
+        debugPrint('ML Kit 识别: 白边裁剪 ${decoded.width}x${decoded.height} → ${trimmed.width}x${trimmed.height} '
+            '(裁掉了 ${trimResult.trimmedPercent.toStringAsFixed(0)}% 空白)');
+        _addDebugLog('recognition', '白边裁剪', data: {
+          'originalSize': '${decoded.width}x${decoded.height}',
+          'trimmedSize': '${trimmed.width}x${trimmed.height}',
+          'trimmedPercent': trimResult.trimmedPercent,
+        });
+      }
+
       // ═══ 图像质量评估与自动增强 ═══
-      final qualityReport = ImageQualityService.instance.assessQuality(decoded);
-      img.Image enhanced = decoded;
+      final qualityReport = ImageQualityService.instance.assessQuality(trimmed);
+      img.Image enhanced = trimmed;
       if (qualityReport.needsEnhancement) {
         debugPrint('ML Kit 识别: 图像质量偏低，执行自动增强 $qualityReport');
-        enhanced = ImageQualityService.instance.enhanceForRecognition(decoded, qualityReport);
+        enhanced = ImageQualityService.instance.enhanceForRecognition(trimmed, qualityReport);
         _addDebugLog('recognition', '图像质量增强', data: {
           'qualityScore': qualityReport.overallScore,
           'contrast': qualityReport.contrastScore,
@@ -1897,6 +2044,8 @@ class RecognitionService {
         '形态学骨架化': (src) => _morphologicalSkeletonize(src),
         '高斯模糊去噪+锐化': (src) => _gaussianBlurSharpen(src),
         '局部阈值二值化': (src) => _localThresholdBinarize(src),
+        // v4.0.1: 笔画粗细自适应
+        '笔画粗细自适应': (src) => _strokeThicknessAdaptive(src),
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -1926,13 +2075,13 @@ class RecognitionService {
       }
       if (features.lineThickness < 0.3) {
         // 细线条：加增粗策略
-        for (final k in ['手写体笔画增强', '笔画归一化']) {
+        for (final k in ['手写体笔画增强', '笔画归一化', '笔画粗细自适应']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
       if (features.lineThickness > 0.7) {
         // 粗线条：加细化策略
-        for (final k in ['形态学骨架化']) {
+        for (final k in ['形态学骨架化', '笔画粗细自适应']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
