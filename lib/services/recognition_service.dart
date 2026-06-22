@@ -2437,9 +2437,9 @@ class RecognitionService {
 
       // 回退策略 1：裁剪边缘空白后再识别
       debugPrint('ML Kit 识别: 回退策略1 - 裁剪边缘空白');
-      final trimmed = _trimWhitespace(fallbackBase);
-      if (trimmed.width != fallbackBase.width || trimmed.height != fallbackBase.height) {
-        final grayTrimmed = img.grayscale(trimmed);
+      final trimmedFallback = _trimWhitespace(fallbackBase);
+      if (trimmedFallback.width != fallbackBase.width || trimmedFallback.height != fallbackBase.height) {
+        final grayTrimmed = img.grayscale(trimmedFallback);
         final rawResult = await _recognizeFromImage(grayTrimmed);
         final result = _validateResult(rawResult);
         if (result != null) {
@@ -2856,9 +2856,7 @@ class RecognitionService {
   }
 
   /// TFLite 模型是否实际可用（已加载且非占位符）
-  bool get isTfliteModelAvailable => TfliteRecognitionService.instance.isModelLoaded
-      ? TfliteRecognitionService.instance.isModelAvailable
-      : false; // 未加载时返回 false，延迟判断
+  bool get isTfliteModelAvailable => TfliteRecognitionService.instance.isModelLoaded; // isModelLoaded 已包含可用性检查
 
   /// 释放资源（应在 app 退出时调用）
   void dispose() {

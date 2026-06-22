@@ -259,8 +259,7 @@ class TfliteRecognitionService {
       }
 
       // 3. 准备输出缓冲区
-      final outputShape = [1, _labels!.length];
-      final output = List.filled(_labels!.length, 0.0).reshape(outputShape);
+      final output = List<List<double>>.generate(1, (_) => List.filled(_labels!.length, 0.0));
 
       // 4. 运行推理
       final stopwatch = Stopwatch()..start();
@@ -422,16 +421,14 @@ class TfliteRecognitionService {
   Future<void> _runInference(Float32List input, List<List<double>> output) async {
     try {
       // 使用动态调用运行推理
-      // 输入形状: [1, 64, 64, 1]
-      final inputReshaped = input.reshape([1, _inputSize, _inputSize, _numChannels]);
-
+      // 输入形状: [1, 64, 64, 1] — 直接传递 flat Float32List，形状由解释器推断
       if (_interpreter is _SimpleInterpreter) {
         // 使用简化推理器（当 tflite_flutter 不可用时）
-        (_interpreter as _SimpleInterpreter).run(inputReshaped, output);
+        (_interpreter as _SimpleInterpreter).run(input, output);
       } else {
         // 尝试使用真正的 tflite_flutter 解释器
         // 这里使用动态调用
-        _interpreter.run(inputReshaped, output);
+        _interpreter.run(input, output);
       }
     } catch (e) {
       debugPrint('TFLite: 推理执行失败: $e');
