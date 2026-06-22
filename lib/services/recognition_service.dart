@@ -1117,16 +1117,20 @@ class RecognitionService {
         });
       }
 
-      // ═══ 第一轮：快速尝试（灰度原图或增强图，跳过放大和复杂预处理） ═══
+      // ═══ 第一轮：快速尝试（灰度原图，结果计入投票，不再直接返回） ═══
       if (maxDim >= 50) {
         debugPrint('ML Kit 识别: 快速尝试 | 原图灰度');
         final gray = img.grayscale(enhanced);
         final rawResult = await _recognizeFromImage(gray);
         final result = _validateResult(rawResult);
         if (result != null) {
-          _lastLocalConfidence = 0.85;
-          debugPrint('ML Kit 识别: ✓ 快速尝试成功, 字符="$result"');
-          return result;
+          voteMap[result] = (voteMap[result] ?? 0) + 1;
+          final hash = _hashBytes(img.encodePng(gray));
+          final conf = _confidenceCache[hash] ?? 0.85;
+          confidenceMap[result] = (confidenceMap[result] ?? 0) > conf
+              ? confidenceMap[result]!
+              : conf;
+          debugPrint('ML Kit 识别: ✓ 快速尝试识别到 "$result" (计入投票)');
         }
       }
 
