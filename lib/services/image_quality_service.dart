@@ -82,10 +82,10 @@ class ImageQualityService {
     img.Image result = image;
     final actions = <String>[];
 
-    // 低对比度 → 增强对比度
+    // 低对比度 → CLAHE 自适应增强（v3.9.0）
     if (report.contrastScore < 0.5) {
-      result = _enhanceContrast(result);
-      actions.add('对比度增强');
+      result = clahe(result, clipLimit: report.contrastScore < 0.3 ? 3.0 : 2.5);
+      actions.add('CLAHE对比度自适应增强');
     }
 
     // 模糊 → 锐化 + 去噪
@@ -381,10 +381,183 @@ class ImageQualityService {
   // 图像增强方法
   // ═══════════════════════════════════════════════════════════
 
-  /// 对比度增强（CLAHE 简化版：局部直方图均衡化）
+  /// 对比度增强（旧版全局调整，保留作为回退）
   img.Image _enhanceContrast(img.Image src) {
-    // 先尝试简单的方法：调整对比度和亮度
     return img.adjustColor(src, contrast: 1.6, brightness: 1.1);
+  }
+
+  /// ═══════════════════════════════════════════════════════════
+  /// CLAHE: 对比度自适应增强 (v3.9.0)
+  /// ═══════════════════════════════════════════════════════════
+  ///
+  /// Contrast Limited Adaptive Histogram Equalization
+  /// 将图像分为多个局部区域，各自做直方图均衡化，
+  /// 再用双线性插值消除区块边界，适合手写笔画明暗不均的场景。
+  ///
+  /// [tileGridSize] 每行/列的区块数（默认 8 = 8×8 = 64 块）
+  /// [clipLimit]    直方图裁剪上限，越大对比度增强越强（默认 2.0）
+  img.Image clahe(img.Image src, {int tileGridSize = 8, double clipLimit = 2.0}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    if (w < 4 || h < 4) return gray;
+
+    // 确保 tileGridSize 合理
+    tileGridSize = tileGridSize.clamp(2, 32);
+    final tileW = w ~/ tileGridSize;
+    final tileH = h ~/ tileGridSize;
+    if (tileW < 2 || tileH < 2) {
+      // 图太小，退化为全局直方图均衡
+      return _globalHistogramEqualize(gray);
+    }
+
+    // 1) 提取灰度值到二维数组
+    final pixels = List.generate(h, (y) =>
+        List.generate(w, (x) => gray.getPixel(x, y).r.toInt()));
+
+    // 2) 对每个 tile 计算裁剪直方图 + CDF
+    //    存储为 (tileGridSize) x (tileGridSize) 的 CDF 映射表
+    final cdfs = List.generate(tileGridSize,
+        (_) => List.generate(tileGridSize, (_) => List.filled(256, 0)));
+
+    for (int ty = 0; ty < tileGridSize; ty++) {
+      for (int tx = 0; tx < tileGridSize; tx++) {
+        final x0 = tx * tileW;
+        final y0 = ty * tileH;
+        final x1 = (tx == tileGridSize - 1) ? w : x0 + tileW;
+        final y1 = (ty == tileGridSize - 1) ? h : y0 + tileH;
+        final tilePixels = (x1 - x0) * (y1 - y0);
+
+        // 计算直方图
+        final hist = List.filled(256, 0);
+        for (int y = y0; y < y1; y++) {
+          for (int x = x0; x < x1; x++) {
+            hist[pixels[y][x]]++;
+          }
+        }
+
+        // 裁剪直方图
+        final limit = (clipLimit * tilePixels / 256).round();
+        int clipped = 0;
+        for (int i = 0; i < 256; i++) {
+          if (hist[i] > limit) {
+            clipped += hist[i] - limit;
+            hist[i] = limit;
+          }
+        }
+
+        // 将裁剪的像素均匀分配到所有 bin
+        final redistBin = clipped ~/ 256;
+        final residual = clipped % 256;
+        for (int i = 0; i < 256; i++) {
+          hist[i] += redistBin;
+          if (i < residual) hist[i]++; // 余数分配给前几个 bin
+        }
+
+        // 计算 CDF
+        int cumulative = 0;
+        for (int i = 0; i < 256; i++) {
+          cumulative += hist[i];
+          cdfs[ty][tx][i] = cumulative;
+        }
+      }
+    }
+
+    // 3) 双线性插值：对每个像素查找相邻 4 个 tile 的 CDF，插值得到新值
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        // 计算像素所属的 tile 坐标（浮点）
+        final fx = (x / tileW - 0.5).clamp(0.0, (tileGridSize - 1).toDouble());
+        final fy = (y / tileH - 0.5).clamp(0.0, (tileGridSize - 1).toDouble());
+
+        final tx0 = fx.floor().clamp(0, tileGridSize - 1);
+        final ty0 = fy.floor().clamp(0, tileGridSize - 1);
+        final tx1 = (tx0 + 1).clamp(0, tileGridSize - 1);
+        final ty1 = (ty0 + 1).clamp(0, tileGridSize - 1);
+
+        final dx = fx - tx0;
+        final dy = fy - ty0;
+
+        final val = pixels[y][x];
+
+        // 4 个角的 CDF 值
+        final c00 = cdfs[ty0][tx0][val].toDouble();
+        final c10 = cdfs[ty0][tx1][val].toDouble();
+        final c01 = cdfs[ty1][tx0][val].toDouble();
+        final c11 = cdfs[ty1][tx1][val].toDouble();
+
+        // 双线性插值
+        final interpolated = c00 * (1 - dx) * (1 - dy) +
+            c10 * dx * (1 - dy) +
+            c01 * (1 - dx) * dy +
+            c11 * dx * dy;
+
+        // 归一化到 0~255
+        final tilePixels = tileW * tileH;
+        final newVal = ((interpolated / tilePixels) * 255).round().clamp(0, 255);
+        result.setPixelRgba(x, y, newVal, newVal, newVal, 255);
+      }
+    }
+
+    debugPrint('CLAHE: ${tileGridSize}x$tileGridSize tiles, clipLimit=$clipLimit, '
+        '${w}x$h -> 增强完成');
+    return result;
+  }
+
+  /// 全局直方图均衡（图像太小时的回退方案）
+  img.Image _globalHistogramEqualize(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    final hist = List.filled(256, 0);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        hist[gray.getPixel(x, y).r.toInt()]++;
+      }
+    }
+    final total = w * h;
+    int cumulative = 0;
+    final lut = List.filled(256, 0);
+    for (int i = 0; i < 256; i++) {
+      cumulative += hist[i];
+      lut[i] = ((cumulative * 255) / total).round().clamp(0, 255);
+    }
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = lut[gray.getPixel(x, y).r.toInt()];
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 智能对比度增强：根据图像对比度自动选择 CLAHE 参数
+  ///
+  /// - 极低对比度 (stdDev < 30): clipLimit=3.0, 12x12 tiles
+  /// - 低对比度 (30~50): clipLimit=2.5, 8x8 tiles
+  /// - 中等对比度 (50~65): clipLimit=2.0, 8x8 tiles
+  /// - 正常对比度 (>65): 跳过增强
+  img.Image enhanceContrastAdaptive(img.Image src) {
+    final gray = img.grayscale(src);
+    final stdDev = _assessContrast(gray);
+    debugPrint('对比度自适应: 原始标准差=${stdDev.toStringAsFixed(1)}');
+
+    if (stdDev > 65) {
+      debugPrint('对比度自适应: 对比度良好(>65)，跳过增强');
+      return gray;
+    }
+
+    if (stdDev < 30) {
+      debugPrint('对比度自适应: 极低对比度(<30)，CLAHE clipLimit=3.0');
+      return clahe(gray, tileGridSize: 12, clipLimit: 3.0);
+    }
+
+    if (stdDev < 50) {
+      debugPrint('对比度自适应: 低对比度(<50)，CLAHE clipLimit=2.5');
+      return clahe(gray, tileGridSize: 8, clipLimit: 2.5);
+    }
+
+    debugPrint('对比度自适应: 中等对比度(<65)，CLAHE clipLimit=2.0');
+    return clahe(gray, tileGridSize: 8, clipLimit: 2.0);
   }
 
   /// 中值滤波去噪（3x3 窗口）

@@ -613,6 +613,8 @@ class RecognitionService {
         '自适应对比度增强': (src) => _clahe(src),
         '背景归一化': (src) => _normalizeBackground(src),
         '方向边缘增强': (src) => _directionalEdgeEnhance(src),
+        // v3.9.0: CLAHE 自适应参数（根据对比度自动选 clipLimit）
+        'CLAHE自适应': (src) => ImageQualityService.instance.enhanceContrastAdaptive(src),
         // v2.6.0 新增 4 种预处理策略
         '自适应直方图均衡': (src) => _adaptiveHistogramEqualizeQuadrants(src),
         '形态学骨架化': (src) => _morphologicalSkeletonize(src),
@@ -1687,9 +1689,10 @@ class RecognitionService {
       }
 
       // v3.6.0: 快速通道 — 额外跑2个策略，3个一致直接返回
+      // v3.9.0: CLAHE 自适应替换固定对比度增强
       if (voteMap.isNotEmpty && maxDim >= 50) {
         final quickStrategies = [
-          ('灰度+对比度', (img.Image src) => img.adjustColor(img.grayscale(src), contrast: 1.5, brightness: 1.1)),
+          ('CLAHE自适应', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
           ('灰度+锐化', (img.Image src) => _sharpen(img.grayscale(src))),
         ];
         for (final (label, fn) in quickStrategies) {
@@ -1788,6 +1791,8 @@ class RecognitionService {
         '自适应对比度增强': (src) => _clahe(src),
         '背景归一化': (src) => _normalizeBackground(src),
         '方向边缘增强': (src) => _directionalEdgeEnhance(src),
+        // v3.9.0: CLAHE 自适应参数（根据对比度自动选 clipLimit）
+        'CLAHE自适应': (src) => ImageQualityService.instance.enhanceContrastAdaptive(src),
         // v2.6.0 新增 4 种预处理策略
         '自适应直方图均衡': (src) => _adaptiveHistogramEqualizeQuadrants(src),
         '形态学骨架化': (src) => _morphologicalSkeletonize(src),
@@ -1804,7 +1809,7 @@ class RecognitionService {
       // 根据特征添加相关策略
       if (features.contrast < 0.4) {
         // 低对比度：加对比度增强类策略
-        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', '自适应直方图均衡', '背景归一化']) {
+        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', 'CLAHE自适应', '自适应直方图均衡', '背景归一化']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
