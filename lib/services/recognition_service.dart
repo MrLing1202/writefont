@@ -3524,12 +3524,14 @@ class RecognitionService {
         }
       }
 
-      // v3.6.0: 快速通道 — 额外跑2个策略，3个一致直接返回
-      // v3.9.0: CLAHE 自适应替换固定对比度增强
+      // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
+      // v5.7.0: 扩展快速通道至 4 个策略（CLAHE + USM + 伽马校正 + 自适应Sauvola）
       if (voteMap.isNotEmpty && maxDim >= 50) {
         final quickStrategies = [
           ('CLAHE自适应', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
           ('USM笔画锐化', (img.Image src) => _unsharpMaskSharpen(src, amount: 1.5)),
+          ('伽马校正', (img.Image src) => _adaptiveGammaCorrection(src)),
+          ('自适应Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
         ];
         for (final (label, fn) in quickStrategies) {
           final processed = fn(enhanced);
@@ -3543,12 +3545,12 @@ class RecognitionService {
             strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
           }
         }
-        // 3个快速策略一致 → 直接返回
+        // v5.7.0: 4个快速策略一致 → 直接返回（更高的确认度）
         if (voteMap.isNotEmpty) {
           final topVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
-          if (topVotes >= 3) {
+          if (topVotes >= 4) {
             final quickWinner = voteMap.entries.reduce((a, b) => a.value >= b.value ? a : b);
-            _lastLocalConfidence = 0.92;
+            _lastLocalConfidence = 0.94;
             debugPrint('ML Kit 识别: 快速通道命中 "${quickWinner.key}" (${quickWinner.value}票)');
             return quickWinner.key;
           }
