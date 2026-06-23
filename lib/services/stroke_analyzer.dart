@@ -3,9 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
-/// 笔画特征数据类
+/// 笔画特征数据类（v4.5.0 增强）
 ///
-/// 包含笔画数量、主要方向分布、结构类型三个维度的特征。
+/// 包含笔画数量、方向分布（8方向）、结构类型、曲率特征、复杂度评分。
 class StrokeFeature {
   /// 笔画数量估算
   final int strokeCount;
@@ -16,15 +16,23 @@ class StrokeFeature {
   /// 字形结构类型
   final CharStructure structure;
 
+  /// v4.5.0: 笔画曲率分布 (直线/弯钩/转折/圆弧 各占比 0.0~1.0)
+  final Map<String, double> curvature;
+
+  /// v4.5.0: 笔画复杂度评分 (0.0=极简, 1.0=极复杂)
+  final double complexity;
+
   const StrokeFeature({
     required this.strokeCount,
     required this.directions,
     required this.structure,
+    this.curvature = const {'straight': 0.5, 'hook': 0.2, 'turn': 0.2, 'arc': 0.1},
+    this.complexity = 0.5,
   });
 
-  /// 计算两个特征之间的相似度 (0.0~1.0)
+  /// 计算两个特征之间的相似度 (0.0~1.0) — v4.5.0 增强
   double similarityTo(StrokeFeature other) {
-    // 1. 笔画数量相似度 (权重 0.4)
+    // 1. 笔画数量相似度 (权重 0.30)
     final countDiff = (strokeCount - other.strokeCount).abs();
     final countSimilarity = countDiff == 0
         ? 1.0
@@ -34,10 +42,10 @@ class StrokeFeature {
                 ? 0.4
                 : max(0.0, 1.0 - countDiff * 0.15);
 
-    // 2. 方向相似度 (权重 0.35)
+    // 2. 方向相似度 (权重 0.25) — v4.5.0: 使用8方向
     double directionSimilarity = 0.0;
     double totalWeight = 0.0;
-    for (final key in ['heng', 'shu', 'pie', 'na']) {
+    for (final key in ['heng', 'shu', 'pie', 'na', 'hengPie', 'hengNa', 'shuPie', 'shuNa']) {
       final a = directions[key] ?? 0.0;
       final b = other.directions[key] ?? 0.0;
       directionSimilarity += 1.0 - (a - b).abs();
@@ -45,23 +53,43 @@ class StrokeFeature {
     }
     directionSimilarity = totalWeight > 0 ? directionSimilarity / totalWeight : 0.0;
 
-    // 3. 结构相似度 (权重 0.25)
+    // 3. 结构相似度 (权重 0.20)
     final structureSimilarity = structure == other.structure ? 1.0 : 0.3;
 
-    return countSimilarity * 0.4 +
-        directionSimilarity * 0.35 +
-        structureSimilarity * 0.25;
+    // 4. v4.5.0: 曲率相似度 (权重 0.15)
+    double curvatureSimilarity = 0.0;
+    double curvWeight = 0.0;
+    for (final key in ['straight', 'hook', 'turn', 'arc']) {
+      final a = curvature[key] ?? 0.0;
+      final b = other.curvature[key] ?? 0.0;
+      curvatureSimilarity += 1.0 - (a - b).abs();
+      curvWeight += 1.0;
+    }
+    curvatureSimilarity = curvWeight > 0 ? curvatureSimilarity / curvWeight : 0.0;
+
+    // 5. v4.5.0: 复杂度相似度 (权重 0.10)
+    final complexityDiff = (complexity - other.complexity).abs();
+    final complexitySimilarity = max(0.0, 1.0 - complexityDiff * 2);
+
+    return countSimilarity * 0.30 +
+        directionSimilarity * 0.25 +
+        structureSimilarity * 0.20 +
+        curvatureSimilarity * 0.15 +
+        complexitySimilarity * 0.10;
   }
 
   Map<String, dynamic> toJson() => {
         'strokeCount': strokeCount,
         'directions': directions,
         'structure': structure.name,
+        'curvature': curvature,
+        'complexity': complexity,
       };
 
   @override
   String toString() =>
-      'StrokeFeature(count=$strokeCount, dir=$directions, struct=${structure.name})';
+      'StrokeFeature(count=$strokeCount, dir=$directions, struct=${structure.name}, '
+      'curv=$curvature, complexity=${complexity.toStringAsFixed(2)})';
 }
 
 /// 字形结构类型
@@ -117,21 +145,26 @@ class StrokeAnalyzer {
     }
   }
 
-  /// 分析 img.Image 的笔画特征签名
+  /// 分析 img.Image 的笔画特征签名（v4.5.0 增强：曲率+复杂度）
   StrokeFeature getStrokeSignature(img.Image image) {
     final binary = _preprocess(image);
     final skeleton = _skeletonize(binary);
 
     final count = analyzeStrokeCount(skeleton);
-    final dirs = analyzeStrokeDirection(skeleton);
+    final dirs = analyzeStrokeDirection8(skeleton); // v4.5.0: 8方向
     final structure = analyzeStructure(binary);
+    final curv = analyzeCurvature(skeleton); // v4.5.0: 曲率分析
+    final comp = analyzeComplexity(binary, skeleton); // v4.5.0: 复杂度
 
-    debugPrint('笔画分析: 笔画数=$count, 方向=$dirs, 结构=${structure.name}');
+    debugPrint('笔画分析: 笔画数=$count, 方向=$dirs, 结构=${structure.name}, '
+        '曲率=$curv, 复杂度=${comp.toStringAsFixed(2)}');
 
     return StrokeFeature(
       strokeCount: count,
       directions: dirs,
       structure: structure,
+      curvature: curv,
+      complexity: comp,
     );
   }
 
@@ -281,6 +314,229 @@ class StrokeAnalyzer {
       'pie': pie / total,
       'na': na / total,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v4.5.0: 增强笔画特征提取
+  // ═══════════════════════════════════════════════════════════
+
+  /// v4.5.0: 8方向笔画方向分析
+  ///
+  /// 在原有4方向基础上，增加4个复合方向：
+  /// - hengPie: 横撇方向 (~112°)
+  /// - hengNa: 横捺方向 (~22°)
+  /// - shuPie: 竖撇方向 (~157°)
+  /// - shuNa: 竖捺方向 (~67°)
+  Map<String, double> analyzeStrokeDirection8(img.Image skeleton) {
+    final w = skeleton.width, h = skeleton.height;
+    double heng = 0, shu = 0, pie = 0, na = 0;
+    double hengPie = 0, hengNa = 0, shuPie = 0, shuNa = 0;
+
+    for (int y = 1; y < h - 1; y++) {
+      for (int x = 1; x < w - 1; x++) {
+        if (!_isBlack(skeleton, x, y)) continue;
+
+        final gx = _sobelX(skeleton, x, y);
+        final gy = _sobelY(skeleton, x, y);
+        if (gx == 0 && gy == 0) continue;
+
+        final absGx = gx.abs().toDouble();
+        final absGy = gy.abs().toDouble();
+        final magnitude = sqrt(gx * gx + gy * gy).toDouble();
+        if (magnitude < 1) continue;
+
+        // 8方向判断
+        if (absGx > absGy * 3) {
+          heng += magnitude; // 纯横
+        } else if (absGy > absGx * 3) {
+          shu += magnitude; // 纯竖
+        } else if (absGx > absGy * 1.5 && gx * gy < 0) {
+          hengPie += magnitude; // 横撇（水平偏撇）
+        } else if (absGx > absGy * 1.5 && gx * gy > 0) {
+          hengNa += magnitude; // 横捺（水平偏捺）
+        } else if (absGy > absGx * 1.5 && gx * gy < 0) {
+          shuPie += magnitude; // 竖撇（垂直偏撇）
+        } else if (absGy > absGx * 1.5 && gx * gy > 0) {
+          shuNa += magnitude; // 竖捺（垂直偏捺）
+        } else if (gx * gy > 0) {
+          na += magnitude; // 纯捺
+        } else {
+          pie += magnitude; // 纯撇
+        }
+      }
+    }
+
+    final total = heng + shu + pie + na + hengPie + hengNa + shuPie + shuNa;
+    if (total < 1) {
+      return {
+        'heng': 0.125, 'shu': 0.125, 'pie': 0.125, 'na': 0.125,
+        'hengPie': 0.125, 'hengNa': 0.125, 'shuPie': 0.125, 'shuNa': 0.125,
+      };
+    }
+
+    return {
+      'heng': heng / total,
+      'shu': shu / total,
+      'pie': pie / total,
+      'na': na / total,
+      'hengPie': hengPie / total,
+      'hengNa': hengNa / total,
+      'shuPie': shuPie / total,
+      'shuNa': shuNa / total,
+    };
+  }
+
+  /// v4.5.0: 笔画曲率分析
+  ///
+  /// 通过骨架像素的局部方向变化，将笔画分为四类：
+  /// - straight: 直线段（方向变化小）
+  /// - hook: 弯钩（方向变化中等，单向弯曲）
+  /// - turn: 折转（方向突变，如横折）
+  /// - arc: 圆弧（方向均匀变化）
+  Map<String, double> analyzeCurvature(img.Image skeleton) {
+    final w = skeleton.width, h = skeleton.height;
+    double straight = 0, hook = 0, turn = 0, arc = 0;
+
+    for (int y = 2; y < h - 2; y++) {
+      for (int x = 2; x < w - 2; x++) {
+        if (!_isBlack(skeleton, x, y)) continue;
+
+        // 统计8邻域中黑色像素数
+        final neighborCount = _countBlackNeighbors(skeleton, x, y);
+
+        // 只分析非端点、非交叉点的普通骨架像素
+        if (neighborCount < 2 || neighborCount > 2) continue;
+
+        // 计算前一像素和后一像素的方向
+        final prevDir = _getPrevDirection(skeleton, x, y);
+        final nextDir = _getNextDirection(skeleton, x, y);
+        if (prevDir < 0 || nextDir < 0) continue;
+
+        // 方向差（0~180度）
+        var dirDiff = (nextDir - prevDir).abs();
+        if (dirDiff > 180) dirDiff = 360 - dirDiff;
+
+        if (dirDiff < 15) {
+          straight++; // 几乎直线
+        } else if (dirDiff < 45) {
+          arc++; // 小弧度弯曲
+        } else if (dirDiff < 90) {
+          hook++; // 中等弯曲（弯钩）
+        } else {
+          turn++; // 急转（折笔）
+        }
+      }
+    }
+
+    final total = straight + hook + turn + arc;
+    if (total < 1) {
+      return {'straight': 0.5, 'hook': 0.2, 'turn': 0.2, 'arc': 0.1};
+    }
+
+    return {
+      'straight': straight / total,
+      'hook': hook / total,
+      'turn': turn / total,
+      'arc': arc / total,
+    };
+  }
+
+  /// v4.5.0: 笔画复杂度评分
+  ///
+  /// 综合以下因素评估字符复杂度 (0.0~1.0)：
+  /// - 笔画数量
+  /// - 交叉点密度
+  /// - 曲线比例
+  /// - 前景像素占比
+  double analyzeComplexity(img.Image binary, img.Image skeleton) {
+    final w = binary.width, h = binary.height;
+    if (w < 5 || h < 5) return 0.5;
+
+    // 1. 笔画数量因子 (0~1)
+    final strokeCount = analyzeStrokeCount(skeleton);
+    final strokeFactor = (strokeCount / 15).clamp(0.0, 1.0);
+
+    // 2. 交叉点密度 (0~1)
+    int junctions = 0;
+    int skeletonPixels = 0;
+    for (int y = 1; y < h - 1; y++) {
+      for (int x = 1; x < w - 1; x++) {
+        if (_isBlack(skeleton, x, y)) {
+          skeletonPixels++;
+          if (_countBlackNeighbors(skeleton, x, y) >= 3) {
+            junctions++;
+          }
+        }
+      }
+    }
+    final junctionDensity = skeletonPixels > 0
+        ? (junctions / skeletonPixels * 10).clamp(0.0, 1.0)
+        : 0.0;
+
+    // 3. 前景占比因子 (0~1)
+    int fgCount = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (_isBlack(binary, x, y)) fgCount++;
+      }
+    }
+    final fgRatio = fgCount / (w * h);
+    final fgFactor = (fgRatio / 0.35).clamp(0.0, 1.0);
+
+    // 4. 骨架弯曲比例 (0~1)
+    final curv = analyzeCurvature(skeleton);
+    final curveRatio = 1.0 - (curv['straight'] ?? 0.5);
+
+    // 加权综合
+    return (strokeFactor * 0.35 +
+            junctionDensity * 0.25 +
+            fgFactor * 0.20 +
+            curveRatio * 0.20)
+        .clamp(0.0, 1.0);
+  }
+
+  /// 获取骨架像素的前一个方向（角度 0~360）
+  int _getPrevDirection(img.Image skeleton, int x, int y) {
+    for (int dy = -1; dy <= 1; dy++) {
+      for (int dx = -1; dx <= 1; dx++) {
+        if (dx == 0 && dy == 0) continue;
+        final nx = (x + dx).clamp(0, skeleton.width - 1);
+        final ny = (y + dy).clamp(0, skeleton.height - 1);
+        if (_isBlack(skeleton, nx, ny)) {
+          return _directionAngle(dx, dy);
+        }
+      }
+    }
+    return -1;
+  }
+
+  /// 获取骨架像素的后一个方向（角度 0~360）
+  int _getNextDirection(img.Image skeleton, int x, int y) {
+    // 从相反方向开始搜索（找到第一个非自身黑色邻居）
+    for (int dy = 1; dy >= -1; dy--) {
+      for (int dx = 1; dx >= -1; dx--) {
+        if (dx == 0 && dy == 0) continue;
+        final nx = (x + dx).clamp(0, skeleton.width - 1);
+        final ny = (y + dy).clamp(0, skeleton.height - 1);
+        if (_isBlack(skeleton, nx, ny)) {
+          return _directionAngle(dx, dy);
+        }
+      }
+    }
+    return -1;
+  }
+
+  /// 计算方向角度 (0~360)
+  int _directionAngle(int dx, int dy) {
+    if (dx == 1 && dy == 0) return 0;
+    if (dx == 1 && dy == 1) return 45;
+    if (dx == 0 && dy == 1) return 90;
+    if (dx == -1 && dy == 1) return 135;
+    if (dx == -1 && dy == 0) return 180;
+    if (dx == -1 && dy == -1) return 225;
+    if (dx == 0 && dy == -1) return 270;
+    if (dx == 1 && dy == -1) return 315;
+    return 0;
   }
 
   // ═══════════════════════════════════════════════════════════

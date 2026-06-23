@@ -761,7 +761,8 @@ class RecognitionService {
       }
 
       // ── 笔画特征辅助选择：低置信度时用笔画特征优化结果 ──
-      if (confidence < 0.85 && result != null) {
+      // v4.5.0: 扩大应用范围，利用曲率和复杂度特征提升匹配精度
+      if (confidence < 0.90 && result != null) {
         final strokeResult = await StrokeAnalyzer.instance.assistRecognition(
           imageBytes, result, confidence,
         );
@@ -3930,7 +3931,7 @@ class RecognitionService {
   // ═══════════════════════════════════════════════════════════
 
   /// 当前识别引擎版本
-  static const String _currentEngineVersion = 'v2.17.0';
+  static const String _currentEngineVersion = 'v2.18.0';
 
   /// 版本历史记录存储 key
   static const String _prefKeyVersionHistory = 'recognition_version_history';
