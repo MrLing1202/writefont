@@ -1124,12 +1124,20 @@ class RecognitionService {
         }
       }
 
-      // ── 第3.5步：形近字消歧（代价低，查表 + 上下文评分）──
-      // v5.2.0: 当结果属于形近字组时，利用上下文选择最可能的字
+      // ── 第3.5步：形近字消歧（代价低，查表 + 上下文评分 + 视觉特征）──
+      // v5.2.0: 利用上下文选择最可能的字
+      // v5.7.0: 新增视觉特征消歧，综合视觉+上下文评分
       if (result != null && confidence < 0.90) {
+        // v5.7.0: 解码图片用于视觉特征分析
+        img.Image? decodedForDisambiguation;
+        try {
+          decodedForDisambiguation = img.decodeImage(imageBytes);
+        } catch (_) {}
+
         final disambiguated = _disambiguateConfusable(
           result,
           prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+          image: decodedForDisambiguation,
         );
         if (disambiguated != result) {
           _addDebugLog('recognition', '形近字消歧', data: {
@@ -5272,25 +5280,35 @@ class RecognitionService {
   /// 形近字组 — 每组内的字符形状相似，容易混淆
   /// key = 组名，value = 该组内的形近字集合
   static const Map<String, List<String>> _confusableGroups = {
+    // ── 笔画结构相似（视觉消歧已实现）──
     '己已巳': ['己', '已', '巳'],
-    '太犬': ['太', '犬'],
+    '太大犬': ['太', '大', '犬'],
     '未末': ['未', '末'],
     '土士': ['土', '士'],
     '天夫': ['天', '夫'],
     '干千于': ['干', '千', '于'],
     '人入': ['人', '入'],
     '刀力': ['刀', '力'],
-    '大太': ['大', '太'],
     '日目': ['日', '目'],
-    '田由': ['田', '由'],
-    '甲申': ['甲', '申'],
+    '田由甲': ['田', '由', '甲'],
     '白自': ['白', '自'],
     '贝见': ['贝', '见'],
     '问间': ['问', '间'],
     '午牛': ['午', '牛'],
     '鸟乌': ['鸟', '乌'],
-    '买卖': ['买', '卖'],
     '王玉': ['王', '玉'],
+    '日曰': ['日', '曰'],
+    '水永': ['水', '永'],
+    '手毛': ['手', '毛'],
+    '心必': ['心', '必'],
+    '禾木': ['禾', '木'],
+    '体休': ['体', '休'],
+    '万方': ['万', '方'],
+    '无天': ['无', '天'],
+    '电龟': ['电', '龟'],
+    '申甲': ['申', '甲'],
+    // ── 偏旁部首相似 ──
+    '买卖': ['买', '卖'],
     '令今': ['令', '今'],
     '折拆': ['折', '拆'],
     '拔拨': ['拔', '拨'],
@@ -5298,30 +5316,551 @@ class RecognitionService {
     '辨辩辫': ['辨', '辩', '辫'],
     '密蜜': ['密', '蜜'],
     '座坐': ['座', '坐'],
+    '科料': ['科', '料'],
+    '话活': ['话', '活'],
+    '起越': ['起', '越'],
+    '阳阴': ['阳', '阴'],
+    '风凤': ['风', '凤'],
+    '颗棵': ['颗', '棵'],
+    '抱报': ['抱', '报'],
+    '清青': ['清', '青'],
     '做作': ['做', '作'],
+    // ── 同音/近音字（主要靠上下文消歧）──
     '的地得': ['的', '地', '得'],
     '在再': ['在', '再'],
     '以已': ['以', '已'],
     '那哪': ['那', '哪'],
     '他她它': ['他', '她', '它'],
     '有又': ['有', '又'],
-    '电龟': ['电', '龟'],
-    '日曰': ['日', '曰'],
-    '水永': ['水', '永'],
-    '手毛': ['手', '毛'],
-    '心必': ['心', '必'],
-    '禾木': ['禾', '木'],
-    '科料': ['科', '料'],
-    '话活': ['话', '活'],
-    '起越': ['起', '越'],
-    '阳阴': ['阳', '阴'],
-    '风凤': ['风', '凤'],
+    '分份': ['分', '份'],
+    '近进': ['近', '进'],
+    '气汽': ['气', '汽'],
+    '工公': ['工', '公'],
+    '带戴': ['带', '戴'],
+    '应映': ['应', '映'],
+    '只支': ['只', '支'],
+    '知之': ['知', '之'],
+    // ── v5.7.0: 新增形近字组 ──
+    '晴睛': ['晴', '睛'],
+    '跑跳': ['跑', '跳'],
+    '很狠': ['很', '狠'],
+    '喝渴': ['喝', '渴'],
+    '吧把': ['吧', '把'],
+    '呢泥': ['呢', '泥'],
+    '吗妈': ['吗', '妈'],
+    '请清情晴': ['请', '清', '情', '晴'],
+    '饱跑抱泡': ['饱', '跑', '抱', '泡'],
+    '注住': ['注', '住'],
+    '还远': ['还', '远'],
+    '过边': ['过', '边'],
+    '谁难': ['谁', '难'],
+    '想想相': ['想', '相'],
+    '样洋': ['样', '洋'],
+    '说话': ['说', '话'],
+    '谢讲': ['谢', '讲'],
+    '认识': ['认', '识'],
+    '字学': ['字', '学'],
+    '明朋': ['明', '朋'],
+    '妈好': ['妈', '好'],
+    '她他': ['她', '他'],
   };
 
-  /// 形近字消歧 — 当识别结果属于形近字组时，利用上下文选择最可能的字
+  /// v5.7.0: 形近字视觉特征定义 — 每组形近字的关键视觉区分特征
+  ///
+  /// 对于每个候选字符，定义需要在图片中验证的视觉特征检查。
+  /// 特征检查函数接收二值化图片，返回 0.0~1.0 的匹配分数。
+  /// 空 map 表示该组没有可用的视觉特征定义，退回到纯上下文消歧。
+  static Map<String, Map<String, double Function(img.Image)>> get _visualFeatureChecks {
+    return {};
+  }
+
+  /// v5.7.0: 形近字视觉消歧 — 分析图片的视觉特征来区分形近字
+  ///
+  /// 对于每个候选字符，提取图片中的关键视觉特征并与预期特征对比。
+  /// 返回每个候选的视觉匹配分数 (0.0~1.0)，供综合评分使用。
+  static Map<String, double> _scoreConfusableByVisual(
+    img.Image image,
+    List<String> candidates,
+  ) {
+    final scores = <String, double>{};
+    for (final c in candidates) {
+      scores[c] = 0.5; // 默认中性分
+    }
+
+    try {
+      // 预处理：灰度 + 二值化
+      final gray = img.grayscale(image);
+      final binary = ImageProcessor._adaptiveThreshold(gray, blockSize: 21, c: 10, invert: false);
+      final w = binary.width, h = binary.height;
+      if (w < 10 || h < 10) return scores;
+
+      // 分析图片的全局特征
+      final aspectRatio = w / h;
+      final inkDensity = _computeInkDensity(binary);
+      final verticalProfile = _computeVerticalProjection(binary);
+      final horizontalProfile = _computeHorizontalProjection(binary);
+
+      // 按形近字组分组评分
+      for (final candidate in candidates) {
+        double score = 0.5;
+
+        // ── 己/已/巳 ──
+        // 己: 开口向右下，竖弯钩不封口
+        // 已: 竖弯钩半封口，弯钩较短
+        // 巳: 竖弯钩全封口，弯钩最长最圆
+        if (candidate == '己' || candidate == '已' || candidate == '巳') {
+          score = _scoreJiYiSi(binary, horizontalProfile, verticalProfile, candidate);
+        }
+        // ── 未/末 ──
+        // 未: 下横比上横短（上宽下窄）
+        // 末: 下横比上横长（上窄下宽）
+        else if (candidate == '未' || candidate == '末') {
+          score = _scoreWeiMo(binary, horizontalProfile, candidate);
+        }
+        // ── 土/士 ──
+        // 土: 下横比上横长（稳重）
+        // 士: 上横比下横长（挺拔）
+        else if (candidate == '土' || candidate == '士') {
+          score = _scoreTuShi(binary, horizontalProfile, candidate);
+        }
+        // ── 太/大/犬 ──
+        // 太: 有小点在右下
+        // 大: 撇捺对称展开
+        // 犬: 右上有点
+        else if (candidate == '太' || candidate == '大' || candidate == '犬') {
+          score = _scoreTaiDaQuan(binary, candidate);
+        }
+        // ── 天/夫 ──
+        // 天: 两横 + 撇捺
+        // 夫: 两横 + 撇 + 捺，竖穿过上横
+        else if (candidate == '天' || candidate == '夫') {
+          score = _scoreTianFu(binary, horizontalProfile, candidate);
+        }
+        // ── 干/千/于 ──
+        // 干: 两横一竖，横短竖长
+        // 千: 撇+横+竖，有撇画
+        // 于: 横+竖钩+点，有钩
+        else if (candidate == '干' || candidate == '千' || candidate == '于') {
+          score = _scoreGanQianYu(binary, horizontalProfile, candidate);
+        }
+        // ── 人/入 ──
+        // 人: 撇长捺短，交叉点偏上
+        // 入: 撇短捺长，交叉点偏下
+        else if (candidate == '人' || candidate == '入') {
+          score = _scoreRenRu(binary, candidate);
+        }
+        // ── 午/牛 ──
+        // 午: 撇短，横在中间
+        // 牛: 撇长，横在上方
+        else if (candidate == '午' || candidate == '牛') {
+          score = _scoreWuNiu(binary, horizontalProfile, candidate);
+        }
+        // ── 日/目 ──
+        // 日: 内部一横（三段）
+        // 目: 内部两横（四段）
+        else if (candidate == '日' || candidate == '目') {
+          score = _scoreRiMu(binary, horizontalProfile, candidate);
+        }
+        // ── 田/由 ──
+        // 田: 十字交叉在中间
+        // 由: 竖画向下延伸出框
+        else if (candidate == '田' || candidate == '由') {
+          score = _scoreTianYou(binary, verticalProfile, candidate);
+        }
+        // ── 白/自 ──
+        // 白: 顶部有撇，内部一横
+        // 自: 顶部平，内部两横
+        else if (candidate == '白' || candidate == '自') {
+          score = _scoreBaiZi(binary, horizontalProfile, candidate);
+        }
+        // ── 日/曰 ──
+        // 日: 纵向长方形 (aspect > 1)
+        // 曰: 横向长方形 (aspect < 1)
+        else if (candidate == '日' || candidate == '曰') {
+          score = _scoreRiYue(aspectRatio, inkDensity, candidate);
+        }
+        // ── 王/玉 ──
+        // 王: 三横一竖，无点
+        // 玉: 三横一竖+右下点
+        else if (candidate == '王' || candidate == '玉') {
+          score = _scoreWangYu(binary, candidate);
+        }
+
+        scores[candidate] = score;
+      }
+    } catch (e) {
+      debugPrint('视觉消歧分析异常: $e');
+    }
+
+    return scores;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v5.7.0: 形近字视觉评分函数
+  // ═══════════════════════════════════════════════════════════
+
+  /// 计算墨迹密度（前景像素占比）
+  static double _computeInkDensity(img.Image binary) {
+    int fg = 0;
+    final total = binary.width * binary.height;
+    for (int y = 0; y < binary.height; y++) {
+      for (int x = 0; x < binary.width; x++) {
+        if (ImageProcessor._isBlack(binary, x, y)) fg++;
+      }
+    }
+    return fg / total;
+  }
+
+  /// 计算垂直投影（每列的黑色像素数）
+  static List<int> _computeVerticalProjection(img.Image binary) {
+    final proj = List<int>.filled(binary.width, 0);
+    for (int x = 0; x < binary.width; x++) {
+      for (int y = 0; y < binary.height; y++) {
+        if (ImageProcessor._isBlack(binary, x, y)) proj[x]++;
+      }
+    }
+    return proj;
+  }
+
+  /// 计算水平投影（每行的黑色像素数）
+  static List<int> _computeHorizontalProjection(img.Image binary) {
+    final proj = List<int>.filled(binary.height, 0);
+    for (int y = 0; y < binary.height; y++) {
+      for (int x = 0; x < binary.width; x++) {
+        if (ImageProcessor._isBlack(binary, x, y)) proj[y]++;
+      }
+    }
+    return proj;
+  }
+
+  /// 己/已/巳 视觉评分
+  /// 己: 右下开口，弯钩不封口
+  /// 已: 弯钩半封口
+  /// 巳: 弯钩全封口，底部封闭
+  static double _scoreJiYiSi(img.Image binary, List<int> hProj, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 分析底部区域（下半部分）的封闭程度
+    // 巳的底部最封闭，己的最开放
+    final bottomStart = (h * 0.6).round();
+    int bottomInk = 0;
+    int bottomRightInk = 0;
+    final midX = w ~/ 2;
+    for (int y = bottomStart; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (ImageProcessor._isBlack(binary, x, y)) bottomInk++;
+      }
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor._isBlack(binary, x, y)) bottomRightInk++;
+      }
+    }
+    final bottomDensity = bottomInk / (w * (h - bottomStart));
+    final rightBias = bottomRightInk > 0 ? bottomInk / bottomRightInk : 1.0;
+
+    // 右侧竖投影：分析右半部分是否有封闭的竖线
+    int rightVertical = 0;
+    for (int x = (w * 0.6).round(); x < w; x++) {
+      if (vProj[x] > h * 0.3) rightVertical++;
+    }
+    final rightClosure = rightVertical / (w * 0.4).round().clamp(1, 99);
+
+    if (candidate == '巳') {
+      // 巳: 底部封闭 → 右下墨迹密度高，右侧有封闭竖线
+      return (bottomDensity * 2.0 + rightClosure * 1.5).clamp(0.0, 1.0);
+    } else if (candidate == '已') {
+      // 已: 半封口 → 中等底部密度
+      return (0.5 + (1.0 - (bottomDensity - 0.3).abs() * 3)).clamp(0.2, 0.8);
+    } else {
+      // 己: 开口 → 底部密度低，右侧无封闭线
+      return ((1.0 - bottomDensity) * 0.8 + (1.0 - rightClosure) * 0.5).clamp(0.0, 1.0);
+    }
+  }
+
+  /// 未/末 视觉评分
+  /// 未: 上横长、下横短
+  /// 末: 上横短、下横长
+  static double _scoreWeiMo(img.Image binary, List<int> hProj, String candidate) {
+    final h = binary.height;
+    // 找到两条横线的位置
+    final peaks = _findHorizontalPeaks(hProj, h);
+    if (peaks.length < 2) return 0.5;
+
+    final upperY = peaks[0];
+    final lowerY = peaks[1];
+
+    // 计算上横和下横的宽度（连续黑色像素跨度）
+    final upperWidth = _measureStrokeWidthAtRow(binary, upperY);
+    final lowerWidth = _measureStrokeWidthAtRow(binary, lowerY);
+
+    if (upperWidth == 0 || lowerWidth == 0) return 0.5;
+
+    final ratio = lowerWidth / upperWidth;
+
+    if (candidate == '未') {
+      // 未: 下横比上横短 → ratio < 1
+      return (1.0 - ratio).clamp(0.2, 1.0);
+    } else {
+      // 末: 下横比上横长 → ratio > 1
+      return ratio.clamp(0.0, 1.0);
+    }
+  }
+
+  /// 土/士 视觉评分
+  static double _scoreTuShi(img.Image binary, List<int> hProj, String candidate) {
+    return _scoreWeiMo(binary, hProj, candidate == '土' ? '未' : '末');
+  }
+
+  /// 太/大/犬 视觉评分
+  static double _scoreTaiDaQuan(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 检测右下区域是否有孤立小点（太的点）
+    // 检测右上区域是否有孤立小点（犬的点）
+    final rightBottomDensity = _regionDensity(binary, (w * 0.5).round(), (h * 0.6).round(), w, h);
+    final rightTopDensity = _regionDensity(binary, (w * 0.5).round(), 0, w, (h * 0.35).round());
+
+    if (candidate == '太') {
+      // 太: 右下有点
+      return rightBottomDensity > 0.05 ? 0.8 : 0.3;
+    } else if (candidate == '犬') {
+      // 犬: 右上有点
+      return rightTopDensity > 0.05 ? 0.8 : 0.3;
+    } else {
+      // 大: 无额外点
+      final hasDot = rightBottomDensity > 0.05 || rightTopDensity > 0.05;
+      return hasDot ? 0.3 : 0.8;
+    }
+  }
+
+  /// 天/夫 视觉评分
+  static double _scoreTianFu(img.Image binary, List<int> hProj, String candidate) {
+    final h = binary.height;
+    final peaks = _findHorizontalPeaks(hProj, h);
+    if (peaks.length < 2) return 0.5;
+
+    // 夫的竖画穿过上横，在上横以上有墨迹
+    final upperY = peaks[0];
+    final aboveInk = _regionDensity(binary, 0, 0, binary.width, (upperY * 0.8).round());
+
+    if (candidate == '夫') {
+      return aboveInk > 0.02 ? 0.7 : 0.4;
+    } else {
+      return aboveInk < 0.02 ? 0.7 : 0.4;
+    }
+  }
+
+  /// 干/千/于 视觉评分
+  static double _scoreGanQianYu(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 千: 顶部有撇画（左上区域有墨迹）
+    final topLeftDensity = _regionDensity(binary, 0, 0, (w * 0.4).round(), (h * 0.3).round());
+    // 于: 右下有点或钩
+    final bottomRightDensity = _regionDensity(binary, (w * 0.5).round(), (h * 0.7).round(), w, h);
+
+    if (candidate == '千') {
+      return topLeftDensity > 0.05 ? 0.8 : 0.3;
+    } else if (candidate == '于') {
+      return bottomRightDensity > 0.05 ? 0.7 : 0.4;
+    } else {
+      // 干: 无撇无钩
+      final hasExtra = topLeftDensity > 0.05 || bottomRightDensity > 0.05;
+      return hasExtra ? 0.3 : 0.7;
+    }
+  }
+
+  /// 人/入 视觉评分
+  static double _scoreRenRu(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 分析墨迹重心位置
+    int topMass = 0, bottomMass = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (ImageProcessor._isBlack(binary, x, y)) {
+          if (y < h ~/ 2) topMass++;
+          else bottomMass++;
+        }
+      }
+    }
+    final total = topMass + bottomMass;
+    if (total == 0) return 0.5;
+    final topRatio = topMass / total;
+
+    if (candidate == '人') {
+      // 人: 重心偏上（交叉点高）
+      return topRatio > 0.5 ? 0.7 : 0.4;
+    } else {
+      // 入: 重心偏下（交叉点低）
+      return topRatio < 0.5 ? 0.7 : 0.4;
+    }
+  }
+
+  /// 午/牛 视觉评分
+  static double _scoreWuNiu(img.Image binary, List<int> hProj, String candidate) {
+    final h = binary.height;
+    // 牛的横线在上方（撇画起笔高），午的横线在中间
+    final peaks = _findHorizontalPeaks(hProj, h);
+    if (peaks.isEmpty) return 0.5;
+
+    final firstPeakRatio = peaks.first / h;
+    if (candidate == '牛') {
+      // 牛: 横线偏上
+      return firstPeakRatio < 0.45 ? 0.7 : 0.4;
+    } else {
+      // 午: 横线在中部
+      return firstPeakRatio > 0.4 ? 0.7 : 0.4;
+    }
+  }
+
+  /// 日/目 视觉评分
+  static double _scoreRiMu(img.Image binary, List<int> hProj, String candidate) {
+    final h = binary.height;
+    // 内部横线数量：日有1条，目有2条
+    // 去掉顶部和底部的横线，统计中间区域的横线峰值
+    final innerStart = (h * 0.2).round();
+    final innerEnd = (h * 0.8).round();
+    int innerPeaks = 0;
+    bool inPeak = false;
+    for (int y = innerStart; y < innerEnd; y++) {
+      if (hProj[y] > binary.width * 0.3) {
+        if (!inPeak) {
+          innerPeaks++;
+          inPeak = true;
+        }
+      } else {
+        inPeak = false;
+      }
+    }
+
+    if (candidate == '目') {
+      return innerPeaks >= 2 ? 0.8 : 0.3;
+    } else {
+      return innerPeaks <= 1 ? 0.8 : 0.3;
+    }
+  }
+
+  /// 田/由 视觉评分
+  static double _scoreTianYou(img.Image binary, List<int> vProj, String candidate) {
+    final h = binary.height;
+    // 由: 竖画向下延伸，底部有更多墨迹
+    final bottomDensity = _regionDensity(binary, 0, (h * 0.75).round(), binary.width, h);
+
+    if (candidate == '由') {
+      return bottomDensity > 0.15 ? 0.7 : 0.4;
+    } else {
+      return bottomDensity < 0.15 ? 0.7 : 0.4;
+    }
+  }
+
+  /// 白/自 视觉评分
+  static double _scoreBaiZi(img.Image binary, List<int> hProj, String candidate) {
+    final h = binary.height;
+    // 自比白多一条内部横线
+    final innerStart = (h * 0.25).round();
+    final innerEnd = (h * 0.75).round();
+    int innerPeaks = 0;
+    bool inPeak = false;
+    for (int y = innerStart; y < innerEnd; y++) {
+      if (hProj[y] > binary.width * 0.25) {
+        if (!inPeak) {
+          innerPeaks++;
+          inPeak = true;
+        }
+      } else {
+        inPeak = false;
+      }
+    }
+
+    if (candidate == '自') {
+      return innerPeaks >= 2 ? 0.8 : 0.3;
+    } else {
+      return innerPeaks <= 1 ? 0.8 : 0.3;
+    }
+  }
+
+  /// 日/曰 视觉评分
+  static double _scoreRiYue(double aspectRatio, double inkDensity, String candidate) {
+    if (candidate == '曰') {
+      // 曰: 横宽（aspect < 1）
+      return aspectRatio < 1.0 ? 0.8 : 0.3;
+    } else {
+      // 日: 纵长（aspect > 1）
+      return aspectRatio > 1.0 ? 0.8 : 0.3;
+    }
+  }
+
+  /// 王/玉 视觉评分
+  static double _scoreWangYu(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 玉: 右下有点
+    final dotRegion = _regionDensity(binary, (w * 0.5).round(), (h * 0.65).round(), w, h);
+
+    if (candidate == '玉') {
+      return dotRegion > 0.05 ? 0.8 : 0.3;
+    } else {
+      return dotRegion < 0.03 ? 0.8 : 0.4;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v5.7.0: 视觉分析辅助函数
+  // ═══════════════════════════════════════════════════════════
+
+  /// 计算指定区域的墨迹密度
+  static double _regionDensity(img.Image binary, int x1, int y1, int x2, int y2) {
+    final clampedX1 = x1.clamp(0, binary.width);
+    final clampedY1 = y1.clamp(0, binary.height);
+    final clampedX2 = x2.clamp(0, binary.width);
+    final clampedY2 = y2.clamp(0, binary.height);
+    final area = (clampedX2 - clampedX1) * (clampedY2 - clampedY1);
+    if (area <= 0) return 0.0;
+
+    int fg = 0;
+    for (int y = clampedY1; y < clampedY2; y++) {
+      for (int x = clampedX1; x < clampedX2; x++) {
+        if (ImageProcessor._isBlack(binary, x, y)) fg++;
+      }
+    }
+    return fg / area;
+  }
+
+  /// 在水平投影中找到峰值位置（横线位置）
+  static List<int> _findHorizontalPeaks(List<int> hProj, int height) {
+    final peaks = <int>[];
+    final threshold = hProj.reduce((a, b) => a > b ? a : b) * 0.3;
+    bool inPeak = false;
+    for (int y = 1; y < height - 1; y++) {
+      if (hProj[y] > threshold) {
+        if (!inPeak) {
+          peaks.add(y);
+          inPeak = true;
+        }
+      } else {
+        inPeak = false;
+      }
+    }
+    return peaks;
+  }
+
+  /// 测量指定行的笔画宽度（连续黑色像素的最大跨度）
+  static int _measureStrokeWidthAtRow(img.Image binary, int y) {
+    int maxWidth = 0;
+    int currentWidth = 0;
+    for (int x = 0; x < binary.width; x++) {
+      if (ImageProcessor._isBlack(binary, x, y)) {
+        currentWidth++;
+        if (currentWidth > maxWidth) maxWidth = currentWidth;
+      } else {
+        currentWidth = 0;
+      }
+    }
+    return maxWidth;
+  }
+
+  /// 形近字消歧 — 当识别结果属于形近字组时，利用视觉特征 + 上下文选择最可能的字
+  ///
+  /// v5.7.0: 新增视觉特征消歧，通过分析图片的笔画结构来区分形近字。
+  /// 综合评分 = 视觉特征 (60%) + n-gram 上下文 (40%)
   ///
   /// 返回消歧后的结果，如果无法消歧则返回原结果
-  static String _disambiguateConfusable(String result, {String? prevChar, String? nextChar}) {
+  static String _disambiguateConfusable(String result, {String? prevChar, String? nextChar, img.Image? image}) {
     // 查找结果所属的形近字组
     List<String>? group;
     for (final entry in _confusableGroups.entries) {
@@ -5332,25 +5871,57 @@ class RecognitionService {
     }
     if (group == null || group.length < 2) return result;
 
-    // 使用 n-gram 上下文评分选择最佳候选
-    String bestChar = result;
-    double bestScore = -1.0;
-
+    // ── 上下文评分 (权重 40%) ──
+    final contextScores = <String, double>{};
     for (final candidate in group) {
-      final score = DictionaryService.instance.getContextScore(
+      contextScores[candidate] = DictionaryService.instance.getContextScore(
         candidate,
         prevChar: prevChar,
         nextChar: nextChar,
       );
-      if (score > bestScore) {
-        bestScore = score;
+    }
+
+    // ── 视觉特征评分 (权重 60%) ──
+    Map<String, double> visualScores;
+    if (image != null) {
+      visualScores = _scoreConfusableByVisual(image, group);
+      debugPrint('形近字视觉消歧: 候选=$group, 视觉分=$visualScores, 上下文分=$contextScores');
+    } else {
+      visualScores = {for (final c in group) c: 0.5};
+    }
+
+    // ── 综合评分 ──
+    String bestChar = result;
+    double bestCombined = -1.0;
+
+    for (final candidate in group) {
+      final visual = visualScores[candidate] ?? 0.5;
+      final context = contextScores[candidate] ?? 0.0;
+      final combined = image != null
+          ? visual * 0.60 + context * 0.40
+          : context; // 无图片时退回纯上下文
+      if (combined > bestCombined) {
+        bestCombined = combined;
         bestChar = candidate;
       }
     }
 
-    // 只有当最佳候选与原结果不同且得分差异明显时才替换
-    if (bestChar != result && bestScore > 0.3) {
-      debugPrint('形近字消歧: "$result" → "$bestChar" (上下文得分 ${(bestScore * 100).toStringAsFixed(0)}%)');
+    // 只有当最佳候选与原结果不同且综合分差异明显时才替换
+    final originalCombined = image != null
+        ? (visualScores[result] ?? 0.5) * 0.60 + (contextScores[result] ?? 0.0) * 0.40
+        : (contextScores[result] ?? 0.0);
+
+    if (bestChar != result && bestCombined > originalCombined + 0.08) {
+      debugPrint('形近字消歧: "$result" → "$bestChar" '
+          '(综合 ${(bestCombined * 100).toStringAsFixed(0)}% vs ${(originalCombined * 100).toStringAsFixed(0)}%)');
+      _addDebugLog('recognition', '形近字视觉消歧', data: {
+        'original': result,
+        'corrected': bestChar,
+        'visualScores': visualScores.map((k, v) => MapEntry(k, (v * 100).toStringAsFixed(0))),
+        'contextScores': contextScores.map((k, v) => MapEntry(k, (v * 100).toStringAsFixed(0))),
+        'combined': (bestCombined * 100).toStringAsFixed(0),
+        'usedVisual': image != null,
+      });
       return bestChar;
     }
 

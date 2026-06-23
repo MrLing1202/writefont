@@ -219,12 +219,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WhatsNewDialog.checkAndShow(
       context,
       version: currentVersion,
-      subtitle: '连笔字智能切分，行书草书也能准确识别',
+      subtitle: '视觉+上下文双重消歧，形近字识别更精准',
       items: const [
-        WhatsNewItem(icon: '✂️', title: '连笔字智能切分', description: '两个字连在一起？自动检测并切分识别，每个字独立识别后组合结果'),
-        WhatsNewItem(icon: '📐', title: '垂直投影分割', description: '用投影分析找到最佳切分点，切分后验证墨迹密度，避免切出空白'),
-        WhatsNewItem(icon: '🎯', title: '连笔字自动检测', description: '根据宽高比和墨迹分布自动判断，正常单字不会误触发切分'),
-        WhatsNewItem(icon: '🔄', title: '识别管道升级', description: '切分后的每个片段走完整识别管道，保证每个字的识别质量'),
+        WhatsNewItem(icon: '👁️', title: '视觉特征形近字消歧', description: '通过分析图片笔画结构区分形近字，己/已/巳、未/末等不再混淆'),
+        WhatsNewItem(icon: '📊', title: '综合评分系统', description: '视觉特征(60%)+上下文(40%)双重评分，比纯上下文消歧更准确'),
+        WhatsNewItem(icon: '🔍', title: '17组形近字视觉分析', description: '覆盖己已巳、未末、土士、太大犬等17组高频形近字的视觉特征'),
+        WhatsNewItem(icon: '📝', title: '形近字库扩展', description: '新增分份、近进、气汽等18组形近字映射，总覆盖达51组'),
       ],
     );
   }
