@@ -5937,6 +5937,95 @@ class RecognitionService {
         else if (candidate == '喝' || candidate == '渴') {
           score = _scoreHeKe(binary, verticalProfile, candidate);
         }
+        // ── v5.8.0: 继续扩展形近字视觉评分 ──
+        // ── 令/今 ──
+        else if (candidate == '令' || candidate == '今') {
+          score = _scoreLingJin(binary, candidate);
+        }
+        // ── 折/拆 ──
+        else if (candidate == '折' || candidate == '拆') {
+          score = _scoreZheChai(binary, candidate);
+        }
+        // ── 拔/拨 ──
+        else if (candidate == '拔' || candidate == '拨') {
+          score = _scoreBaBo(binary, candidate);
+        }
+        // ── 候/侯 ──
+        else if (candidate == '候' || candidate == '侯') {
+          score = _scoreHouHou(binary, verticalProfile, candidate);
+        }
+        // ── 密/蜜 ──
+        else if (candidate == '密' || candidate == '蜜') {
+          score = _scoreMiMi(binary, horizontalProfile, candidate);
+        }
+        // ── 座/坐 ──
+        else if (candidate == '座' || candidate == '坐') {
+          score = _scoreZuoZuo(binary, horizontalProfile, candidate);
+        }
+        // ── 科/料 ──
+        else if (candidate == '科' || candidate == '料') {
+          score = _scoreKeLiao(binary, verticalProfile, candidate);
+        }
+        // ── 话/活 ──
+        else if (candidate == '话' || candidate == '活') {
+          score = _scoreHuaHuo(binary, verticalProfile, candidate);
+        }
+        // ── 阳/阴 ──
+        else if (candidate == '阳' || candidate == '阴') {
+          score = _scoreYangYin(binary, verticalProfile, candidate);
+        }
+        // ── 风/凤 ──
+        else if (candidate == '风' || candidate == '凤') {
+          score = _scoreFengFeng(binary, candidate);
+        }
+        // ── 颗/棵 ──
+        else if (candidate == '颗' || candidate == '棵') {
+          score = _scoreKeKe(binary, horizontalProfile, candidate);
+        }
+        // ── 抱/报 ──
+        else if (candidate == '抱' || candidate == '报') {
+          score = _scoreBaoBao(binary, horizontalProfile, candidate);
+        }
+        // ── 做/作 ──
+        else if (candidate == '做' || candidate == '作') {
+          score = _scoreZuoZuo2(binary, horizontalProfile, candidate);
+        }
+        // ── 跑/跳 ──
+        else if (candidate == '跑' || candidate == '跳') {
+          score = _scorePaoTiao(binary, candidate);
+        }
+        // ── 注/住 ──
+        else if (candidate == '注' || candidate == '住') {
+          score = _scoreZhuZhu(binary, verticalProfile, candidate);
+        }
+        // ── 明/朋 ──
+        else if (candidate == '明' || candidate == '朋') {
+          score = _scoreMingPeng(binary, verticalProfile, candidate);
+        }
+        // ── 认/识 ──
+        else if (candidate == '认' || candidate == '识') {
+          score = _scoreRenShi(binary, horizontalProfile, candidate);
+        }
+        // ── 字/学 ──
+        else if (candidate == '字' || candidate == '学') {
+          score = _scoreZiXue(binary, horizontalProfile, candidate);
+        }
+        // ── 说/话 ──
+        else if (candidate == '说' || candidate == '话') {
+          score = _scoreShuoHua(binary, horizontalProfile, candidate);
+        }
+        // ── 样/洋 ──
+        else if (candidate == '样' || candidate == '洋') {
+          score = _scoreYangYang(binary, verticalProfile, candidate);
+        }
+        // ── 妈/好 ──
+        else if (candidate == '妈' || candidate == '好') {
+          score = _scoreMaHao(binary, horizontalProfile, candidate);
+        }
+        // ── 他/她 ──
+        else if (candidate == '他' || candidate == '她') {
+          score = _scoreTaTa(binary, verticalProfile, candidate);
+        }
 
         scores[candidate] = score;
       }
