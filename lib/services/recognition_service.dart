@@ -735,12 +735,24 @@ class RecognitionService {
         }
       }
 
-      // 按票数降序，票数相同取置信度高的
+      // v4.4.0: 多候选综合评分排序（TopN 路径）
+      final totalVotesTopN = voteMap.values.fold(0, (a, b) => a + b);
+      final candidateScoresTopN = <String, double>{};
+      for (final entry in voteMap.entries) {
+        candidateScoresTopN[entry.key] = _computeCandidateScore(
+          candidate: entry.key,
+          votes: entry.value,
+          totalVotes: totalVotesTopN,
+          confidenceMap: confidenceMap,
+          resultStrategies: {}, // TopN 路径不跟踪策略来源
+          resultSizes: {}, // TopN 路径不跟踪放大尺寸
+        );
+      }
       final sorted = voteMap.entries.toList()
         ..sort((a, b) {
-          final voteDiff = b.value.compareTo(a.value);
-          if (voteDiff != 0) return voteDiff;
-          return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+          final scoreDiff = (candidateScoresTopN[b.key] ?? 0).compareTo(candidateScoresTopN[a.key] ?? 0);
+          if (scoreDiff != 0) return scoreDiff;
+          return b.value.compareTo(a.value);
         });
 
       // ═══ v4.1.0: TFLite 模型补充 Top-N 投票 ═══
@@ -767,12 +779,24 @@ class RecognitionService {
         debugPrint('TopN: TFLite 补充投票异常: $e');
       }
 
-      // 重新排序（包含 TFLite 投票）
+      // v4.4.0: 重新排序（包含 TFLite 投票，使用综合评分）
+      final finalTotalVotes = voteMap.values.fold(0, (a, b) => a + b);
+      final finalScores = <String, double>{};
+      for (final entry in voteMap.entries) {
+        finalScores[entry.key] = _computeCandidateScore(
+          candidate: entry.key,
+          votes: entry.value,
+          totalVotes: finalTotalVotes,
+          confidenceMap: confidenceMap,
+          resultStrategies: {},
+          resultSizes: {},
+        );
+      }
       final finalSorted = voteMap.entries.toList()
         ..sort((a, b) {
-          final voteDiff = b.value.compareTo(a.value);
-          if (voteDiff != 0) return voteDiff;
-          return (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
+          final scoreDiff = (finalScores[b.key] ?? 0).compareTo(finalScores[a.key] ?? 0);
+          if (scoreDiff != 0) return scoreDiff;
+          return b.value.compareTo(a.value);
         });
 
       return finalSorted.take(n).map((e) => e.key).toList();
@@ -1973,6 +1997,55 @@ class RecognitionService {
     return guess;
   }
 
+  /// v4.4.0: 多候选综合评分 — 票数 + 置信度 + 字频 + 策略多样性 + 多尺度一致性
+  ///
+  /// 当 TopN 投票产生多个候选时，用此函数综合排序，而非仅按票数排序。
+  /// 评分公式：score = votes*0.35 + confidence*0.20 + frequency*0.15 + diversity*0.15 + multiScale*0.15
+  static double _computeCandidateScore({
+    required String candidate,
+    required int votes,
+    required int totalVotes,
+    required Map<String, double> confidenceMap,
+    required Map<String, Set<String>> resultStrategies,
+    required Map<String, Set<int>> resultSizes,
+  }) {
+    // 1. 归一化票数 (0.0~1.0)
+    final normalizedVotes = totalVotes > 0 ? votes / totalVotes : 0.0;
+
+    // 2. 置信度 (0.0~1.0)
+    final confidence = confidenceMap[candidate] ?? 0.7;
+
+    // 3. 字频分数 (0.0~1.0) — 高频字得分高
+    final freqRank = DictionaryService.instance.getFrequency(candidate);
+    double freqScore = 0.5; // 默认中等
+    if (freqRank >= 0 && freqRank < 100) {
+      freqScore = 1.0;
+    } else if (freqRank >= 100 && freqRank < 500) {
+      freqScore = 0.8;
+    } else if (freqRank >= 500 && freqRank < 1500) {
+      freqScore = 0.6;
+    } else if (freqRank >= 1500) {
+      freqScore = 0.4;
+    }
+
+    // 4. 策略多样性 (0.0~1.0) — 越多不同策略投票，得分越高
+    final strategyCount = resultStrategies[candidate]?.length ?? 0;
+    final diversityScore = (strategyCount / 5.0).clamp(0.0, 1.0);
+
+    // 5. 多尺度一致性 (0.0~1.0) — 多个放大尺寸识别到相同结果
+    final sizeCount = resultSizes[candidate]?.length ?? 0;
+    final multiScaleScore = (sizeCount / 3.0).clamp(0.0, 1.0);
+
+    // 加权综合评分
+    final score = normalizedVotes * 0.35 +
+        confidence * 0.20 +
+        freqScore * 0.15 +
+        diversityScore * 0.15 +
+        multiScaleScore * 0.15;
+
+    return score;
+  }
+
   /// 本地 ML Kit 识别（多级预处理 + 多轮投票 + 自适应增强）
   ///
   /// 策略：
@@ -2356,19 +2429,28 @@ class RecognitionService {
           debugPrint('TFLite: 补充投票异常（不影响主流程）: $e');
         }
 
-        // 按票数排序，票数相同取置信度高的，再相同取常见字优先（v3.0.0）
+        // v4.4.0: 多候选综合评分排序（票数 + 置信度 + 字频 + 策略多样性 + 多尺度一致性）
+        final totalVotes = voteMap.values.fold(0, (a, b) => a + b);
+        final candidateScores = <String, double>{};
+        for (final entry in voteMap.entries) {
+          candidateScores[entry.key] = _computeCandidateScore(
+            candidate: entry.key,
+            votes: entry.value,
+            totalVotes: totalVotes,
+            confidenceMap: confidenceMap,
+            resultStrategies: resultStrategies,
+            resultSizes: resultSizes,
+          );
+        }
         final sorted = voteMap.entries.toList()
           ..sort((a, b) {
-            final voteDiff = b.value.compareTo(a.value);
-            if (voteDiff != 0) return voteDiff;
-            final confDiff = (confidenceMap[b.key] ?? 0).compareTo(confidenceMap[a.key] ?? 0);
-            if (confDiff != 0) return confDiff;
-            // v3.0.0: 字频加权 — 常见字优先（字频越高值越大）
-            final freqA = DictionaryService.instance.getFrequency(a.key);
-            final freqB = DictionaryService.instance.getFrequency(b.key);
-            return freqB.compareTo(freqA);
+            final scoreDiff = (candidateScores[b.key] ?? 0).compareTo(candidateScores[a.key] ?? 0);
+            if (scoreDiff != 0) return scoreDiff;
+            // 分数相同时按票数降序
+            return b.value.compareTo(a.value);
           });
         var winner = sorted.first;
+        debugPrint('ML Kit 识别: 综合评分排序 — ${sorted.take(3).map((e) => '"${e.key}" score=${(candidateScores[e.key]! * 100).toStringAsFixed(0)}% votes=${e.value}').join(', ')}');
 
         // ── 平局决胜：top-2 票数差仅为 1 时，用多种预处理投票决胜（v3.2.0） ──
         if (sorted.length >= 2 && (winner.value - sorted[1].value) <= 1) {
