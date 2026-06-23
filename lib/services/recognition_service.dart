@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'tflite_recognition_service.dart';
 import 'api_key.dart';
+import '../models/recognition_history.dart';
 
 /// 单次识别的投票详情（v2.7.0）— 供 UI 展示投票过程
 class RecognitionDetail {
@@ -1026,6 +1027,15 @@ class RecognitionService {
       _insertPHashCache(pHash, result, confidence);
       // 异步写入持久化缓存（不阻塞返回）
       _persistCacheEntry(cacheKey, result, confidence);
+
+      // v4.6.0: 异步写入识别历史记录（不阻塞返回）
+      RecognitionHistoryService.addEntry(RecognitionHistoryEntry(
+        character: result,
+        confidence: confidence,
+        timestamp: DateTime.now(),
+        mode: useCloud ? 'cloud' : 'local',
+        imageHash: cacheKey,
+      ));
     }
 
     return result;

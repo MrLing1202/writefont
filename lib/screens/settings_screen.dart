@@ -16,6 +16,7 @@ import '../services/cloud_sync_service.dart';
 import '../theme/app_theme.dart';
 import 'cloud_sync_screen.dart';
 import 'ocr_settings_screen.dart';
+import 'recognition_history_screen.dart';
 import 'package:flutter/services.dart';
 
 /// 设置页面
@@ -1183,6 +1184,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ],
+          _buildDivider(),
+          ListTile(
+            leading: const Icon(Icons.history, color: WFColors.accent),
+            title: const Text('识别历史'),
+            subtitle: const Text('查看历史识别记录和统计'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                WFAnimations.slideRoute(const RecognitionHistoryScreen()),
+              );
+            },
+          ),
         ],
       ),
     );
