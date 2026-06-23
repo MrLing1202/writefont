@@ -1057,8 +1057,26 @@ class ImageProcessor {
         final bh = maxY - minY + 1;
         if (bw > w * 0.45 || bh > h * 0.45) continue;
 
-        // Filter by aspect ratio: single character should be roughly square (< 2.5:1)
+        // v4.3.0: 粘连字符分割 — 宽高比 > 1.8 时尝试垂直投影分割
         final aspect = bw > bh ? bw / bh : bh / bw;
+        if (aspect > 1.8 && bw > bh && bw > 30) {
+          // 可能是粘连字符，尝试垂直投影分割
+          final splits = _verticalProjectionSplit(blackRows, minX, minY, maxX, maxY, w, h);
+          if (splits.length >= 2) {
+            debugPrint('粘连分割: ${bw}x$bh (aspect=${aspect.toStringAsFixed(1)}) → ${splits.length} 个子区域');
+            for (final split in splits) {
+              final sBw = split[2] - split[0] + 1;
+              final sBh = split[3] - split[1] + 1;
+              final sAspect = sBw > sBh ? sBw / sBh : sBh / sBw;
+              if (sAspect < 3.0 && sBw > 5 && sBh > 5) {
+                bboxes.add([split[0], split[1], split[2], split[3], area ~/ splits.length]);
+              }
+            }
+            continue; // 已分割，跳过原始大框
+          }
+        }
+
+        // Filter by aspect ratio: single character should be roughly square (< 2.5:1)
         if (aspect > 2.5) continue;
 
         bboxes.add([minX, minY, maxX, maxY, area]);
@@ -1734,6 +1752,87 @@ class ImageProcessor {
     final variance = (sumSq / count) - mean * mean;
     // 归一化到 0~1 范围（经验值：方差 1000 对应高噪声）
     return (variance / 1000.0).clamp(0.0, 1.0);
+  }
+
+  /// v4.3.0: 垂直投影法分割粘连字符
+  ///
+  /// 对指定连通域区域计算垂直投影（每列黑色像素数），
+  /// 找到投影谷底作为分割点，将宽连通域拆分为多个字符。
+  ///
+  /// [blackRows] 预计算的二值像素数组
+  /// [minX],[minY],[maxX],[maxY] 连通域边界
+  /// [imgW],[imgH] 图像尺寸
+  /// 返回分割后的子区域列表 [[sx, sy, ex, ey], ...]
+  static List<List<int>> _verticalProjectionSplit(
+    List<List<bool>> blackRows,
+    int minX, int minY, int maxX, int maxY,
+    int imgW, int imgH,
+  ) {
+    final regionW = maxX - minX + 1;
+    final regionH = maxY - minY + 1;
+
+    // 计算垂直投影（每列黑色像素数）
+    final projection = List.filled(regionW, 0);
+    for (int x = minX; x <= maxX; x++) {
+      int count = 0;
+      for (int y = minY; y <= maxY; y++) {
+        if (y >= 0 && y < imgH && x >= 0 && x < imgW && blackRows[y][x]) {
+          count++;
+        }
+      }
+      projection[x - minX] = count;
+    }
+
+    // 平滑投影（3列滑动平均，减少噪声干扰）
+    final smoothed = List.filled(regionW, 0);
+    for (int i = 0; i < regionW; i++) {
+      int sum = projection[i];
+      int cnt = 1;
+      if (i > 0) { sum += projection[i - 1]; cnt++; }
+      if (i < regionW - 1) { sum += projection[i + 1]; cnt++; }
+      smoothed[i] = sum ~/ cnt;
+    }
+
+    // 找到投影谷底：局部最小值且低于平均值的 40%
+    final avgProjection = smoothed.reduce((a, b) => a + b) / regionW;
+    final valleyThreshold = (avgProjection * 0.4).round().clamp(1, 99999);
+
+    // 候选分割点
+    final candidates = <int>[];
+    for (int i = 2; i < regionW - 2; i++) {
+      if (smoothed[i] <= valleyThreshold &&
+          smoothed[i] <= smoothed[i - 1] &&
+          smoothed[i] <= smoothed[i + 1]) {
+        candidates.add(i);
+      }
+    }
+
+    if (candidates.isEmpty) return [];
+
+    // 选择最佳分割点：间距要合理（至少 regionH * 0.3，即一个字符宽度的最小值）
+    final minCharWidth = (regionH * 0.3).round().clamp(10, 99999);
+    final splitPoints = <int>[0]; // 起始位置
+    for (final c in candidates) {
+      if (c - splitPoints.last >= minCharWidth) {
+        splitPoints.add(c);
+      }
+    }
+    splitPoints.add(regionW); // 结束位置
+
+    // 至少要有 2 段才算分割成功
+    if (splitPoints.length < 3) return [];
+
+    // 生成子区域边界
+    final result = <List<int>>[];
+    for (int i = 0; i < splitPoints.length - 1; i++) {
+      final sx = minX + splitPoints[i];
+      final ex = minX + splitPoints[i + 1] - 1;
+      if (ex > sx) {
+        result.add([sx, minY, ex, maxY]);
+      }
+    }
+
+    return result;
   }
 
   static bool _hasContent(img.Image cell) {

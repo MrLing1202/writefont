@@ -652,6 +652,14 @@ class RecognitionService {
         '局部阈值二值化': (src) => _localThresholdBinarize(src),
         // v4.0.1: 笔画粗细自适应
         '笔画粗细自适应': (src) => _strokeThicknessAdaptive(src),
+        // v4.3.0: 形态学断笔修复（闭运算：膨胀→腐蚀，填充笔画间小间隙）
+        '断笔修复': (src) => _morphologicalClose(img.grayscale(src), radius: 1),
+        // v4.3.0: 细笔画增强（自适应膨胀，笔画太细时加粗）
+        '细笔画增强': (src) => _thinStrokeEnhance(src),
+        // v4.3.0: 形态学开运算去噪（先腐蚀后膨胀，去除小噪点）
+        '开运算去噪': (src) => _morphologicalOpen(img.grayscale(src), radius: 1),
+        // v4.3.0: 多尺度形态学（小膨胀+闭运算，兼顾断笔修复和笔画增强）
+        '多尺度形态学': (src) => _multiScaleMorphology(src),
       };
 
       for (final targetSize in upscaleTargets) {
@@ -1343,6 +1351,48 @@ class RecognitionService {
       }
     }
     return result;
+  }
+
+  /// v4.3.0: 形态学闭运算（先膨胀后腐蚀，填充笔画间小间隙/断笔）
+  img.Image _morphologicalClose(img.Image binary, {int radius = 1}) {
+    final dilated = _morphologicalDilate(binary, radius: radius);
+    return _morphologicalErode(dilated, radius: radius);
+  }
+
+  /// v4.3.0: 形态学开运算（先腐蚀后膨胀，去除小噪点）
+  img.Image _morphologicalOpen(img.Image binary, {int radius = 1}) {
+    final eroded = _morphologicalErode(binary, radius: radius);
+    return _morphologicalDilate(eroded, radius: radius);
+  }
+
+  /// v4.3.0: 细笔画增强 — 自适应膨胀
+  /// 根据前景像素比例判断笔画粗细，细笔画自动膨胀加粗
+  img.Image _thinStrokeEnhance(img.Image src) {
+    final gray = img.grayscale(src);
+    final binary = _adaptiveBinarize(gray, blockSize: 25, c: 8);
+    final w = binary.width, h = binary.height;
+    int fg = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (binary.getPixel(x, y).r.toInt() < 128) fg++;
+      }
+    }
+    final ratio = fg / (w * h);
+    if (ratio < 0.10) {
+      return _morphologicalDilate(binary, radius: 2);
+    } else if (ratio < 0.15) {
+      return _morphologicalDilate(binary, radius: 1);
+    }
+    return binary;
+  }
+
+  /// v4.3.0: 多尺度形态学 — 小膨胀 + 闭运算组合
+  /// 先轻度膨胀增强笔画连通性，再闭运算填充小间隙
+  img.Image _multiScaleMorphology(img.Image src) {
+    final gray = img.grayscale(src);
+    final binary = _adaptiveBinarize(gray, blockSize: 25, c: 8);
+    final dilated = _morphologicalDilate(binary, radius: 1);
+    return _morphologicalClose(dilated, radius: 1);
   }
 
   /// 水平投影方差（用于倾斜检测）
@@ -2085,6 +2135,14 @@ class RecognitionService {
         '局部阈值二值化': (src) => _localThresholdBinarize(src),
         // v4.0.1: 笔画粗细自适应
         '笔画粗细自适应': (src) => _strokeThicknessAdaptive(src),
+        // v4.3.0: 形态学断笔修复（闭运算：膨胀→腐蚀，填充笔画间小间隙）
+        '断笔修复': (src) => _morphologicalClose(img.grayscale(src), radius: 1),
+        // v4.3.0: 细笔画增强（自适应膨胀，笔画太细时加粗）
+        '细笔画增强': (src) => _thinStrokeEnhance(src),
+        // v4.3.0: 形态学开运算去噪（先腐蚀后膨胀，去除小噪点）
+        '开运算去噪': (src) => _morphologicalOpen(img.grayscale(src), radius: 1),
+        // v4.3.0: 多尺度形态学（小膨胀+闭运算，兼顾断笔修复和笔画增强）
+        '多尺度形态学': (src) => _multiScaleMorphology(src),
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -2113,14 +2171,14 @@ class RecognitionService {
         }
       }
       if (features.lineThickness < 0.3) {
-        // 细线条：加增粗策略
-        for (final k in ['手写体笔画增强', '笔画归一化', '笔画粗细自适应']) {
+        // 细线条：加增粗策略（v4.3.0: 新增细笔画增强、断笔修复）
+        for (final k in ['手写体笔画增强', '笔画归一化', '笔画粗细自适应', '细笔画增强', '断笔修复']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
       if (features.lineThickness > 0.7) {
-        // 粗线条：加细化策略
-        for (final k in ['形态学骨架化', '笔画粗细自适应']) {
+        // 粗线条：加细化策略（v4.3.0: 新增开运算去噪）
+        for (final k in ['形态学骨架化', '笔画粗细自适应', '开运算去噪']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
