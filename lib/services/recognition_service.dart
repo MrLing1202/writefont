@@ -119,6 +119,10 @@ class RecognitionService {
   /// 最近一次本地识别的投票置信度（供 recognizeCharacter 判断是否需要云端二次确认）
   double _lastLocalConfidence = 0.0;
 
+  /// v4.5.0: 最近识别的字符序列（用于 n-gram 上下文预测，最多保留5个）
+  static final List<String> _lastRecognizedChars = [];
+  static const int _maxContextLength = 5;
+
   /// 策略可靠性追踪（策略名 → 历史成功率 0.0~1.0）— v2.6.0
   /// v4.3.0: 持久化到 SharedPreferences，启动时加载，识别后更新
   /// 用于加权投票：高可靠性策略的投票获得权重加成
@@ -748,8 +752,13 @@ class RecognitionService {
       }
 
       // ── 字典后处理：常见字优先，形近字纠正 ──
+      // v4.5.0: 传入上下文信息，利用 n-gram 语言模型辅助决策
       final confidence = _confidenceCache[cacheKey] ?? 0.75;
-      final dictResult = DictionaryService.instance.postProcess(result, confidence: confidence);
+      final dictResult = DictionaryService.instance.postProcess(
+        result,
+        confidence: confidence,
+        prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+      );
       if (dictResult != result) {
         _addDebugLog('recognition', '字典后处理', data: {
           'original': result,
@@ -792,6 +801,12 @@ class RecognitionService {
 
       // 记录用户识别的字符，更新用户常用字缓存（异步，不阻塞返回）
       DictionaryService.instance.recordUsage(result);
+
+      // v4.5.0: 记录到上下文序列（供 n-gram 模型使用）
+      _lastRecognizedChars.add(result);
+      if (_lastRecognizedChars.length > _maxContextLength) {
+        _lastRecognizedChars.removeAt(0);
+      }
 
       _addDebugLog('recognition', '识别成功', data: {
         'result': result,
@@ -2298,9 +2313,10 @@ class RecognitionService {
   }
 
   /// v4.4.0: 多候选综合评分 — 票数 + 置信度 + 字频 + 策略多样性 + 多尺度一致性
+  /// v4.5.0: 新增 n-gram 上下文得分
   ///
   /// 当 TopN 投票产生多个候选时，用此函数综合排序，而非仅按票数排序。
-  /// 评分公式：score = votes*0.35 + confidence*0.20 + frequency*0.15 + diversity*0.15 + multiScale*0.15
+  /// 评分公式：score = votes*0.30 + confidence*0.18 + frequency*0.12 + diversity*0.12 + multiScale*0.12 + context*0.16
   static double _computeCandidateScore({
     required String candidate,
     required int votes,
@@ -2336,12 +2352,19 @@ class RecognitionService {
     final sizeCount = resultSizes[candidate]?.length ?? 0;
     final multiScaleScore = (sizeCount / 3.0).clamp(0.0, 1.0);
 
-    // 加权综合评分
-    final score = normalizedVotes * 0.35 +
-        confidence * 0.20 +
-        freqScore * 0.15 +
-        diversityScore * 0.15 +
-        multiScaleScore * 0.15;
+    // 6. v4.5.0: n-gram 上下文得分 (0.0~1.0)
+    final contextScore = DictionaryService.instance.getContextScore(
+      candidate,
+      prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+    );
+
+    // 加权综合评分（v4.5.0: 上下文占 16%）
+    final score = normalizedVotes * 0.30 +
+        confidence * 0.18 +
+        freqScore * 0.12 +
+        diversityScore * 0.12 +
+        multiScaleScore * 0.12 +
+        contextScore * 0.16;
 
     return score;
   }

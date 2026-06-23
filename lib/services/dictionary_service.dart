@@ -2221,6 +2221,160 @@ class DictionaryService {
   };
 
   // ═══════════════════════════════════════════
+  // v4.5.0: n-gram 语言模型
+  // ═══════════════════════════════════════════
+
+  /// bigram 模型缓存（前一字 → {后一字: 概率}）
+  /// 从 _commonWords 中自动构建，首次使用时懒加载
+  Map<String, Map<String, double>> _bigramModel = {};
+  bool _bigramBuilt = false;
+
+  /// trigram 模型缓存（前两字 → {第三字: 概率}）
+  Map<String, Map<String, double>> _trigramModel = {};
+  bool _trigramBuilt = false;
+
+  /// 构建 bigram 模型（从常见词库中提取相邻字对）
+  void _ensureBigramBuilt() {
+    if (_bigramBuilt) return;
+    _bigramBuilt = true;
+
+    final counts = <String, Map<String, int>>{};
+    for (final word in _commonWords) {
+      final runes = word.runes.toList();
+      for (int i = 0; i < runes.length - 1; i++) {
+        final prev = String.fromCharCode(runes[i]);
+        final next = String.fromCharCode(runes[i + 1]);
+        counts.putIfAbsent(prev, () => {});
+        counts[prev]![next] = (counts[prev]![next] ?? 0) + 1;
+      }
+    }
+
+    // 转为概率（归一化）
+    for (final entry in counts.entries) {
+      final total = entry.value.values.fold(0, (a, b) => a + b);
+      _bigramModel[entry.key] = {};
+      for (final c in entry.value.entries) {
+        _bigramModel[entry.key]![c.key] = c.value / total;
+      }
+    }
+    debugPrint('语言模型: bigram 构建完成, ${_bigramModel.length} 个前缀');
+  }
+
+  /// 构建 trigram 模型（从常见词库中提取连续三字组）
+  void _ensureTrigramBuilt() {
+    if (_trigramBuilt) return;
+    _trigramBuilt = true;
+
+    final counts = <String, Map<String, int>>{};
+    for (final word in _commonWords) {
+      final runes = word.runes.toList();
+      for (int i = 0; i < runes.length - 2; i++) {
+        final prev2 = String.fromCharCode(runes[i]) + String.fromCharCode(runes[i + 1]);
+        final next = String.fromCharCode(runes[i + 2]);
+        counts.putIfAbsent(prev2, () => {});
+        counts[prev2]![next] = (counts[prev2]![next] ?? 0) + 1;
+      }
+    }
+
+    for (final entry in counts.entries) {
+      final total = entry.value.values.fold(0, (a, b) => a + b);
+      _trigramModel[entry.key] = {};
+      for (final c in entry.value.entries) {
+        _trigramModel[entry.key]![c.key] = c.value / total;
+      }
+    }
+    debugPrint('语言模型: trigram 构建完成, ${_trigramModel.length} 个前缀');
+  }
+
+  /// v4.5.0: 使用 n-gram 模型评分候选字符在上下文中的合理性
+  ///
+  /// 返回 0.0~1.0 的分数，越高表示候选字在上下文中越合理。
+  /// 综合考虑 bigram 和 trigram 概率。
+  double getContextScore(String candidate, {String? prevChar, String? nextChar, String? prev2Char}) {
+    double score = 0.0;
+    int factors = 0;
+
+    // bigram: prev → candidate
+    if (prevChar != null && prevChar.isNotEmpty) {
+      _ensureBigramBuilt();
+      final bigrams = _bigramModel[prevChar];
+      if (bigrams != null) {
+        final prob = bigrams[candidate] ?? 0.0;
+        score += prob;
+        factors++;
+      }
+    }
+
+    // bigram: candidate → next
+    if (nextChar != null && nextChar.isNotEmpty) {
+      _ensureBigramBuilt();
+      final bigrams = _bigramModel[candidate];
+      if (bigrams != null) {
+        final prob = bigrams[nextChar] ?? 0.0;
+        score += prob;
+        factors++;
+      }
+    }
+
+    // trigram: prev2 → candidate
+    if (prev2Char != null && prev2Char.length >= 2) {
+      _ensureTrigramBuilt();
+      final trigrams = _trigramModel[prev2Char];
+      if (trigrams != null) {
+        final prob = trigrams[candidate] ?? 0.0;
+        score += prob * 1.5; // trigram 权重更高
+        factors++;
+      }
+    }
+
+    if (factors == 0) return 0.5; // 无上下文信息时返回中性分
+    return (score / factors).clamp(0.0, 1.0);
+  }
+
+  /// v4.5.0: 预测下一个最可能的字符
+  ///
+  /// 给定前文，返回按概率降序排列的候选字符列表（最多 [limit] 个）。
+  List<String> predictNext(String prevChar, {int limit = 5}) {
+    if (prevChar.isEmpty) return [];
+    _ensureBigramBuilt();
+
+    final bigrams = _bigramModel[prevChar];
+    if (bigrams == null || bigrams.isEmpty) return [];
+
+    final sorted = bigrams.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.take(limit).map((e) => e.key).toList();
+  }
+
+  /// v4.5.0: 上下文感知候选选择
+  ///
+  /// 当有多个候选字符时，利用 n-gram 语言模型选择最符合上下文的。
+  /// 返回最佳候选，如果语言模型无法判断则返回 null。
+  String? selectByContext(List<String> candidates, {String? prevChar, String? nextChar, String? prev2Char}) {
+    if (candidates.length <= 1) return null;
+    if (prevChar == null && nextChar == null) return null;
+
+    String? bestCandidate;
+    double bestScore = -1.0;
+
+    for (final c in candidates) {
+      final score = getContextScore(c, prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidate = c;
+      }
+    }
+
+    // 只有当最佳候选的分数明显高于中性分（0.5）时才采用
+    if (bestScore > 0.6 && bestCandidate != null) {
+      debugPrint('语言模型: 选择 "$bestCandidate" (上下文得分=${(bestScore * 100).toStringAsFixed(0)}%)');
+      return bestCandidate;
+    }
+
+    return null;
+  }
+
+  // ═══════════════════════════════════════════
   // 公开 API
   // ═══════════════════════════════════════════
 
@@ -2294,13 +2448,32 @@ class DictionaryService {
   ///
   /// [result] 原始识别结果字符
   /// [confidence] 识别置信度（0.0~1.0），仅当置信度不太低时才做替换
-  String postProcess(String result, {double confidence = 1.0}) {
+  /// v4.5.0: 新增上下文参数，利用 n-gram 语言模型辅助决策
+  String postProcess(String result, {double confidence = 1.0, String? prevChar, String? nextChar, String? prev2Char}) {
     if (result.isEmpty) return result;
 
     final char = result;
 
-    // 常见字，无需处理
-    if (isCommonChar(char)) return char;
+    // 常见字，且上下文合理 → 直接返回
+    if (isCommonChar(char)) {
+      // v4.5.0: 即使是常见字，也检查上下文合理性
+      // 如果上下文得分极低（< 0.1），可能是误识别的常见字
+      if (prevChar != null || nextChar != null) {
+        final ctxScore = getContextScore(char, prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+        if (ctxScore < 0.05 && confidence < 0.7) {
+          // 上下文极不合理且置信度低，尝试形近字
+          final similar = getSimilarChars(char);
+          for (final s in similar) {
+            final sScore = getContextScore(s, prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+            if (sScore > 0.3) {
+              debugPrint('字典后处理: "$char" → "$s" (上下文修正, ctx=${(sScore * 100).toStringAsFixed(0)}%)');
+              return s;
+            }
+          }
+        }
+      }
+      return char;
+    }
 
     // 置信度太低时不做替换，避免误改
     if (confidence < 0.5) return char;
@@ -2311,11 +2484,24 @@ class DictionaryService {
     // 查找形近常见字
     final suggested = suggestSimilar(char);
     if (suggested != null && suggested != char) {
-      // 只有置信度不够高时才替换（≥0.5 且 < 0.85）
-      // 高置信度时信任 OCR 结果
+      // v4.5.0: 结合 n-gram 上下文分数决定是否替换
       if (confidence < 0.85) {
-        debugPrint('字典后处理: "$char" → "$suggested" (形近字替换, 置信度=${(confidence * 100).toStringAsFixed(0)}%)');
-        return suggested;
+        // 如果有上下文信息，用语言模型验证替换是否合理
+        if (prevChar != null || nextChar != null) {
+          final origScore = getContextScore(char, prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+          final sugScore = getContextScore(suggested, prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+          // 只有当替换后的上下文得分更高时才替换
+          if (sugScore > origScore + 0.1) {
+            debugPrint('字典后处理: "$char" → "$suggested" (形近字+上下文验证, '
+                'orig_ctx=${(origScore * 100).toStringAsFixed(0)}%, '
+                'sug_ctx=${(sugScore * 100).toStringAsFixed(0)}%)');
+            return suggested;
+          }
+        } else {
+          // 无上下文信息时，使用原有逻辑
+          debugPrint('字典后处理: "$char" → "$suggested" (形近字替换, 置信度=${(confidence * 100).toStringAsFixed(0)}%)');
+          return suggested;
+        }
       }
     }
 
