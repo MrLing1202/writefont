@@ -2536,6 +2536,26 @@ class RecognitionService {
     return guess;
   }
 
+  /// 3x3 Sobel X 方向梯度
+  static int _sobelX(img.Image gray, int x, int y) {
+    return (-1 * gray.getPixel(x - 1, y - 1).r.toInt() +
+             1 * gray.getPixel(x + 1, y - 1).r.toInt() +
+            -2 * gray.getPixel(x - 1, y).r.toInt() +
+             2 * gray.getPixel(x + 1, y).r.toInt() +
+            -1 * gray.getPixel(x - 1, y + 1).r.toInt() +
+             1 * gray.getPixel(x + 1, y + 1).r.toInt());
+  }
+
+  /// 3x3 Sobel Y 方向梯度
+  static int _sobelY(img.Image gray, int x, int y) {
+    return (-1 * gray.getPixel(x - 1, y - 1).r.toInt() +
+            -2 * gray.getPixel(x, y - 1).r.toInt() +
+            -1 * gray.getPixel(x + 1, y - 1).r.toInt() +
+             1 * gray.getPixel(x - 1, y + 1).r.toInt() +
+             2 * gray.getPixel(x, y + 1).r.toInt() +
+             1 * gray.getPixel(x + 1, y + 1).r.toInt());
+  }
+
   /// v4.4.0: 多候选综合评分 — 票数 + 置信度 + 字频 + 策略多样性 + 多尺度一致性
   /// v4.5.0: 新增 n-gram 上下文得分
   ///
