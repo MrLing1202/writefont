@@ -3827,6 +3827,38 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 模糊图特殊处理 — 使用更强的去模糊策略
+      if (imageFeatures.blur > 0.7) {
+        debugPrint('ML Kit 识别: 模糊图特殊处理 (blur=${imageFeatures.blur.toStringAsFixed(2)})');
+        final blurStrategies = [
+          ('强去模糊+CLAHE', (img.Image src) {
+            final deblurred = _iterativeDeblur(src, iterations: 5);
+            return ImageQualityService.instance.enhanceContrastAdaptive(deblurred);
+          }),
+          ('强去模糊+Sauvola', (img.Image src) {
+            final deblurred = _iterativeDeblur(src, iterations: 5);
+            return _sauvolaBinarizeAdaptive(deblurred, features: imageFeatures);
+          }),
+          ('强去模糊+USM', (img.Image src) {
+            final deblurred = _iterativeDeblur(src, iterations: 5);
+            return _unsharpMaskSharpen(deblurred, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in blurStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 模糊图策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
