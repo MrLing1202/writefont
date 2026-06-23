@@ -3733,7 +3733,7 @@ class RecognitionService {
       }
 
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
-      // v5.8.0: 扩展快速通道至 6 个策略（+多阈值融合 +笔画保留增强）
+      // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
         final quickStrategies = [
           ('CLAHE自适应', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -3742,6 +3742,15 @@ class RecognitionService {
           ('自适应Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
           ('多阈值融合', (img.Image src) => _multiThresholdFusion(src)),
           ('笔画保留增强', (img.Image src) => _strokePreservingEnhance(src)),
+          ('自适应对比度+USM', (img.Image src) {
+            final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+            return _unsharpMaskSharpen(enhanced, amount: 1.2);
+          }),
+          ('伽马+Sauvola+USM', (img.Image src) {
+            final gamma = _adaptiveGammaCorrection(src);
+            final sauvola = _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+            return _unsharpMaskSharpen(sauvola, amount: 1.0);
+          }),
         ];
         for (final (label, fn) in quickStrategies) {
           final processed = fn(enhanced);
@@ -3758,9 +3767,9 @@ class RecognitionService {
         // v5.8.0: 5个快速策略一致 → 直接返回（更高的确认度）
         if (voteMap.isNotEmpty) {
           final topVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
-          if (topVotes >= 5) {
+          if (topVotes >= 6) {
             final quickWinner = voteMap.entries.reduce((a, b) => a.value >= b.value ? a : b);
-            _lastLocalConfidence = 0.95;
+            _lastLocalConfidence = 0.96;
             debugPrint('ML Kit 识别: 快速通道命中 "${quickWinner.key}" (${quickWinner.value}票)');
             return quickWinner.key;
           }
