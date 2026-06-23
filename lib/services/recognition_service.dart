@@ -6313,6 +6313,574 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 去噪+颜色反转+CLAHE识别 — 三重组合
+      if (imageFeatures.noise > 0.5 && imageFeatures.inkDensity > 0.5) {
+        debugPrint('ML Kit 识别: 去噪+颜色反转+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, density=${imageFeatures.inkDensity.toStringAsFixed(2)})');
+        final denoiseInvertClaheStrategies = [
+          ('去噪+颜色反转+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final inverted = _invertColors(img.grayscale(denoised));
+            return ImageQualityService.instance.enhanceContrastAdaptive(inverted);
+          }),
+          ('去噪+颜色反转+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final inverted = _invertColors(img.grayscale(denoised));
+            return _unsharpMaskSharpen(inverted, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseInvertClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+颜色反转+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+方向边缘增强+CLAHE识别 — 三重组合
+      if (imageFeatures.noise > 0.5 && imageFeatures.connection > 0.5) {
+        debugPrint('ML Kit 识别: 去噪+方向边缘增强+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, connection=${imageFeatures.connection.toStringAsFixed(2)})');
+        final denoiseDirEdgeClaheStrategies = [
+          ('去噪+方向边缘增强+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final edge = _directionalEdgeEnhance(denoised);
+            return ImageQualityService.instance.enhanceContrastAdaptive(edge);
+          }),
+          ('去噪+方向边缘增强+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final edge = _directionalEdgeEnhance(denoised);
+            return _unsharpMaskSharpen(edge, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseDirEdgeClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+方向边缘增强+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+迭代去模糊+CLAHE识别 — 三重组合
+      if (imageFeatures.noise > 0.5 && imageFeatures.blur > 0.5) {
+        debugPrint('ML Kit 识别: 去噪+迭代去模糊+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, blur=${imageFeatures.blur.toStringAsFixed(2)})');
+        final denoiseDeblurClaheStrategies = [
+          ('去噪+迭代去模糊+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final deblurred = _iterativeDeblur(denoised, iterations: 3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(deblurred);
+          }),
+          ('去噪+迭代去模糊+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final deblurred = _iterativeDeblur(denoised, iterations: 3);
+            return _unsharpMaskSharpen(deblurred, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseDeblurClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+迭代去模糊+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+高斯模糊去噪+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.blur > 0.4) {
+        debugPrint('ML Kit 识别: 去噪+高斯模糊去噪+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, blur=${imageFeatures.blur.toStringAsFixed(2)})');
+        final denoiseGaussSharpClaheStrategies = [
+          ('去噪+高斯模糊去噪+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final gaussProcessed = _gaussianBlurSharpen(denoised);
+            return ImageQualityService.instance.enhanceContrastAdaptive(gaussProcessed);
+          }),
+          ('去噪+高斯模糊去噪+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final gaussProcessed = _gaussianBlurSharpen(denoised);
+            return _unsharpMaskSharpen(gaussProcessed, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseGaussSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+高斯模糊去噪+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+归一化+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.strokeVariability > 0.5) {
+        debugPrint('ML Kit 识别: 去噪+归一化+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, variability=${imageFeatures.strokeVariability.toStringAsFixed(2)})');
+        final denoiseNormSharpClaheStrategies = [
+          ('去噪+归一化+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final normalized = _strokeNormalization(denoised);
+            final sharpened = _unsharpMaskSharpen(normalized, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+归一化+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final normalized = _strokeNormalization(denoised);
+            final sharpened = _unsharpMaskSharpen(normalized, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseNormSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+归一化+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+修复+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.connection < 0.3) {
+        debugPrint('ML Kit 识别: 去噪+修复+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, connection=${imageFeatures.connection.toStringAsFixed(2)})');
+        final denoiseRepairSharpClaheStrategies = [
+          ('去噪+修复+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final repaired = _morphologicalClose(img.grayscale(denoised), radius: 1);
+            final sharpened = _unsharpMaskSharpen(repaired, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+修复+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final repaired = _morphologicalClose(img.grayscale(denoised), radius: 1);
+            final sharpened = _unsharpMaskSharpen(repaired, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseRepairSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+修复+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+增粗+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.lineThickness < 0.25) {
+        debugPrint('ML Kit 识别: 去噪+增粗+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, thickness=${imageFeatures.lineThickness.toStringAsFixed(2)})');
+        final denoiseThickenSharpClaheStrategies = [
+          ('去噪+增粗+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final thickened = _thinStrokeEnhance(denoised);
+            final sharpened = _unsharpMaskSharpen(thickened, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+增粗+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final thickened = _thinStrokeEnhance(denoised);
+            final sharpened = _unsharpMaskSharpen(thickened, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseThickenSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+增粗+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+细化+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.lineThickness > 0.7) {
+        debugPrint('ML Kit 识别: 去噪+细化+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, thickness=${imageFeatures.lineThickness.toStringAsFixed(2)})');
+        final denoiseThinSharpClaheStrategies = [
+          ('去噪+细化+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final thinned = _morphologicalSkeletonize(img.grayscale(denoised));
+            final sharpened = _unsharpMaskSharpen(thinned, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+细化+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final thinned = _morphologicalSkeletonize(img.grayscale(denoised));
+            final sharpened = _unsharpMaskSharpen(thinned, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseThinSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+细化+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+分离+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.connection > 0.6) {
+        debugPrint('ML Kit 识别: 去噪+分离+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, connection=${imageFeatures.connection.toStringAsFixed(2)})');
+        final denoiseSeparateSharpClaheStrategies = [
+          ('去噪+分离+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final separated = _morphologicalSkeletonize(img.grayscale(denoised));
+            final sharpened = _unsharpMaskSharpen(separated, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+分离+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final separated = _morphologicalSkeletonize(img.grayscale(denoised));
+            final sharpened = _unsharpMaskSharpen(separated, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseSeparateSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+分离+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+倾斜校正+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.slantAngle > 0.5) {
+        debugPrint('ML Kit 识别: 去噪+倾斜校正+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, slant=${imageFeatures.slantAngle.toStringAsFixed(2)})');
+        final denoiseSlantSharpClaheStrategies = [
+          ('去噪+倾斜校正+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final corrected = _skewCorrection(denoised);
+            final sharpened = _unsharpMaskSharpen(corrected, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+倾斜校正+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final corrected = _skewCorrection(denoised);
+            final sharpened = _unsharpMaskSharpen(corrected, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseSlantSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+倾斜校正+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+边缘增强+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.edgeSharpness < 0.4) {
+        debugPrint('ML Kit 识别: 去噪+边缘增强+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, sharpness=${imageFeatures.edgeSharpness.toStringAsFixed(2)})');
+        final denoiseEdgeSharpClaheStrategies = [
+          ('去噪+边缘增强+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final edge = _multiScaleEdgeEnhance(denoised);
+            final sharpened = _unsharpMaskSharpen(edge, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+边缘增强+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final edge = _multiScaleEdgeEnhance(denoised);
+            final sharpened = _unsharpMaskSharpen(edge, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseEdgeSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+边缘增强+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+伽马+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.contrast < 0.35) {
+        debugPrint('ML Kit 识别: 去噪+伽马+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final denoiseGammaSharpClaheStrategies = [
+          ('去噪+伽马+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final gamma = _adaptiveGammaCorrection(denoised);
+            final sharpened = _unsharpMaskSharpen(gamma, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+伽马+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final gamma = _adaptiveGammaCorrection(denoised);
+            final sharpened = _unsharpMaskSharpen(gamma, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseGammaSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+伽马+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+局部对比度+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.contrast < 0.3) {
+        debugPrint('ML Kit 识别: 去噪+局部对比度+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final denoiseLocalContrastSharpClaheStrategies = [
+          ('去噪+局部对比度+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final localEnhanced = _localContrastEnhance(denoised);
+            final sharpened = _unsharpMaskSharpen(localEnhanced, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+局部对比度+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final localEnhanced = _localContrastEnhance(denoised);
+            final sharpened = _unsharpMaskSharpen(localEnhanced, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseLocalContrastSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+局部对比度+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+背景归一化+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.contrast < 0.25) {
+        debugPrint('ML Kit 识别: 去噪+背景归一化+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final denoiseBgNormSharpClaheStrategies = [
+          ('去噪+背景归一化+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final normalized = _normalizeBackground(denoised);
+            final sharpened = _unsharpMaskSharpen(normalized, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+背景归一化+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final normalized = _normalizeBackground(denoised);
+            final sharpened = _unsharpMaskSharpen(normalized, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseBgNormSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+背景归一化+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+直方图均衡+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.contrast < 0.2) {
+        debugPrint('ML Kit 识别: 去噪+直方图均衡+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final denoiseHistEqSharpClaheStrategies = [
+          ('去噪+直方图均衡+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final equalized = _adaptiveHistogramEqualizeQuadrants(denoised);
+            final sharpened = _unsharpMaskSharpen(equalized, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+直方图均衡+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final equalized = _adaptiveHistogramEqualizeQuadrants(denoised);
+            final sharpened = _unsharpMaskSharpen(equalized, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseHistEqSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+直方图均衡+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+形态学梯度+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.inkDensity > 0.6) {
+        debugPrint('ML Kit 识别: 去噪+形态学梯度+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, density=${imageFeatures.inkDensity.toStringAsFixed(2)})');
+        final denoiseGradientSharpClaheStrategies = [
+          ('去噪+形态学梯度+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final gradient = _morphologicalGradient(denoised, radius: 1);
+            final sharpened = _unsharpMaskSharpen(gradient, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+形态学梯度+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final gradient = _morphologicalGradient(denoised, radius: 1);
+            final sharpened = _unsharpMaskSharpen(gradient, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseGradientSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+形态学梯度+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+多尺度形态学+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.strokeVariability > 0.5) {
+        debugPrint('ML Kit 识别: 去噪+多尺度形态学+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, variability=${imageFeatures.strokeVariability.toStringAsFixed(2)})');
+        final denoiseMorphSharpClaheStrategies = [
+          ('去噪+多尺度形态学+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final morphed = _multiScaleMorphology(denoised);
+            final sharpened = _unsharpMaskSharpen(morphed, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+多尺度形态学+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final morphed = _multiScaleMorphology(denoised);
+            final sharpened = _unsharpMaskSharpen(morphed, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseMorphSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+多尺度形态学+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 去噪+笔画粗细自适应+锐化+CLAHE识别 — 四重组合
+      if (imageFeatures.noise > 0.6 && imageFeatures.strokeVariability > 0.6) {
+        debugPrint('ML Kit 识别: 去噪+笔画粗细自适应+锐化+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, variability=${imageFeatures.strokeVariability.toStringAsFixed(2)})');
+        final denoiseStrokeAdaptSharpClaheStrategies = [
+          ('去噪+笔画粗细自适应+锐化+CLAHE增强', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final adapted = _strokeThicknessAdaptive(denoised);
+            final sharpened = _unsharpMaskSharpen(adapted, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('去噪+笔画粗细自适应+锐化+CLAHEUSM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            final adapted = _strokeThicknessAdaptive(denoised);
+            final sharpened = _unsharpMaskSharpen(adapted, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in denoiseStrokeAdaptSharpClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 去噪+笔画粗细自适应+锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
