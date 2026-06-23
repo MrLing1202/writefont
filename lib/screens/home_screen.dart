@@ -219,12 +219,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WhatsNewDialog.checkAndShow(
       context,
       version: currentVersion,
-      subtitle: '智能字帖 + 识别诊断，让造字更高效',
+      subtitle: '识别率深度优化，向 99% 目标推进',
       items: const [
-        WhatsNewItem(icon: '📝', title: '智能字帖生成器', description: '分析薄弱字符，自动生成田字格练习字帖，可分享图片'),
-        WhatsNewItem(icon: '📊', title: '识别诊断报告', description: '全面的识别统计、置信度分布、薄弱字符分析和趋势追踪'),
-        WhatsNewItem(icon: '🎯', title: '针对性练习', description: '按置信度排序，最弱的字符优先练习，效率更高'),
-        WhatsNewItem(icon: '📈', title: '识别模式对比', description: '对比本地 vs 云端识别效果，找到最适合你的方式'),
+        WhatsNewItem(icon: '🔤', title: '形近字智能消歧', description: '33组形近字（己/已/巳、未/末等）自动根据上下文选择正确字'),
+        WhatsNewItem(icon: '⚡', title: '评分权重优化', description: 'ML Kit置信度权重提升，简单字多策略确认奖励，结果更准确'),
+        WhatsNewItem(icon: '🔄', title: '旋转重试增强', description: '阈值提升至65%，覆盖更多中等置信度误识别场景'),
+        WhatsNewItem(icon: '🎨', title: '自适应二值化', description: '根据图片对比度自动调整参数，淡笔画和深墨迹都能准确识别'),
       ],
     );
   }

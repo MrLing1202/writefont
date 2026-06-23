@@ -945,26 +945,15 @@ class RecognitionService {
 
       final confidence = _confidenceCache[cacheKey] ?? 0.75;
 
-      // ═══ v4.5.0: 后处理管道优化 — 按代价从低到高排序，早退出减少延迟 ═══
+      // ═══ v5.2.0: 后处理管道优化 — 按可靠性和代价排序 ═══
+      // 字典后处理优先于错误模式纠正，因为：
+      // 1. 字典检查更可靠（基于语言模型，非历史统计）
+      // 2. 错误模式纠正基于用户修正历史，可能包含误修正
+      // 3. 字典纠正后再检查错误模式，避免错误模式覆盖正确的字典纠正
 
-      // ── 第1步：错误模式纠正（代价最低，查表 O(1)）──
-      // 最先执行：如果已知高频误识别模式，直接纠正，跳过后续昂贵分析
-      bool wasErrorCorrected = false;
-      if (result != null) {
-        final errorCorrected = await _applyErrorPatternCorrection(result);
-        if (errorCorrected != null && errorCorrected != result) {
-          _addDebugLog('recognition', '错误模式纠正', data: {
-            'original': result,
-            'corrected': errorCorrected,
-          });
-          debugPrint('识别: 错误模式纠正 "$result" → "$errorCorrected"');
-          result = errorCorrected;
-          wasErrorCorrected = true;
-        }
-      }
-
-      // ── 第2步：字典后处理（代价低，查表+形近字匹配）──
+      // ── 第1步：字典后处理（代价低，查表+形近字匹配）──
       // 传入上下文信息，利用 n-gram 语言模型辅助决策
+      bool wasErrorCorrected = false;
       if (result != null) {
         final dictResult = DictionaryService.instance.postProcess(
           result,
@@ -979,6 +968,21 @@ class RecognitionService {
           });
           debugPrint('识别: 字典后处理 "$result" → "$dictResult"');
           result = dictResult;
+        }
+      }
+
+      // ── 第2步：错误模式纠正（代价低，查表 O(1)）──
+      // 仅在字典未改变结果时执行，避免覆盖字典纠正
+      if (result != null) {
+        final errorCorrected = await _applyErrorPatternCorrection(result);
+        if (errorCorrected != null && errorCorrected != result) {
+          _addDebugLog('recognition', '错误模式纠正', data: {
+            'original': result,
+            'corrected': errorCorrected,
+          });
+          debugPrint('识别: 错误模式纠正 "$result" → "$errorCorrected"');
+          result = errorCorrected;
+          wasErrorCorrected = true;
         }
       }
 
@@ -997,6 +1001,23 @@ class RecognitionService {
           });
           debugPrint('识别: n-gram纠错 "$result" → "$contextResult"');
           result = contextResult;
+        }
+      }
+
+      // ── 第3.5步：形近字消歧（代价低，查表 + 上下文评分）──
+      // v5.2.0: 当结果属于形近字组时，利用上下文选择最可能的字
+      if (result != null && confidence < 0.90) {
+        final disambiguated = _disambiguateConfusable(
+          result,
+          prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+        );
+        if (disambiguated != result) {
+          _addDebugLog('recognition', '形近字消歧', data: {
+            'original': result,
+            'corrected': disambiguated,
+          });
+          debugPrint('识别: 形近字消歧 "$result" → "$disambiguated"');
+          result = disambiguated;
         }
       }
 
@@ -3002,15 +3023,43 @@ class RecognitionService {
       prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
     );
 
-    // v4.8.0: 加权综合评分 — 票数权重提升至 35%，上下文降至 15%
-    final score = normalizedVotes * 0.35 +
-        confidence * 0.15 +
+    // v5.2.0: 加权综合评分 — 置信度权重提升至 20%（ML Kit 内部置信度是强信号），
+    // 多样性降至 10%，增加笔画复杂度奖励（简单字 1-3 笔更容易确认）
+    double score = normalizedVotes * 0.35 +
+        confidence * 0.20 +
         freqScore * 0.10 +
-        diversityScore * 0.15 +
+        diversityScore * 0.10 +
         multiScaleScore * 0.10 +
         contextScore * 0.15;
 
+    // v5.2.0: 笔画复杂度奖励 — 简单字（1-3 笔画）在多策略确认时获得额外加分
+    // 简单字的识别更容易被噪声干扰，但一旦多策略一致就非常可靠
+    if (votes >= 2) {
+      final codePoint = candidate.runes.first;
+      // 常见简单字范围（高频简单字：一二三四五六七八九十等）
+      final isSimpleChar = _isSimpleChar(codePoint);
+      if (isSimpleChar && strategyCount >= 2) {
+        score += 0.03; // 简单字 + 多策略确认 → 额外加分
+      }
+    }
+
     return score;
+  }
+
+  /// 判断是否为简单汉字（1-3 笔画的常见字）
+  static bool _isSimpleChar(int codePoint) {
+    // CJK 基本区 + 常见简单字（基于笔画数的经验范围）
+    if (codePoint < 0x4E00 || codePoint > 0x9FFF) return false;
+    // 常见 1-3 笔画汉字（高频）
+    const simpleChars = <int>{
+      0x4E00, 0x4E8C, 0x4E09, 0x56DB, 0x4E94, 0x516D, 0x4E03, 0x516B, 0x4E5D, 0x5341, // 一到十
+      0x4EBA, 0x5927, 0x5C0F, 0x4E0A, 0x4E0B, 0x5DE6, 0x53F3, 0x4E2D, 0x524D, 0x540E, // 人大上下左右中前后
+      0x65E5, 0x6708, 0x6C34, 0x706B, 0x5C71, 0x77F3, 0x7530, 0x76EE, 0x8033, 0x624B, // 日月水火山石田目耳手
+      0x53E3, 0x5FC3, 0x529B, 0x5200, 0x8F66, 0x9A6C, 0x725B, 0x7F8A, 0x9C7C, 0x9E1F, // 口心力刀车马牛羊鱼鸟
+      0x7537, 0x5973, 0x5B50, 0x7236, 0x6BCD, 0x738B, 0x767D, 0x7EA2, 0x9EC4, 0x9752, // 男女子父母王白红黄青
+      0x7A7A, 0x957F, 0x6B63, 0x65B9, 0x5706, 0x70B9, 0x7EBF, 0x9762, 0x4F53, // 空长正方圆点线面体
+    };
+    return simpleChars.contains(codePoint);
   }
 
   /// 本地 ML Kit 识别（多级预处理 + 多轮投票 + 自适应增强）
@@ -3555,7 +3604,8 @@ class RecognitionService {
           if (useTflite) {
             final tfliteService = TfliteRecognitionService.instance;
             final tfliteLoaded = await tfliteService.loadModel();
-            if (tfliteLoaded && tfliteService.isModelLoaded) {
+            // v5.2.0: 跳过占位推理器 — 随机输出会向投票系统注入噪声
+            if (tfliteLoaded && tfliteService.isModelLoaded && !tfliteService.isUsingPlaceholder) {
               debugPrint('ML Kit 识别: TFLite 模型可用，执行补充识别');
               final tflitePredictions = await tfliteService.recognizeWithConfidence(
                 imageBytes,
@@ -3856,9 +3906,10 @@ class RecognitionService {
 
         debugPrint('ML Kit 识别: 投票结果 "${winner.key}" (票数=${winner.value}, 置信度=${((_lastLocalConfidence) * 100).toStringAsFixed(0)}%, 策略=$strategyCount 种)');
 
-        // v3.8.0: 低置信度旋转重试 — 尝试90°/180°/270°旋转
-        if (_lastLocalConfidence < 0.5 && maxDim >= 80) {
-          debugPrint('ML Kit 识别: 置信度低，尝试旋转重试');
+        // v5.2.0: 旋转重试 — 阈值从 0.5 提升到 0.65，覆盖更多中等置信度场景
+        // 很多误识别发生在 0.5-0.65 置信度范围，旋转重试可以纠正
+        if (_lastLocalConfidence < 0.65 && maxDim >= 80) {
+          debugPrint('ML Kit 识别: 置信度 ${(_lastLocalConfidence * 100).toStringAsFixed(0)}% < 65%，尝试旋转重试');
           for (final angle in [90, 180, 270]) {
             final rotated = img.copyRotate(enhanced, angle: angle);
             final gray = img.grayscale(rotated);
@@ -4830,6 +4881,87 @@ class RecognitionService {
     if (bestCorrection != null) {
       debugPrint('错误模式纠正: "$result" → "$bestCorrection" (出现 $bestCount 次)');
       return bestCorrection;
+    }
+
+    return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v5.2.0: 形近字消歧 — 基于上下文的形近字自动纠正
+  // ═══════════════════════════════════════════════════════════
+
+  /// 形近字组 — 每组内的字符形状相似，容易混淆
+  /// key = 组名，value = 该组内的形近字集合
+  static const Map<String, List<String>> _confusableGroups = {
+    '己已巳': ['己', '已', '巳'],
+    '太犬': ['太', '犬'],
+    '未末': ['未', '末'],
+    '土士': ['土', '士'],
+    '天夫': ['天', '夫'],
+    '干千': ['干', '千'],
+    '人入': ['人', '入'],
+    '刀力': ['刀', '力'],
+    '大太': ['大', '太'],
+    '日目': ['日', '目'],
+    '田由': ['田', '由'],
+    '甲申': ['甲', '申'],
+    '白自': ['白', '自'],
+    '贝见': ['贝', '见'],
+    '问间': ['问', '间'],
+    '午牛': ['午', '牛'],
+    '鸟乌': ['鸟', '乌'],
+    '买卖': ['买', '卖'],
+    '王玉': ['王', '玉'],
+    '令今': ['令', '今'],
+    '折拆': ['折', '拆'],
+    '拔拨': ['拔', '拨'],
+    '候侯': ['候', '侯'],
+    '辨辩辫': ['辨', '辩', '辫'],
+    '密蜜': ['密', '蜜'],
+    '座坐': ['座', '坐'],
+    '做作': ['做', '作'],
+    '的地得': ['的', '地', '得'],
+    '在再': ['在', '再'],
+    '以已': ['以', '已'],
+    '那哪': ['那', '哪'],
+    '他她它': ['他', '她', '它'],
+    '有又': ['有', '又'],
+  };
+
+  /// 形近字消歧 — 当识别结果属于形近字组时，利用上下文选择最可能的字
+  ///
+  /// 返回消歧后的结果，如果无法消歧则返回原结果
+  static String _disambiguateConfusable(String result, {String? prevChar, String? nextChar}) {
+    // 查找结果所属的形近字组
+    List<String>? group;
+    for (final entry in _confusableGroups.entries) {
+      if (entry.value.contains(result)) {
+        group = entry.value;
+        break;
+      }
+    }
+    if (group == null || group.length < 2) return result;
+
+    // 使用 n-gram 上下文评分选择最佳候选
+    String bestChar = result;
+    double bestScore = -1.0;
+
+    for (final candidate in group) {
+      final score = DictionaryService.instance.getContextScore(
+        candidate,
+        prevChar: prevChar,
+        nextChar: nextChar,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestChar = candidate;
+      }
+    }
+
+    // 只有当最佳候选与原结果不同且得分差异明显时才替换
+    if (bestChar != result && bestScore > 0.3) {
+      debugPrint('形近字消歧: "$result" → "$bestChar" (上下文得分 ${(bestScore * 100).toStringAsFixed(0)}%)');
+      return bestChar;
     }
 
     return result;

@@ -44,6 +44,10 @@ class TfliteRecognitionService {
   /// 模型是否已加载且可用
   bool get isModelLoaded => _isModelLoaded && _isModelAvailable;
 
+  /// v5.2.0: 是否使用占位推理器（无真实模型，输出为随机值）
+  /// 当返回 true 时，TFLite 投票应被跳过以避免向投票系统注入噪声
+  bool get isUsingPlaceholder => _interpreter is _SimpleInterpreter;
+
   /// 模型是否正在加载
   bool get isLoading => _isLoading;
 

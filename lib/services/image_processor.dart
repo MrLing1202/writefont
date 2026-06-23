@@ -1864,7 +1864,19 @@ class ImageProcessor {
   /// 1. 使用更鲁棒的局部均值计算（积分图加速）
   /// 2. 增加局部标准差惩罚，对低对比度区域自适应调整 c 值
   /// 3. 更大的默认 block size 提升全局一致性
+  /// v5.2.0: 全局 c 值自适应 — 根据图像整体对比度动态调整
+  ///   低对比度图片：c 减小（6-8）保留淡笔画
+  ///   高对比度图片：c 增大（14-16）减少噪声
   static img.Image _adaptiveThreshold(img.Image gray, {int blockSize = 31, int c = 12, bool invert = false}) {
+    // v5.2.0: 全局对比度自适应 — 采样计算图像对比度，动态调整 c 值
+    final globalContrast = _estimateGlobalContrast(gray);
+    if (globalContrast < 0.15) {
+      // 低对比度：减小 c 保留淡笔画
+      c = (c * 0.6).round().clamp(4, c);
+    } else if (globalContrast > 0.45) {
+      // 高对比度：增大 c 减少噪声
+      c = (c * 1.3).round().clamp(c, 20);
+    }
     if (blockSize.isEven) blockSize++;
     final half = blockSize ~/ 2;
     final w = gray.width, h = gray.height;
@@ -2288,6 +2300,37 @@ class ImageProcessor {
     final variance = (sumSq / count) - mean * mean;
     // 归一化到 0~1 范围（经验值：方差 1000 对应高噪声）
     return (variance / 1000.0).clamp(0.0, 1.0);
+  }
+
+  /// v5.2.0: 估算全局对比度（像素标准差 / 128）
+  ///
+  /// 采样计算灰度像素的标准差，归一化到 0~1 范围。
+  /// 低对比度（< 0.15）：淡笔画、褪色墨迹
+  /// 高对比度（> 0.45）：深色墨迹、高反差纸张
+  static double _estimateGlobalContrast(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    if (w < 3 || h < 3) return 0.3; // 默认中等对比度
+
+    // 采样计算（每 3 个像素取一个）
+    double sum = 0;
+    double sumSq = 0;
+    int count = 0;
+
+    for (int y = 0; y < h; y += 3) {
+      for (int x = 0; x < w; x += 3) {
+        final v = gray.getPixel(x, y).r.toDouble();
+        sum += v;
+        sumSq += v * v;
+        count++;
+      }
+    }
+
+    if (count == 0) return 0.3;
+    final mean = sum / count;
+    final variance = (sumSq / count) - mean * mean;
+    final stddev = sqrt(variance > 0 ? variance : 0);
+    // 归一化：标准差 128 对应最大对比度
+    return (stddev / 128.0).clamp(0.0, 1.0);
   }
 
   /// v4.3.0: 垂直投影法分割粘连字符
