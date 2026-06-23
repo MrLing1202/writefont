@@ -2235,28 +2235,6 @@ class RecognitionService {
     return result;
   }
 
-  /// 辅助：快速 exp 近似
-  static double _exp(double x) {
-    x = x.clamp(-20, 20);
-    // Padé 近似
-    if (x < 0) return 1.0 / _exp(-x);
-    final intPart = x.floor();
-    final frac = x - intPart;
-    // e^frac 的 Padé 近似
-    final eFrac = (1 + frac + frac * frac / 2 + frac * frac * frac / 6) /
-                  (1 - frac * frac * frac / 6);
-    // e^intPart（快速幂）
-    double result = 1;
-    double base = 2.718281828;
-    int n = intPart;
-    while (n > 0) {
-      if (n % 2 == 1) result *= base;
-      base *= base;
-      n ~/= 2;
-    }
-    return result * eFrac;
-  }
-
   /// 辅助：以2为底的对数
   static double _log2(double x) => _ln(x) / _ln(2);
 
