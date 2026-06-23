@@ -751,27 +751,67 @@ class RecognitionService {
         _confidenceCache[cacheKey] = 0.75; // 投票通过的默认置信度
       }
 
-      // ── 字典后处理：常见字优先，形近字纠正 ──
-      // v4.5.0: 传入上下文信息，利用 n-gram 语言模型辅助决策
       final confidence = _confidenceCache[cacheKey] ?? 0.75;
-      final dictResult = DictionaryService.instance.postProcess(
-        result,
-        confidence: confidence,
-        prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
-      );
-      if (dictResult != result) {
-        _addDebugLog('recognition', '字典后处理', data: {
-          'original': result,
-          'corrected': dictResult,
-          'confidence': confidence,
-        });
-        debugPrint('识别: 字典后处理 "$result" → "$dictResult"');
-        result = dictResult;
+
+      // ═══ v4.5.0: 后处理管道优化 — 按代价从低到高排序，早退出减少延迟 ═══
+
+      // ── 第1步：错误模式纠正（代价最低，查表 O(1)）──
+      // 最先执行：如果已知高频误识别模式，直接纠正，跳过后续昂贵分析
+      bool wasErrorCorrected = false;
+      if (result != null) {
+        final errorCorrected = await _applyErrorPatternCorrection(result);
+        if (errorCorrected != null && errorCorrected != result) {
+          _addDebugLog('recognition', '错误模式纠正', data: {
+            'original': result,
+            'corrected': errorCorrected,
+          });
+          debugPrint('识别: 错误模式纠正 "$result" → "$errorCorrected"');
+          result = errorCorrected;
+          wasErrorCorrected = true;
+        }
       }
 
-      // ── 笔画特征辅助选择：低置信度时用笔画特征优化结果 ──
-      // v4.5.0: 扩大应用范围，利用曲率和复杂度特征提升匹配精度
-      if (confidence < 0.90 && result != null) {
+      // ── 第2步：字典后处理（代价低，查表+形近字匹配）──
+      // 传入上下文信息，利用 n-gram 语言模型辅助决策
+      if (result != null) {
+        final dictResult = DictionaryService.instance.postProcess(
+          result,
+          confidence: confidence,
+          prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+        );
+        if (dictResult != result) {
+          _addDebugLog('recognition', '字典后处理', data: {
+            'original': result,
+            'corrected': dictResult,
+            'confidence': confidence,
+          });
+          debugPrint('识别: 字典后处理 "$result" → "$dictResult"');
+          result = dictResult;
+        }
+      }
+
+      // ── 第3步：n-gram 上下文纠错（代价低，查表）──
+      // v4.5.0: 利用前后文预测最可能的字
+      if (result != null && confidence < 0.85 && !wasErrorCorrected) {
+        final contextResult = DictionaryService.instance.correctWithHomophone(
+          result,
+          prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+          confidence: confidence,
+        );
+        if (contextResult != result) {
+          _addDebugLog('recognition', 'n-gram上下文纠错', data: {
+            'original': result,
+            'corrected': contextResult,
+          });
+          debugPrint('识别: n-gram纠错 "$result" → "$contextResult"');
+          result = contextResult;
+        }
+      }
+
+      // ── 第4步：笔画特征辅助（代价中等，需骨架化分析）──
+      // 条件执行：仅在低置信度且未被前几步纠正时才执行
+      // v4.5.0: 利用曲率和复杂度特征提升匹配精度
+      if (result != null && confidence < 0.90 && !wasErrorCorrected) {
         final strokeResult = await StrokeAnalyzer.instance.assistRecognition(
           imageBytes, result, confidence,
         );
@@ -783,19 +823,6 @@ class RecognitionService {
           });
           debugPrint('识别: 笔画辅助 "$result" → "$strokeResult"');
           result = strokeResult;
-        }
-      }
-
-      // ── v4.4.0: 错误模式纠正 — 已知高频误识别模式自动纠正 ──
-      if (result != null) {
-        final errorCorrected = await _applyErrorPatternCorrection(result);
-        if (errorCorrected != null && errorCorrected != result) {
-          _addDebugLog('recognition', '错误模式纠正', data: {
-            'original': result,
-            'corrected': errorCorrected,
-          });
-          debugPrint('识别: 错误模式纠正 "$result" → "$errorCorrected"');
-          result = errorCorrected;
         }
       }
 
