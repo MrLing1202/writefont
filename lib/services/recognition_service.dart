@@ -1793,6 +1793,133 @@ class RecognitionService {
     return _TrimResult(cropped, true, blankRatio * 100);
   }
 
+  /// 检测图片是否可能包含多个连笔字符
+  /// 判断依据：宽高比 > 1.3 且墨迹分布有明显的双峰特征
+  bool _detectConnectedCharacters(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+    final aspect = w / h.clamp(1, 99999);
+
+    // 宽高比不大的图片不太可能是连笔字
+    if (aspect < 1.3) return false;
+
+    // 计算垂直投影
+    final gray = img.grayscale(image);
+    final projections = List.filled(w, 0);
+    for (int x = 0; x < w; x++) {
+      int count = 0;
+      for (int y = 0; y < h; y++) {
+        if (gray.getPixel(x, y).r.toInt() < 128) count++;
+      }
+      projections[x] = count;
+    }
+
+    // 找到投影的峰值和谷值
+    int peakCount = 0;
+    int valleyCount = 0;
+    final threshold = h * 0.1; // 峰值阈值
+    final valleyThreshold = h * 0.02; // 谷值阈值
+
+    bool inPeak = false;
+    for (int x = 1; x < w - 1; x++) {
+      if (projections[x] > threshold) {
+        if (!inPeak) {
+          peakCount++;
+          inPeak = true;
+        }
+      } else if (projections[x] < valleyThreshold) {
+        if (inPeak) {
+          valleyCount++;
+          inPeak = false;
+        }
+      }
+    }
+
+    // 如果有多个峰和谷，说明可能有多个字符
+    return peakCount >= 2 && valleyCount >= 1;
+  }
+
+  /// 使用垂直投影法将连笔字图片切分为多个片段
+  /// 返回切分后的图片列表（如果切分失败则返回原图的单元素列表）
+  List<img.Image> _segmentByVerticalProjection(img.Image image) {
+    final w = image.width;
+    final h = image.height;
+
+    // 计算垂直投影
+    final gray = img.grayscale(image);
+    final projections = List.filled(w, 0);
+    for (int x = 0; x < w; x++) {
+      int count = 0;
+      for (int y = 0; y < h; y++) {
+        if (gray.getPixel(x, y).r.toInt() < 128) count++;
+      }
+      projections[x] = count;
+    }
+
+    // 找到最佳切分点（投影值最小的位置，在图片中间 30%~70% 区域）
+    final searchStart = (w * 0.25).round();
+    final searchEnd = (w * 0.75).round();
+
+    int bestSplitX = w ~/ 2;
+    int minProjection = 999999;
+
+    // 找到连续低投影区域的中心作为切分点
+    for (int x = searchStart; x < searchEnd; x++) {
+      // 计算局部平均投影（5像素窗口）
+      int localSum = 0;
+      int count = 0;
+      for (int dx = -2; dx <= 2; dx++) {
+        final px = x + dx;
+        if (px >= 0 && px < w) {
+          localSum += projections[px];
+          count++;
+        }
+      }
+      final localAvg = localSum / count.clamp(1, 5);
+
+      if (localAvg < minProjection) {
+        minProjection = localAvg.round();
+        bestSplitX = x;
+      }
+    }
+
+    // 如果最佳切分点的投影值太高，说明没有明显的分割线，不切分
+    if (minProjection > h * 0.15) {
+      return [image];
+    }
+
+    // 切分图片
+    final left = img.copyCrop(image, x: 0, y: 0, width: bestSplitX, height: h);
+    final right = img.copyCrop(image, x: bestSplitX, y: 0, width: w - bestSplitX, height: h);
+
+    // 检查切分后的片段是否有足够的墨迹（避免切出空白片段）
+    final leftDensity = _calculateInkDensity(left);
+    final rightDensity = _calculateInkDensity(right);
+
+    if (leftDensity < 0.03 || rightDensity < 0.03) {
+      // 一个片段几乎没有墨迹，切分无效
+      return [image];
+    }
+
+    debugPrint('连笔字切分: ${w}x$h → 左${bestSplitX}x$h + 右${w - bestSplitX}x$h '
+        '(切分点投影=$minProjection, 左密度=${(leftDensity * 100).toStringAsFixed(1)}%, '
+        '右密度=${(rightDensity * 100).toStringAsFixed(1)}%)');
+
+    return [left, right];
+  }
+
+  /// 计算图片的墨迹密度（黑色像素占比）
+  double _calculateInkDensity(img.Image image) {
+    final gray = img.grayscale(image);
+    int blackCount = 0;
+    for (int y = 0; y < gray.height; y++) {
+      for (int x = 0; x < gray.width; x++) {
+        if (gray.getPixel(x, y).r.toInt() < 128) blackCount++;
+      }
+    }
+    return blackCount / (gray.width * gray.height).clamp(1, 999999);
+  }
+
   /// v4.0.1: 笔画粗细自适应预处理策略
   /// 根据图像的笔画粗细特征，自动选择膨胀/腐蚀来归一化笔画宽度
   img.Image _strokeThicknessAdaptive(img.Image src) {
@@ -3362,6 +3489,47 @@ class RecognitionService {
             _lastLocalConfidence = 0.92;
             debugPrint('ML Kit 识别: 快速通道命中 "${quickWinner.key}" (${quickWinner.value}票)');
             return quickWinner.key;
+          }
+        }
+      }
+
+      // ═══ v5.6.0: 连笔字智能切分识别 ═══
+      // 当图片宽高比 > 1.3 时，可能是连笔字（两个字符连在一起），
+      // 使用垂直投影法找到最佳切分点，分别识别后合并结果
+      if (maxDim >= 50) {
+        final isLikelyConnected = _detectConnectedCharacters(enhanced);
+        if (isLikelyConnected) {
+          debugPrint('连笔字检测: 疑似连笔字，尝试切分识别');
+          final segments = _segmentByVerticalProjection(enhanced);
+          if (segments.length > 1) {
+            // 切分成功，分别识别每个片段
+            String combinedResult = '';
+            double totalConf = 0;
+            int validSegments = 0;
+
+            for (int i = 0; i < segments.length; i++) {
+              final segBytes = Uint8List.fromList(img.encodePng(segments[i]));
+              final segResult = await _recognizeLocal(segBytes);
+              if (segResult != null && segResult.isNotEmpty) {
+                combinedResult += segResult;
+                totalConf += _lastLocalConfidence;
+                validSegments++;
+                debugPrint('连笔字切分: 片段${i + 1} → "$segResult" (置信度 ${(_lastLocalConfidence * 100).toStringAsFixed(0)}%)');
+              }
+            }
+
+            if (validSegments == segments.length && combinedResult.length > 1) {
+              // 所有片段都识别成功，返回组合结果
+              _lastLocalConfidence = totalConf / validSegments;
+              debugPrint('连笔字切分: 组合结果 "$combinedResult" (平均置信度 ${(_lastLocalConfidence * 100).toStringAsFixed(0)}%)');
+              _addDebugLog('recognition', '连笔字切分识别', data: {
+                'result': combinedResult,
+                'segments': segments.length,
+                'confidence': _lastLocalConfidence,
+              });
+              return combinedResult;
+            }
+            debugPrint('连笔字切分: 切分识别未完全成功 ($validSegments/${segments.length})，继续常规识别');
           }
         }
       }
