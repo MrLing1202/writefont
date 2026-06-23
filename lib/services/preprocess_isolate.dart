@@ -163,6 +163,20 @@ img.Image applyStrategy(String name, img.Image src) {
     case '伽马+Sauvola':
       return _sauvolaBinarize(_adaptiveGammaCorrection(src), blockSize: 25, k: 0.2);
 
+    // ═══ v6.1.0: 新增高效策略 ═══
+    case 'Niblack二值化':
+      return _niblackBinarize(src, blockSize: 15, k: -0.2);
+    case '去噪+Niblack':
+      return _niblackBinarize(_strokeAwareDenoise(src), blockSize: 15, k: -0.2);
+    case '多阈值融合':
+      return _multiThresholdFusion(src);
+    case '笔画保留增强':
+      return _strokePreservingEnhance(src);
+    case '自适应对比度+闭运算':
+      return _morphologicalClose(_claheAdaptive(src), radius: 1);
+    case '伽马+Sauvola+USM':
+      return _unsharpMaskSharpen(_sauvolaBinarize(_adaptiveGammaCorrection(src), blockSize: 25, k: 0.2), amount: 1.0);
+
     // ═══ 未知策略：返回灰度 ═══
     default:
       return img.grayscale(src);
@@ -1205,3 +1219,132 @@ double _sin(double x) {
 }
 
 double _cos(double x) => _sin(x + math.pi / 2);
+
+// ═══════════════════════════════════════════════
+// v6.1.0: 新增高效预处理策略
+// ═══════════════════════════════════════════════
+
+/// Niblack 自适应二值化 — 局部阈值法，对光照不均的手写体效果好
+img.Image _niblackBinarize(img.Image src, {int blockSize = 15, double k = -0.2}) {
+  if (blockSize.isEven) blockSize++;
+  final half = blockSize ~/ 2;
+  final gray = img.grayscale(src);
+  final w = gray.width, h = gray.height;
+
+  // 积分图加速
+  final integral = List.generate(h + 1, (_) => List.filled(w + 1, 0.0));
+  final integralSq = List.generate(h + 1, (_) => List.filled(w + 1, 0.0));
+  for (int y = 0; y < h; y++) {
+    double rowSum = 0, rowSumSq = 0;
+    for (int x = 0; x < w; x++) {
+      final v = gray.getPixel(x, y).r.toDouble();
+      rowSum += v;
+      rowSumSq += v * v;
+      integral[y + 1][x + 1] = integral[y][x + 1] + rowSum;
+      integralSq[y + 1][x + 1] = integralSq[y][x + 1] + rowSumSq;
+    }
+  }
+
+  final result = img.Image(width: w, height: h);
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      final x0 = (x - half).clamp(0, w - 1);
+      final y0 = (y - half).clamp(0, h - 1);
+      final x1 = (x + half).clamp(0, w - 1);
+      final y1 = (y + half).clamp(0, h - 1);
+      final count = (x1 - x0 + 1) * (y1 - y0 + 1).toDouble();
+      final sum = integral[y1 + 1][x1 + 1] - integral[y0][x1 + 1] - integral[y1 + 1][x0] + integral[y0][x0];
+      final sumSq = integralSq[y1 + 1][x1 + 1] - integralSq[y0][x1 + 1] - integralSq[y1 + 1][x0] + integralSq[y0][x0];
+      final mean = sum / count;
+      final variance = (sumSq / count) - mean * mean;
+      final stdDev = _sqrt(variance > 0 ? variance : 0);
+      final threshold = mean + k * stdDev;
+      final v = gray.getPixel(x, y).r.toDouble() > threshold ? 255 : 0;
+      result.setPixelRgba(x, y, v, v, v, 255);
+    }
+  }
+  return result;
+}
+
+/// 多阈值融合二值化 — 结合 Otsu 全局阈值和自适应阈值
+img.Image _multiThresholdFusion(img.Image src) {
+  final gray = img.grayscale(src);
+  final w = gray.width, h = gray.height;
+
+  // 1. Otsu 全局阈值
+  final otsuThreshold = _otsuThreshold(gray);
+
+  // 2. 自适应局部阈值
+  final adaptive = _adaptiveBinarize(gray, blockSize: 31, c: 10);
+
+  // 3. 融合：一致像素直接采用，不一致像素用局部对比度决定
+  final result = img.Image(width: w, height: h);
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      final pixel = gray.getPixel(x, y).r.toInt();
+      final otsuV = pixel > otsuThreshold ? 255 : 0;
+      final adaptV = adaptive.getPixel(x, y).r.toInt();
+
+      if (otsuV == adaptV) {
+        // 一致，直接采用
+        result.setPixelRgba(x, y, otsuV, otsuV, otsuV, 255);
+      } else {
+        // 不一致，用局部对比度决定
+        double localVar = 0;
+        int count = 0;
+        for (int dy = -2; dy <= 2; dy++) {
+          for (int dx = -2; dx <= 2; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            final diff = gray.getPixel(nx, ny).r.toDouble() - pixel;
+            localVar += diff * diff;
+            count++;
+          }
+        }
+        localVar /= count;
+        // 高对比度区域用自适应阈值，低对比度区域用 Otsu
+        final v = localVar > 100 ? adaptV : otsuV;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+  }
+  return result;
+}
+
+/// 笔画保留增强 — 增强笔画细节同时抑制噪声
+img.Image _strokePreservingEnhance(img.Image src) {
+  final gray = img.grayscale(src);
+  final w = gray.width, h = gray.height;
+
+  // 1. 轻度去噪（保留边缘）
+  final denoised = _medianFilter(gray);
+
+  // 2. 计算边缘强度
+  final edges = List.generate(h, (_) => List.filled(w, 0.0));
+  double maxEdge = 0;
+  for (int y = 1; y < h - 1; y++) {
+    for (int x = 1; x < w - 1; x++) {
+      final gx = denoised.getPixel(x + 1, y).r.toInt() - denoised.getPixel(x - 1, y).r.toInt();
+      final gy = denoised.getPixel(x, y + 1).r.toInt() - denoised.getPixel(x, y - 1).r.toInt();
+      final mag = _sqrt((gx * gx + gy * gy).toDouble());
+      edges[y][x] = mag;
+      if (mag > maxEdge) maxEdge = mag;
+    }
+  }
+
+  // 3. 增强笔画边缘，抑制平坦区域噪声
+  final result = img.Image(width: w, height: h);
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      final orig = denoised.getPixel(x, y).r.toDouble();
+      final edge = maxEdge > 0 ? edges[y][x] / maxEdge : 0.0;
+      // 边缘区域增强对比度，平坦区域保持原样
+      final enhanced = edge > 0.3
+          ? (orig + (orig - 128) * edge * 0.5).clamp(0, 255)
+          : orig;
+      final v = enhanced.round();
+      result.setPixelRgba(x, y, v, v, v, 255);
+    }
+  }
+  return result;
+}

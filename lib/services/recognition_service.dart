@@ -933,8 +933,8 @@ class RecognitionService {
     // 如果不一致，保留原结果但标记为低置信度。
     if (result != null && !useCloud) {
       final currentConf = _confidenceCache[cacheKey] ?? _lastLocalConfidence;
-      if (currentConf < 0.70 && currentConf > 0.0) {
-        debugPrint('多尺度确认: 置信度 ${(currentConf * 100).toStringAsFixed(0)}% < 70%，尝试放大重识别');
+      if (currentConf < 0.65 && currentConf > 0.0) {
+        debugPrint('多尺度确认: 置信度 ${(currentConf * 100).toStringAsFixed(0)}% < 65%，尝试放大重识别');
         try {
           final decoded = img.decodeImage(imageBytes);
           if (decoded != null) {
@@ -1449,6 +1449,23 @@ class RecognitionService {
         '伽马+Sauvola': (src) {
           final gamma = _adaptiveGammaCorrection(src);
           return _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+        },
+        // v6.1.0: 新增高效策略
+        'Niblack二值化': (src) => _niblackBinarize(src, blockSize: 15, k: -0.2),
+        '去噪+Niblack': (src) {
+          final denoised = _strokeAwareDenoise(src);
+          return _niblackBinarize(denoised, blockSize: 15, k: -0.2);
+        },
+        '多阈值融合': (src) => _multiThresholdFusion(src),
+        '笔画保留增强': (src) => _strokePreservingEnhance(src),
+        '自适应对比度+闭运算': (src) {
+          final clahe = ImageQualityService.instance.enhanceContrastAdaptive(src);
+          return _morphologicalClose(clahe, radius: 1);
+        },
+        '伽马+Sauvola+USM': (src) {
+          final gamma = _adaptiveGammaCorrection(src);
+          final sauvola = _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+          return _unsharpMaskSharpen(sauvola, amount: 1.0);
         },
       };
 
@@ -3436,6 +3453,49 @@ class RecognitionService {
   // v5.8.0: 新增预处理策略
   // ═══════════════════════════════════════════════════════════
 
+  /// v6.1.0: Niblack 自适应二值化 — 局部阈值法，对光照不均的手写体效果好
+  /// 积分图加速，blockSize 为局部窗口大小，k 为灵敏度系数
+  img.Image _niblackBinarize(img.Image src, {int blockSize = 15, double k = -0.2}) {
+    if (blockSize.isEven) blockSize++;
+    final half = blockSize ~/ 2;
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 积分图加速
+    final integral = List.generate(h + 1, (_) => List.filled(w + 1, 0.0));
+    final integralSq = List.generate(h + 1, (_) => List.filled(w + 1, 0.0));
+    for (int y = 0; y < h; y++) {
+      double rowSum = 0, rowSumSq = 0;
+      for (int x = 0; x < w; x++) {
+        final v = gray.getPixel(x, y).r.toDouble();
+        rowSum += v;
+        rowSumSq += v * v;
+        integral[y + 1][x + 1] = integral[y][x + 1] + rowSum;
+        integralSq[y + 1][x + 1] = integralSq[y][x + 1] + rowSumSq;
+      }
+    }
+
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final x0 = (x - half).clamp(0, w - 1);
+        final y0 = (y - half).clamp(0, h - 1);
+        final x1 = (x + half).clamp(0, w - 1);
+        final y1 = (y + half).clamp(0, h - 1);
+        final count = (x1 - x0 + 1) * (y1 - y0 + 1).toDouble();
+        final sum = integral[y1 + 1][x1 + 1] - integral[y0][x1 + 1] - integral[y1 + 1][x0] + integral[y0][x0];
+        final sumSq = integralSq[y1 + 1][x1 + 1] - integralSq[y0][x1 + 1] - integralSq[y1 + 1][x0] + integralSq[y0][x0];
+        final mean = sum / count;
+        final variance = (sumSq / count) - mean * mean;
+        final stdDev = _sqrt(variance > 0 ? variance : 0);
+        final threshold = mean + k * stdDev;
+        final v = gray.getPixel(x, y).r.toDouble() > threshold ? 255 : 0;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
   /// v5.8.0: 多阈值融合二值化 — 结合 Otsu 和自适应阈值的优势
   ///
   /// 分别用 Otsu 和自适应阈值生成两幅二值图，
@@ -3603,15 +3663,15 @@ class RecognitionService {
       strategyReliabilityScore = (totalReliability / candidateStrategies.length).clamp(0.0, 1.0);
     }
 
-    // v6.0.0: 加权综合评分 — 提升策略可靠性权重，降低字频权重
-    // 票数(28%) + 置信度(15%) + 上下文(15%) + 策略可靠性(18%) + 字频(7%) + 多样性(10%) + 多尺度(7%)
-    double score = normalizedVotes * 0.28 +
-        confidence * 0.15 +
-        contextScore * 0.15 +
-        strategyReliabilityScore * 0.18 +
-        freqScore * 0.07 +
+    // v6.1.0: 加权综合评分 — 提升票数和置信度权重，降低次要因素
+    // 票数(32%) + 置信度(18%) + 上下文(12%) + 策略可靠性(16%) + 字频(6%) + 多样性(10%) + 多尺度(6%)
+    double score = normalizedVotes * 0.32 +
+        confidence * 0.18 +
+        contextScore * 0.12 +
+        strategyReliabilityScore * 0.16 +
+        freqScore * 0.06 +
         diversityScore * 0.10 +
-        multiScaleScore * 0.07;
+        multiScaleScore * 0.06;
 
     // v5.2.0: 笔画复杂度奖励 — 简单字（1-3 笔画）在多策略确认时获得额外加分
     // 简单字的识别更容易被噪声干扰，但一旦多策略一致就非常可靠
@@ -3818,9 +3878,12 @@ class RecognitionService {
         }
       }
 
-      // v5.9.0: 特征特定策略的 ML Kit 调用计数 — 限制总调用次数避免过度延迟
+      // v6.1.0: 特征特定策略的 ML Kit 调用计数 — 限制总调用次数避免过度延迟
       int featureBlockCalls = 0;
-      const int maxFeatureBlockCalls = 60; // 最多 60 次 ML Kit 调用
+      const int maxFeatureBlockCalls = 40; // v6.1.0: 从 60 降至 40，减少低效调用
+
+      // v6.1.0: 特征块间提前终止 — 检查投票共识，满足条件时跳过后续特征块
+      bool featureBlockEarlyStop = false;
 
       // v5.9.0: 预处理结果缓存 — 避免同一预处理在不同特征块中重复计算
       final preprocessCache = <String, img.Image>{};
@@ -3858,8 +3921,23 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 极小图处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted0 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted0.length >= 1) {
+          final topS0 = resultStrategies[sorted0[0].key]?.length ?? 0;
+          if (sorted0[0].value >= 4 && topS0 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（极小图后） "${sorted0[0].key}" (${sorted0[0].value}票, ${topS0}种策略)');
+          }
+        }
+      }
+      if (featureBlockEarlyStop) {
+        debugPrint('ML Kit 识别: 跳过后续特征块（已达成共识）');
+      }
+
       // v5.8.0: 高噪声图特殊处理 — 使用更强的降噪策略
-      if (imageFeatures.noise > 0.7) {
+      if (!featureBlockEarlyStop && imageFeatures.noise > 0.7) {
         debugPrint('ML Kit 识别: 高噪声图特殊处理 (noise=${imageFeatures.noise.toStringAsFixed(2)})');
         final denoiseStrategies = [
           ('强降噪+CLAHE', (img.Image src) {
@@ -3892,8 +3970,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 高噪声处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted1 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted1.length >= 1) {
+          final topS1 = resultStrategies[sorted1[0].key]?.length ?? 0;
+          if (sorted1[0].value >= 4 && topS1 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（高噪声后） "${sorted1[0].key}" (${sorted1[0].value}票, ${topS1}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 低对比度图特殊处理 — 使用更强的对比度增强策略
-      if (imageFeatures.contrast < 0.2) {
+      if (!featureBlockEarlyStop && imageFeatures.contrast < 0.2) {
         debugPrint('ML Kit 识别: 低对比度图特殊处理 (contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
         final lowContrastStrategies = [
           ('强对比度+CLAHE', (img.Image src) {
@@ -3926,8 +4016,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 低对比度处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted2 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted2.length >= 1) {
+          final topS2 = resultStrategies[sorted2[0].key]?.length ?? 0;
+          if (sorted2[0].value >= 4 && topS2 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（低对比度后） "${sorted2[0].key}" (${sorted2[0].value}票, ${topS2}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 模糊图特殊处理 — 使用更强的去模糊策略
-      if (imageFeatures.blur > 0.7) {
+      if (!featureBlockEarlyStop && imageFeatures.blur > 0.7) {
         debugPrint('ML Kit 识别: 模糊图特殊处理 (blur=${imageFeatures.blur.toStringAsFixed(2)})');
         final blurStrategies = [
           ('强去模糊+CLAHE', (img.Image src) {
@@ -3960,8 +4062,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 模糊处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted3 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted3.length >= 1) {
+          final topS3 = resultStrategies[sorted3[0].key]?.length ?? 0;
+          if (sorted3[0].value >= 4 && topS3 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（模糊处理后） "${sorted3[0].key}" (${sorted3[0].value}票, ${topS3}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 粗笔画图特殊处理 — 使用更强的细化策略
-      if (imageFeatures.lineThickness > 0.8) {
+      if (!featureBlockEarlyStop && imageFeatures.lineThickness > 0.8) {
         debugPrint('ML Kit 识别: 粗笔画图特殊处理 (thickness=${imageFeatures.lineThickness.toStringAsFixed(2)})');
         final thickStrategies = [
           ('强细化+CLAHE', (img.Image src) {
@@ -3994,8 +4108,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 粗笔画处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted4 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted4.length >= 1) {
+          final topS4 = resultStrategies[sorted4[0].key]?.length ?? 0;
+          if (sorted4[0].value >= 4 && topS4 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（粗笔画后） "${sorted4[0].key}" (${sorted4[0].value}票, ${topS4}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 细笔画图特殊处理 — 使用更强的增粗策略
-      if (imageFeatures.lineThickness < 0.2) {
+      if (!featureBlockEarlyStop && imageFeatures.lineThickness < 0.2) {
         debugPrint('ML Kit 识别: 细笔画图特殊处理 (thickness=${imageFeatures.lineThickness.toStringAsFixed(2)})');
         final thinStrategies = [
           ('强增粗+CLAHE', (img.Image src) {
@@ -4028,8 +4154,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 细笔画处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted5 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted5.length >= 1) {
+          final topS5 = resultStrategies[sorted5[0].key]?.length ?? 0;
+          if (sorted5[0].value >= 4 && topS5 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（细笔画后） "${sorted5[0].key}" (${sorted5[0].value}票, ${topS5}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 连笔字图特殊处理 — 使用更强的分离策略
-      if (imageFeatures.connection > 0.7) {
+      if (!featureBlockEarlyStop && imageFeatures.connection > 0.7) {
         debugPrint('ML Kit 识别: 连笔字图特殊处理 (connection=${imageFeatures.connection.toStringAsFixed(2)})');
         final cursiveStrategies = [
           ('强分离+CLAHE', (img.Image src) {
@@ -4062,8 +4200,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 连笔处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted6 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted6.length >= 1) {
+          final topS6 = resultStrategies[sorted6[0].key]?.length ?? 0;
+          if (sorted6[0].value >= 4 && topS6 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（连笔处理后） "${sorted6[0].key}" (${sorted6[0].value}票, ${topS6}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 倾斜图特殊处理 — 使用更强的倾斜校正策略
-      if (imageFeatures.slantAngle > 0.6) {
+      if (!featureBlockEarlyStop && imageFeatures.slantAngle > 0.6) {
         debugPrint('ML Kit 识别: 倾斜图特殊处理 (slant=${imageFeatures.slantAngle.toStringAsFixed(2)})');
         final slantStrategies = [
           ('强倾斜校正+CLAHE', (img.Image src) {
@@ -4096,8 +4246,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 倾斜处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted7 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted7.length >= 1) {
+          final topS7 = resultStrategies[sorted7[0].key]?.length ?? 0;
+          if (sorted7[0].value >= 4 && topS7 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（倾斜处理后） "${sorted7[0].key}" (${sorted7[0].value}票, ${topS7}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 笔画变异度高图特殊处理 — 使用更强的笔画归一化策略
-      if (imageFeatures.strokeVariability > 0.7) {
+      if (!featureBlockEarlyStop && imageFeatures.strokeVariability > 0.7) {
         debugPrint('ML Kit 识别: 笔画变异度高图特殊处理 (variability=${imageFeatures.strokeVariability.toStringAsFixed(2)})');
         final variabilityStrategies = [
           ('强归一化+CLAHE', (img.Image src) {
@@ -4130,8 +4292,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 笔画变异度处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted8 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted8.length >= 1) {
+          final topS8 = resultStrategies[sorted8[0].key]?.length ?? 0;
+          if (sorted8[0].value >= 4 && topS8 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（笔画变异度后） "${sorted8[0].key}" (${sorted8[0].value}票, ${topS8}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 墨迹密度高图特殊处理 — 使用更强的去噪策略
-      if (imageFeatures.inkDensity > 0.8) {
+      if (!featureBlockEarlyStop && imageFeatures.inkDensity > 0.8) {
         debugPrint('ML Kit 识别: 墨迹密度高图特殊处理 (density=${imageFeatures.inkDensity.toStringAsFixed(2)})');
         final densityStrategies = [
           ('强去噪+CLAHE', (img.Image src) {
@@ -4164,8 +4338,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 墨迹密度高处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted9 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted9.length >= 1) {
+          final topS9 = resultStrategies[sorted9[0].key]?.length ?? 0;
+          if (sorted9[0].value >= 4 && topS9 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（墨迹密度高后） "${sorted9[0].key}" (${sorted9[0].value}票, ${topS9}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 墨迹密度低图特殊处理 — 使用更强的增粗策略
-      if (imageFeatures.inkDensity < 0.1) {
+      if (!featureBlockEarlyStop && imageFeatures.inkDensity < 0.1) {
         debugPrint('ML Kit 识别: 墨迹密度低图特殊处理 (density=${imageFeatures.inkDensity.toStringAsFixed(2)})');
         final lowDensityStrategies = [
           ('强增粗+CLAHE', (img.Image src) {
@@ -4198,8 +4384,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 墨迹密度低处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted10 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted10.length >= 1) {
+          final topS10 = resultStrategies[sorted10[0].key]?.length ?? 0;
+          if (sorted10[0].value >= 4 && topS10 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（墨迹密度低后） "${sorted10[0].key}" (${sorted10[0].value}票, ${topS10}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 边缘锐度低图特殊处理 — 使用更强的锐化策略
-      if (imageFeatures.edgeSharpness < 0.3) {
+      if (!featureBlockEarlyStop && imageFeatures.edgeSharpness < 0.3) {
         debugPrint('ML Kit 识别: 边缘锐度低图特殊处理 (sharpness=${imageFeatures.edgeSharpness.toStringAsFixed(2)})');
         final sharpnessStrategies = [
           ('强锐化+CLAHE', (img.Image src) {
@@ -4232,8 +4430,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 边缘锐度低处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted11 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted11.length >= 1) {
+          final topS11 = resultStrategies[sorted11[0].key]?.length ?? 0;
+          if (sorted11[0].value >= 4 && topS11 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（边缘锐度低后） "${sorted11[0].key}" (${sorted11[0].value}票, ${topS11}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 边缘锐度高图特殊处理 — 使用更强的平滑策略
-      if (imageFeatures.edgeSharpness > 0.8) {
+      if (!featureBlockEarlyStop && imageFeatures.edgeSharpness > 0.8) {
         debugPrint('ML Kit 识别: 边缘锐度高图特殊处理 (sharpness=${imageFeatures.edgeSharpness.toStringAsFixed(2)})');
         final smoothStrategies = [
           ('强平滑+CLAHE', (img.Image src) {
@@ -4266,8 +4476,20 @@ class RecognitionService {
         }
       }
 
+      // v6.1.0: 特征块间提前终止检查 — 边缘锐度高处理后检查共识
+      if (!featureBlockEarlyStop && voteMap.isNotEmpty) {
+        final sorted12 = voteMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted12.length >= 1) {
+          final topS12 = resultStrategies[sorted12[0].key]?.length ?? 0;
+          if (sorted12[0].value >= 4 && topS12 >= 2) {
+            featureBlockEarlyStop = true;
+            debugPrint('ML Kit 识别: 特征块提前终止（边缘锐度高后） "${sorted12[0].key}" (${sorted12[0].value}票, ${topS12}种策略)');
+          }
+        }
+      }
+
       // v5.8.0: 高质量大图特殊处理 — 使用更少的策略，避免过度处理
-      if (imageFeatures.qualityLevel == 'high' && maxDim >= 200) {
+      if (!featureBlockEarlyStop && imageFeatures.qualityLevel == 'high' && maxDim >= 200) {
         debugPrint('ML Kit 识别: 高质量大图特殊处理 (quality=high, size=${maxDim}px)');
         final highQualityStrategies = [
           ('高质量CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4291,7 +4513,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 低质量小图特殊处理 — 使用更多的策略，增加覆盖
-      if (imageFeatures.qualityLevel == 'low' && maxDim < 100) {
+      if (!featureBlockEarlyStop && imageFeatures.qualityLevel == 'low' && maxDim < 100) {
         debugPrint('ML Kit 识别: 低质量小图特殊处理 (quality=low, size=${maxDim}px)');
         final lowQualityStrategies = [
           ('低质量CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4318,7 +4540,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 混合风格图特殊处理 — 使用多种策略组合
-      if (imageFeatures.style == HandwritingStyle.mixed) {
+      if (!featureBlockEarlyStop && imageFeatures.style == HandwritingStyle.mixed) {
         debugPrint('ML Kit 识别: 混合风格图特殊处理');
         final mixedStrategies = [
           ('混合风格CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4354,7 +4576,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 行书风格图特殊处理 — 使用更强的分离策略
-      if (imageFeatures.style == HandwritingStyle.cursive) {
+      if (!featureBlockEarlyStop && imageFeatures.style == HandwritingStyle.cursive) {
         debugPrint('ML Kit 识别: 行书风格图特殊处理');
         final cursiveStyleStrategies = [
           ('行书CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4381,7 +4603,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 轻笔风格图特殊处理 — 使用更强的增粗策略
-      if (imageFeatures.style == HandwritingStyle.light) {
+      if (!featureBlockEarlyStop && imageFeatures.style == HandwritingStyle.light) {
         debugPrint('ML Kit 识别: 轻笔风格图特殊处理');
         final lightStyleStrategies = [
           ('轻笔CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4408,7 +4630,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 重笔风格图特殊处理 — 使用更强的细化策略
-      if (imageFeatures.style == HandwritingStyle.heavy) {
+      if (!featureBlockEarlyStop && imageFeatures.style == HandwritingStyle.heavy) {
         debugPrint('ML Kit 识别: 重笔风格图特殊处理');
         final heavyStyleStrategies = [
           ('重笔CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4435,7 +4657,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 楷书风格图特殊处理 — 使用标准策略
-      if (imageFeatures.style == HandwritingStyle.regular) {
+      if (!featureBlockEarlyStop && imageFeatures.style == HandwritingStyle.regular) {
         debugPrint('ML Kit 识别: 楷书风格图特殊处理');
         final regularStyleStrategies = [
           ('楷书CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
@@ -4460,7 +4682,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 多尺度融合识别 — 在不同尺度上识别同一字符，融合结果
-      if (maxDim >= 50 && maxDim < 200) {
+      if (!featureBlockEarlyStop && maxDim >= 50 && maxDim < 200) {
         debugPrint('ML Kit 识别: 多尺度融合识别 (size=${maxDim}px)');
         final multiScaleStrategies = [
           ('多尺度1.5x', (img.Image src) {
@@ -4503,7 +4725,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 颜色反转识别 — 处理黑底白字的情况
-      if (imageFeatures.inkDensity > 0.5) {
+      if (!featureBlockEarlyStop && imageFeatures.inkDensity > 0.5) {
         debugPrint('ML Kit 识别: 颜色反转识别 (density=${imageFeatures.inkDensity.toStringAsFixed(2)})');
         final invertedStrategies = [
           ('颜色反转CLAHE', (img.Image src) {
@@ -4533,7 +4755,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 背景归一化识别 — 处理光照不均的情况
-      if (imageFeatures.contrast < 0.3) {
+      if (!featureBlockEarlyStop && imageFeatures.contrast < 0.3) {
         debugPrint('ML Kit 识别: 背景归一化识别 (contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
         final bgNormStrategies = [
           ('背景归一化CLAHE', (img.Image src) {
@@ -4563,7 +4785,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 方向边缘增强识别 — 处理笔画方向不一致的情况
-      if (imageFeatures.connection > 0.5) {
+      if (!featureBlockEarlyStop && imageFeatures.connection > 0.5) {
         debugPrint('ML Kit 识别: 方向边缘增强识别 (connection=${imageFeatures.connection.toStringAsFixed(2)})');
         final edgeStrategies = [
           ('方向边缘增强CLAHE', (img.Image src) {
@@ -4593,7 +4815,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 自适应直方图均衡识别 — 处理低对比度的情况
-      if (imageFeatures.contrast < 0.25) {
+      if (!featureBlockEarlyStop && imageFeatures.contrast < 0.25) {
         debugPrint('ML Kit 识别: 自适应直方图均衡识别 (contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
         final histEqStrategies = [
           ('自适应直方图均衡CLAHE', (img.Image src) {
@@ -4623,7 +4845,7 @@ class RecognitionService {
       }
 
       // v5.8.0: 形态学梯度识别 — 处理密集笔画的情况
-      if (imageFeatures.inkDensity > 0.6) {
+      if (!featureBlockEarlyStop && imageFeatures.inkDensity > 0.6) {
         debugPrint('ML Kit 识别: 形态学梯度识别 (density=${imageFeatures.inkDensity.toStringAsFixed(2)})');
         final gradientStrategies = [
           ('形态学梯度CLAHE', (img.Image src) {
@@ -14175,18 +14397,18 @@ class RecognitionService {
         }
       }
 
-      // v5.7.0: 自适应策略数量 — 根据图像质量和字符复杂度调整
+      // v6.1.0: 自适应策略数量 — 根据图像质量和字符复杂度调整
       // 高质量大图 + 简单字符：减少策略数量，避免过度处理引入噪声
       // 低质量/复杂字符：使用更多策略，增加覆盖
-      int maxStrategies = 30; // 默认上限
+      int maxStrategies = 20; // v6.1.0: 默认上限从 30 降至 20
       if (imageFeatures.qualityLevel == 'high' && imageFeatures.inkDensity < 0.3) {
-        maxStrategies = 15; // 高质量简单字：精简策略
+        maxStrategies = 10; // v6.1.0: 高质量简单字从 15 降至 10
         debugPrint('自适应策略: 高质量简单字，限制策略数=$maxStrategies');
       } else if (imageFeatures.qualityLevel == 'high' && maxDim >= 150) {
-        maxStrategies = 12; // 高质量大图：最少策略
+        maxStrategies = 8; // v6.1.0: 高质量大图从 12 降至 8
         debugPrint('自适应策略: 高质量大图，限制策略数=$maxStrategies');
       } else if (imageFeatures.inkDensity > 0.6) {
-        maxStrategies = 30; // 复杂字：最多策略
+        maxStrategies = 20; // v6.1.0: 复杂字从 30 降至 20
         debugPrint('自适应策略: 复杂字，策略数=$maxStrategies');
       }
       if (orderedPreprocessors.length > maxStrategies) {
@@ -14306,12 +14528,17 @@ class RecognitionService {
                 ? confidenceMap[result]!
                 : conf;
             debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]}, 策略=$label, 权重=$voteWeight)');
-            // v4.8.0: 改进提前终止 — 要求最低尝试次数 + 多策略确认
+            // v6.1.0: 改进提前终止 — 降低阈值 + 置信度感知即时终止
             final totalAttempts = upscaleTargets.length * filteredPreprocessors.length;
-            final earlyThreshold = totalAttempts <= 6 ? 3 : (totalAttempts <= 12 ? 4 : 5);
-            final minAttemptsBeforeEarly = 4; // 至少尝试 4 次才允许提前终止
+            final earlyThreshold = totalAttempts <= 6 ? 2 : (totalAttempts <= 12 ? 3 : 4);
+            final minAttemptsBeforeEarly = 3; // v6.1.0: 从 4 降至 3
             final hasMultiStrategy = (resultStrategies[result]?.length ?? 0) >= 2;
-            if (attempt >= minAttemptsBeforeEarly && voteMap[result]! >= earlyThreshold && hasMultiStrategy) {
+            // v6.1.0: 置信度感知即时终止 — 高置信度 + 多策略确认时立即停止
+            final currentConf = confidenceMap[result] ?? 0.7;
+            if (attempt >= 2 && currentConf >= 0.90 && hasMultiStrategy) {
+              earlyTerminated = true;
+              debugPrint('ML Kit 识别: 高置信度即时终止 "$result" (置信度=${(currentConf * 100).toStringAsFixed(0)}%, ${resultStrategies[result]?.length}种策略)');
+            } else if (attempt >= minAttemptsBeforeEarly && voteMap[result]! >= earlyThreshold && hasMultiStrategy) {
               earlyTerminated = true;
               debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票 (阈值=$earlyThreshold, 多策略确认)');
             }
@@ -14322,12 +14549,18 @@ class RecognitionService {
             debugPrint('ML Kit 识别: ✗ 第${attempt}次未识别到文字');
           }
         }
-        // v4.8.0: 外层循环提前终止 — 要求更高票数 + 多策略确认
+        // v6.1.0: 外层循环提前终止 — 降低阈值，更早退出多尺度循环
         if (voteMap.isNotEmpty) {
           final maxVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
           final topCandidate = voteMap.entries.reduce((a, b) => a.value >= b.value ? a : b);
           final topStrategies = resultStrategies[topCandidate.key]?.length ?? 0;
-          if (maxVotes >= 4 && topStrategies >= 2) break; // v4.8.0: 提高阈值，要求多策略
+          final topConf = confidenceMap[topCandidate.key] ?? 0.7;
+          // v6.1.0: 高置信度 + 多策略确认 → 跳过后续尺度
+          if (topConf >= 0.88 && topStrategies >= 2) {
+            debugPrint('ML Kit 识别: 多尺度提前退出（高置信度 ${(topConf * 100).toStringAsFixed(0)}%）');
+            break;
+          }
+          if (maxVotes >= 3 && topStrategies >= 2) break; // v6.1.0: 从 4 降至 3
         }
       }
 
