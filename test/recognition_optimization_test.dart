@@ -94,20 +94,22 @@ void main() {
     // ═══ 评分权重测试 ═══
     group('Scoring Weights', () {
       test('weights sum to 1.0', () {
-        // v5.2.0 权重
-        const votesWeight = 0.35;
-        const confidenceWeight = 0.20;
+        // v5.7.0 权重 — 新增策略可靠性维度
+        const votesWeight = 0.30;
+        const confidenceWeight = 0.18;
+        const contextWeight = 0.15;
+        const strategyReliabilityWeight = 0.10;
         const freqWeight = 0.10;
         const diversityWeight = 0.10;
-        const multiScaleWeight = 0.10;
-        const contextWeight = 0.15;
+        const multiScaleWeight = 0.07;
 
         final total = votesWeight +
             confidenceWeight +
+            contextWeight +
+            strategyReliabilityWeight +
             freqWeight +
             diversityWeight +
-            multiScaleWeight +
-            contextWeight;
+            multiScaleWeight;
 
         expect(total, closeTo(1.0, 0.001),
             reason: 'All weights should sum to 1.0');
@@ -115,22 +117,22 @@ void main() {
 
       test('confidence weight increased from v4.8.0', () {
         // v4.8.0: confidence was 0.15
-        // v5.2.0: confidence is 0.20
+        // v5.7.0: confidence is 0.18
         const v480Confidence = 0.15;
-        const v520Confidence = 0.20;
+        const v570Confidence = 0.18;
 
-        expect(v520Confidence, greaterThan(v480Confidence),
-            reason: 'v5.2.0 should have higher confidence weight');
+        expect(v570Confidence, greaterThan(v480Confidence),
+            reason: 'v5.7.0 should have higher confidence weight');
       });
 
-      test('diversity weight decreased from v4.8.0', () {
-        // v4.8.0: diversity was 0.15
-        // v5.2.0: diversity is 0.10
-        const v480Diversity = 0.15;
-        const v520Diversity = 0.10;
+      test('strategy reliability is new in v5.7.0', () {
+        // v5.7.0: 新增策略可靠性维度 10%
+        const strategyReliabilityWeight = 0.10;
 
-        expect(v520Diversity, lessThan(v480Diversity),
-            reason: 'v5.2.0 should have lower diversity weight');
+        expect(strategyReliabilityWeight, greaterThan(0.0),
+            reason: 'v5.7.0 should have strategy reliability weight');
+        expect(strategyReliabilityWeight, lessThanOrEqualTo(0.15),
+            reason: 'Strategy reliability weight should be reasonable');
       });
     });
 
