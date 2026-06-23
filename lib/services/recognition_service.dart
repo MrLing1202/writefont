@@ -3930,7 +3930,7 @@ class RecognitionService {
   // ═══════════════════════════════════════════════════════════
 
   /// 当前识别引擎版本
-  static const String _currentEngineVersion = 'v2.16.0';
+  static const String _currentEngineVersion = 'v2.17.0';
 
   /// 版本历史记录存储 key
   static const String _prefKeyVersionHistory = 'recognition_version_history';
