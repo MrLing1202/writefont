@@ -3507,19 +3507,19 @@ class RecognitionService {
     // 开运算去噪（先腐蚀后膨胀）
     var opened = enhanced;
     for (int i = 0; i < 1; i++) {
-      opened = ImageProcessor._erode(opened);
+      opened = ImageProcessor.erode(opened);
     }
     for (int i = 0; i < 1; i++) {
-      opened = ImageProcessor._dilate(opened);
+      opened = ImageProcessor.dilate(opened);
     }
 
     // 闭运算修复断笔（先膨胀后腐蚀）
     var closed = enhanced;
     for (int i = 0; i < 1; i++) {
-      closed = ImageProcessor._dilate(closed);
+      closed = ImageProcessor.dilate(closed);
     }
     for (int i = 0; i < 1; i++) {
-      closed = ImageProcessor._erode(closed);
+      closed = ImageProcessor.erode(closed);
     }
 
     // 融合：取三者的加权平均
@@ -6726,6 +6726,496 @@ class RecognitionService {
     } else {
       // 喝: 左边是口字旁
       return leftPeaks <= 2 ? 0.65 : 0.4;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v5.8.0: 继续扩展形近字视觉评分 — 覆盖更多常见混淆对
+  // ═══════════════════════════════════════════════════════════
+
+  /// 令/今 视觉评分
+  /// 令: 下部有点（右下区域有墨迹）
+  /// 今: 下部无点
+  static double _scoreLingJin(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    final bottomRightDensity = _regionDensity(binary, (w * 0.4).round(), (h * 0.7).round(), w, h);
+    if (candidate == '令') {
+      return bottomRightDensity > 0.05 ? 0.7 : 0.4;
+    } else {
+      return bottomRightDensity < 0.04 ? 0.7 : 0.4;
+    }
+  }
+
+  /// 折/拆 视觉评分
+  /// 折: 右边"斤"（有竖撇）
+  /// 拆: 右边"斥"（有点在右下）
+  static double _scoreZheChai(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    final rightBottomDensity = _regionDensity(binary, (w * 0.5).round(), (h * 0.6).round(), w, h);
+    if (candidate == '拆') {
+      return rightBottomDensity > 0.08 ? 0.65 : 0.4;
+    } else {
+      return rightBottomDensity < 0.06 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 拔/拨 视觉评分
+  /// 拔: 右边"犮"（无点）
+  /// 拨: 右边"发"（有点）
+  static double _scoreBaBo(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    final rightDensity = _regionDensity(binary, (w * 0.5).round(), (h * 0.4).round(), w, (h * 0.7).round());
+    // 拨的右边密度更高（有更多笔画）
+    if (candidate == '拨') {
+      return rightDensity > 0.15 ? 0.65 : 0.4;
+    } else {
+      return rightDensity < 0.13 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 候/侯 视觉评分
+  /// 候: 有竖画穿过中间
+  /// 侯: 无竖画穿过
+  static double _scoreHouHou(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 中间区域的竖直投影峰值
+    final midX = w ~/ 2;
+    int centerVerticalPeaks = 0;
+    for (int x = (w * 0.3).round(); x < (w * 0.7).round(); x++) {
+      if (vProj[x] > h * 0.4) centerVerticalPeaks++;
+    }
+    if (candidate == '候') {
+      return centerVerticalPeaks > 2 ? 0.7 : 0.4;
+    } else {
+      return centerVerticalPeaks <= 2 ? 0.7 : 0.4;
+    }
+  }
+
+  /// 密/蜜 视觉评分
+  /// 密: 下部是"山"（三竖）
+  /// 蜜: 下部是"虫"（有横画）
+  static double _scoreMiMi(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 底部区域的横线数量
+    final bottomStart = (h * 0.7).round();
+    int bottomHStrokes = 0;
+    bool inStroke = false;
+    for (int y = bottomStart; y < h; y++) {
+      if (hProj[y] > w * 0.15) {
+        if (!inStroke) { bottomHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '蜜') {
+      // 蜜: 底部有更多横画（虫的特征）
+      return bottomHStrokes >= 2 ? 0.65 : 0.4;
+    } else {
+      // 密: 底部横画较少（山的特征）
+      return bottomHStrokes < 2 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 座/坐 视觉评分
+  /// 座: 上部是"广"（有横画和撇画）
+  /// 坐: 上部是两个"人"
+  static double _scoreZuoZuo(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 顶部区域的横线数量
+    final topEnd = (h * 0.3).round();
+    int topHStrokes = 0;
+    bool inStroke = false;
+    for (int y = 0; y < topEnd; y++) {
+      if (hProj[y] > w * 0.15) {
+        if (!inStroke) { topHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '座') {
+      // 座: 顶部有横画（广字头）
+      return topHStrokes >= 1 ? 0.65 : 0.4;
+    } else {
+      // 坐: 顶部横画较少
+      return topHStrokes < 1 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 科/料 视觉评分
+  /// 科: 右边"斗"（有横画）
+  /// 料: 右边"斗"（有横画）
+  // 注：科和料的右边都是"斗"，主要靠左边偏旁区分
+  static double _scoreKeLiao(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 左半部分的特征
+    int leftInkCols = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.1) leftInkCols++;
+    }
+    final leftWidth = leftInkCols / midX;
+    // 科左边是"禾"，料左边是"米"
+    // 米比禾多一横，左边更宽
+    if (candidate == '料') {
+      return leftWidth > 0.35 ? 0.6 : 0.4;
+    } else {
+      return leftWidth < 0.3 ? 0.6 : 0.4;
+    }
+  }
+
+  /// 话/活 视觉评分
+  /// 话: 左边"言"（有横画多）
+  /// 活: 左边"氵"（三点水）
+  static double _scoreHuaHuo(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 左半部分的竖直投影峰值
+    int leftPeaks = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.08) leftPeaks++;
+    }
+    if (candidate == '活') {
+      // 活: 左边有三点水（3个分散峰值）
+      return leftPeaks > 2 ? 0.65 : 0.4;
+    } else {
+      // 话: 左边是言字旁
+      return leftPeaks <= 2 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 阳/阴 视觉评分
+  /// 阳: 右边"日"（较窄）
+  /// 阴: 右边"月"（较宽，有撇画）
+  static double _scoreYangYin(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 右半部分的宽度
+    int rightInkCols = 0;
+    for (int x = midX; x < w; x++) {
+      if (vProj[x] > h * 0.1) rightInkCols++;
+    }
+    final rightWidth = rightInkCols / (w - midX);
+    if (candidate == '阴') {
+      // 阴: 右边"月"较宽
+      return rightWidth > 0.4 ? 0.65 : 0.4;
+    } else {
+      // 阳: 右边"日"较窄
+      return rightWidth < 0.35 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 风/凤 视觉评分
+  /// 风: 内部是"×"
+  /// 凤: 内部是"又"
+  static double _scoreFengFeng(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 内部区域的密度
+    final innerDensity = _regionDensity(binary, (w * 0.2).round(), (h * 0.2).round(), (w * 0.8).round(), (h * 0.8).round());
+    // 凤的内部密度更高（有更多笔画）
+    if (candidate == '凤') {
+      return innerDensity > 0.12 ? 0.6 : 0.4;
+    } else {
+      return innerDensity < 0.1 ? 0.6 : 0.4;
+    }
+  }
+
+  /// 颗/棵 视觉评分
+  /// 颗: 右边"页"（有横画多）
+  /// 棵: 右边"果"（有横画少）
+  static double _scoreKeKe(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的横线数量
+    final midX = w ~/ 2;
+    int rightHStrokes = 0;
+    bool inStroke = false;
+    for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y++) {
+      int rowInk = 0;
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor.isBlack(binary, x, y)) rowInk++;
+      }
+      if (rowInk > (w - midX) * 0.15) {
+        if (!inStroke) { rightHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '颗') {
+      // 颗: 右边"页"有更多横画
+      return rightHStrokes >= 4 ? 0.65 : 0.4;
+    } else {
+      // 棵: 右边"果"横画较少
+      return rightHStrokes < 4 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 抱/报 视觉评分
+  /// 抱: 右边"包"（有竖弯钩）
+  /// 报: 右边"服"（有横画多）
+  static double _scoreBaoBao(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的横线数量
+    final midX = w ~/ 2;
+    int rightHStrokes = 0;
+    bool inStroke = false;
+    for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y++) {
+      int rowInk = 0;
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor.isBlack(binary, x, y)) rowInk++;
+      }
+      if (rowInk > (w - midX) * 0.15) {
+        if (!inStroke) { rightHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '报') {
+      // 报: 右边"服"有更多横画
+      return rightHStrokes >= 3 ? 0.65 : 0.4;
+    } else {
+      // 抱: 右边"包"横画较少
+      return rightHStrokes < 3 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 做/作 视觉评分
+  /// 做: 右边"故"（有横画多）
+  /// 作: 右边"乍"（有横画少）
+  static double _scoreZuoZuo2(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的横线数量
+    final midX = w ~/ 2;
+    int rightHStrokes = 0;
+    bool inStroke = false;
+    for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y++) {
+      int rowInk = 0;
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor.isBlack(binary, x, y)) rowInk++;
+      }
+      if (rowInk > (w - midX) * 0.15) {
+        if (!inStroke) { rightHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '做') {
+      // 做: 右边"故"有更多横画
+      return rightHStrokes >= 3 ? 0.65 : 0.4;
+    } else {
+      // 作: 右边"乍"横画较少
+      return rightHStrokes < 3 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 跑/跳 视觉评分
+  /// 跑: 右边"包"（有竖弯钩）
+  /// 跳: 右边"兆"（有撇捺）
+  static double _scorePaoTiao(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的底部特征
+    final rightBottomDensity = _regionDensity(binary, (w * 0.5).round(), (h * 0.6).round(), w, h);
+    if (candidate == '跑') {
+      // 跑: 右边"包"底部有竖弯钩
+      return rightBottomDensity > 0.12 ? 0.6 : 0.4;
+    } else {
+      // 跳: 右边"兆"底部较空
+      return rightBottomDensity < 0.1 ? 0.6 : 0.4;
+    }
+  }
+
+  /// 注/住 视觉评分
+  /// 注: 左边"氵"（三点水）
+  /// 住: 左边"亻"（单人旁）
+  static double _scoreZhuZhu(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 左半部分的竖直投影峰值
+    int leftPeaks = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.08) leftPeaks++;
+    }
+    if (candidate == '注') {
+      // 注: 左边有三点水（3个分散峰值）
+      return leftPeaks > 2 ? 0.65 : 0.4;
+    } else {
+      // 住: 左边是单人旁
+      return leftPeaks <= 2 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 明/朋 视觉评分
+  /// 明: 左边"日"（较窄）
+  /// 朋: 左边"月"（较宽）
+  static double _scoreMingPeng(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 左半部分的宽度
+    int leftInkCols = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.1) leftInkCols++;
+    }
+    final leftWidth = leftInkCols / midX;
+    if (candidate == '朋') {
+      // 朋: 左边"月"较宽
+      return leftWidth > 0.4 ? 0.65 : 0.4;
+    } else {
+      // 明: 左边"日"较窄
+      return leftWidth < 0.35 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 认/识 视觉评分
+  /// 认: 左边"讠"（言字旁，有横画多）
+  /// 识: 左边"讠"（言字旁，有横画多）
+  // 注：认和识的左边都是"讠"，主要靠右边区分
+  static double _scoreRenShi(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的横线数量
+    final midX = w ~/ 2;
+    int rightHStrokes = 0;
+    bool inStroke = false;
+    for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y++) {
+      int rowInk = 0;
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor.isBlack(binary, x, y)) rowInk++;
+      }
+      if (rowInk > (w - midX) * 0.15) {
+        if (!inStroke) { rightHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '识') {
+      // 识: 右边"只"有更多横画
+      return rightHStrokes >= 2 ? 0.6 : 0.4;
+    } else {
+      // 认: 右边"人"横画较少
+      return rightHStrokes < 2 ? 0.6 : 0.4;
+    }
+  }
+
+  /// 字/学 视觉评分
+  /// 字: 上部是"宀"（有横画）
+  /// 学: 上部是"学"（有横画多）
+  static double _scoreZiXue(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 顶部区域的横线数量
+    final topEnd = (h * 0.4).round();
+    int topHStrokes = 0;
+    bool inStroke = false;
+    for (int y = 0; y < topEnd; y++) {
+      if (hProj[y] > w * 0.15) {
+        if (!inStroke) { topHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '学') {
+      // 学: 顶部有更多横画
+      return topHStrokes >= 3 ? 0.65 : 0.4;
+    } else {
+      // 字: 顶部横画较少
+      return topHStrokes < 3 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 说/话 视觉评分
+  /// 说: 左边"讠"（言字旁）
+  /// 话: 左边"讠"（言字旁）
+  // 注：说和话的左边都是"讠"，主要靠右边区分
+  static double _scoreShuoHua(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的横线数量
+    final midX = w ~/ 2;
+    int rightHStrokes = 0;
+    bool inStroke = false;
+    for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y++) {
+      int rowInk = 0;
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor.isBlack(binary, x, y)) rowInk++;
+      }
+      if (rowInk > (w - midX) * 0.15) {
+        if (!inStroke) { rightHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '话') {
+      // 话: 右边"舌"有更多横画
+      return rightHStrokes >= 3 ? 0.6 : 0.4;
+    } else {
+      // 说: 右边"兑"横画较少
+      return rightHStrokes < 3 ? 0.6 : 0.4;
+    }
+  }
+
+  /// 样/洋 视觉评分
+  /// 样: 左边"木"（有横画少）
+  /// 洋: 左边"氵"（三点水）
+  static double _scoreYangYang(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 左半部分的竖直投影峰值
+    int leftPeaks = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.08) leftPeaks++;
+    }
+    if (candidate == '洋') {
+      // 洋: 左边有三点水（3个分散峰值）
+      return leftPeaks > 2 ? 0.65 : 0.4;
+    } else {
+      // 样: 左边是木字旁
+      return leftPeaks <= 2 ? 0.65 : 0.4;
+    }
+  }
+
+  /// 妈/好 视觉评分
+  /// 妈: 左边"女"（有撇画多）
+  /// 好: 左边"女"（有撇画多）
+  // 注：妈和好的左边都是"女"，主要靠右边区分
+  static double _scoreMaHao(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 右半部分的横线数量
+    final midX = w ~/ 2;
+    int rightHStrokes = 0;
+    bool inStroke = false;
+    for (int y = (h * 0.2).round(); y < (h * 0.8).round(); y++) {
+      int rowInk = 0;
+      for (int x = midX; x < w; x++) {
+        if (ImageProcessor.isBlack(binary, x, y)) rowInk++;
+      }
+      if (rowInk > (w - midX) * 0.15) {
+        if (!inStroke) { rightHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '妈') {
+      // 妈: 右边"马"有更多横画
+      return rightHStrokes >= 2 ? 0.6 : 0.4;
+    } else {
+      // 好: 右边"子"横画较少
+      return rightHStrokes < 2 ? 0.6 : 0.4;
+    }
+  }
+
+  /// 他/她 视觉评分
+  /// 他: 左边"亻"（单人旁）
+  /// 她: 左边"女"（有撇画多）
+  static double _scoreTaTa(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    final midX = w ~/ 2;
+    // 左半部分的特征
+    int leftInkCols = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.1) leftInkCols++;
+    }
+    final leftWidth = leftInkCols / midX;
+    if (candidate == '她') {
+      // 她: 左边"女"较宽
+      return leftWidth > 0.35 ? 0.65 : 0.4;
+    } else {
+      // 他: 左边"亻"较窄
+      return leftWidth < 0.3 ? 0.65 : 0.4;
     }
   }
 

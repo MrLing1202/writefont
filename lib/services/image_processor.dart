@@ -2201,6 +2201,12 @@ class ImageProcessor {
   static img.Image adaptiveThreshold(img.Image gray, {int blockSize = 31, int c = 12, bool invert = false}) =>
       _adaptiveThreshold(gray, blockSize: blockSize, c: c, invert: invert);
 
+  /// v5.8.0: 公开版本的 erode，供 RecognitionService 的形态学操作使用
+  static img.Image erode(img.Image binary) => _erode(binary);
+
+  /// v5.8.0: 公开版本的 dilate，供 RecognitionService 的形态学操作使用
+  static img.Image dilate(img.Image binary) => _dilate(binary);
+
   static img.Image _erode(img.Image binary) {
     final result = img.Image(width: binary.width, height: binary.height);
     // Fill with white first
