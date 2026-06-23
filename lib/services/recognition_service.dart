@@ -3987,6 +3987,38 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 笔画变异度高图特殊处理 — 使用更强的笔画归一化策略
+      if (imageFeatures.strokeVariability > 0.7) {
+        debugPrint('ML Kit 识别: 笔画变异度高图特殊处理 (variability=${imageFeatures.strokeVariability.toStringAsFixed(2)})');
+        final variabilityStrategies = [
+          ('强归一化+CLAHE', (img.Image src) {
+            final normalized = _strokeNormalization(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(normalized);
+          }),
+          ('强归一化+Sauvola', (img.Image src) {
+            final normalized = _strokeNormalization(src);
+            return _sauvolaBinarizeAdaptive(normalized, features: imageFeatures);
+          }),
+          ('强归一化+USM', (img.Image src) {
+            final normalized = _strokeNormalization(src);
+            return _unsharpMaskSharpen(normalized, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in variabilityStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 笔画变异度策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
