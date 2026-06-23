@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
@@ -18,6 +19,7 @@ import 'image_analyzer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'tflite_recognition_service.dart';
+import 'preprocess_isolate.dart';
 import 'api_key.dart';
 import '../models/recognition_history.dart';
 
@@ -3442,11 +3444,52 @@ class RecognitionService {
           debugPrint('ML Kit 识别: 放大到 ${base.width}x${base.height}');
         }
 
-        for (final entry in orderedPreprocessors.entries) {
+        // ═══ v4.9.0: 预处理并行化 — Isolate 并行预处理 + 顺序识别 ═══
+        // 将所有策略的 CPU 密集型预处理放到独立 Isolate 中并行执行，
+        // 主线程只需顺序执行 ML Kit 识别（平台通道不支持并发）
+        final baseBytes = Uint8List.fromList(img.encodePng(base));
+        final strategyEntries = orderedPreprocessors.entries.toList();
+
+        // 构建并行预处理任务
+        final tasks = <PreprocessTask>[];
+        for (int i = 0; i < strategyEntries.length; i++) {
+          tasks.add(PreprocessTask(
+            imageBytes: baseBytes,
+            strategyName: strategyEntries[i].key,
+            taskIndex: i,
+          ));
+        }
+
+        // 并行执行预处理（4 个 Isolate 并发，充分利用多核 CPU）
+        debugPrint('ML Kit 识别: 并行预处理 ${tasks.length} 个策略 '
+            '(放大=${targetSize == 0 ? "原图" : "${base.width}x${base.height}"})');
+        final sw = Stopwatch()..start();
+
+        const maxParallel = 4;
+        final preprocessResults = <PreprocessResult>[];
+        for (int batch = 0; batch < tasks.length; batch += maxParallel) {
+          final batchEnd = (batch + maxParallel).clamp(0, tasks.length);
+          final batchTasks = tasks.sublist(batch, batchEnd);
+          final batchResults = await Future.wait(
+            batchTasks.map((task) => Isolate.run(() => preprocessInIsolate(task))),
+          );
+          preprocessResults.addAll(batchResults);
+
+          // 检查是否已提前终止（避免多余批次的预处理）
+          if (earlyTerminated) break;
+        }
+
+        sw.stop();
+        debugPrint('ML Kit 识别: 并行预处理完成，耗时 ${sw.elapsedMilliseconds}ms '
+            '(${preprocessResults.length} 个策略)');
+
+        // 顺序识别预处理结果（ML Kit 平台通道不支持并发）
+        for (final preprocessResult in preprocessResults) {
+          if (earlyTerminated) break;
+
           attempt++;
-          final label = entry.key;
-          final preprocessor = entry.value;
-          final processed = preprocessor(base);
+          final label = preprocessResult.strategyName;
+          final processed = img.decodeImage(preprocessResult.processedBytes)!;
 
           debugPrint('ML Kit 识别: 第${attempt}次尝试 | 放大=${targetSize == 0 ? "原图" : "${base.width}x${base.height}"} | 预处理=$label');
 
@@ -3482,7 +3525,6 @@ class RecognitionService {
             if (attempt >= minAttemptsBeforeEarly && voteMap[result]! >= earlyThreshold && hasMultiStrategy) {
               earlyTerminated = true;
               debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票 (阈值=$earlyThreshold, 多策略确认)');
-              break;
             }
           } else {
             if (rawResult != null && rawResult.isNotEmpty) {
