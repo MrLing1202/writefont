@@ -2836,9 +2836,9 @@ class RecognitionService {
         }
 
         // 7. v4.2.0: 共识强度 — winner票数占总票数比例越高，置信度越高
-        final totalVotes = voteMap.values.reduce((a, b) => a + b);
-        if (totalVotes > 0) {
-          final consensusRatio = winner.value / totalVotes;
+        final consensusTotalVotes = voteMap.values.reduce((a, b) => a + b);
+        if (consensusTotalVotes > 0) {
+          final consensusRatio = winner.value / consensusTotalVotes;
           if (consensusRatio >= 0.7) {
             calibratedConf = (calibratedConf + 0.05).clamp(0.0, 1.0);
             debugPrint('ML Kit 识别: 置信度校准 — 高共识度 ${(consensusRatio * 100).toStringAsFixed(0)}% (+0.05)');
