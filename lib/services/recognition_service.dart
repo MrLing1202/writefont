@@ -377,22 +377,63 @@ class RecognitionService {
   }
 
   /// 判断字符是否为可接受的汉字或 ASCII
-  /// 只接受：完整中文汉字 (U+4E00–U+9FFF)、常用 ASCII (U+0021–U+007E)
-  /// 排除：偏旁、日文假名、韩文、特殊符号等
+  /// v4.3.0: 收紧过滤规则，只接受 CJK 汉字和少量常用 ASCII
+  /// 排除：偏旁、日文假名、韩文、特殊符号、标点、数字、拉丁字母等
   static bool _isValidChar(String ch) {
     if (ch.isEmpty) return false;
     final code = ch.codeUnitAt(0);
-    // 常用 ASCII（空格 0x20 除外）
-    if (code >= 0x21 && code <= 0x7E) return true;
-    // CJK 统一汉字（基本区）
+    // CJK 统一汉字（基本区）— 最主要的手写汉字范围
     if (code >= 0x4E00 && code <= 0x9FFF) return true;
+    // CJK 统一汉字扩展 A — 少见但仍为合法汉字
+    if (code >= 0x3400 && code <= 0x4DBF) return true;
+    // CJK 兼容汉字
+    if (code >= 0xF900 && code <= 0xFAFF) return true;
+    // v4.3.0: 不再接受 ASCII（数字、标点、拉丁字母在手写汉字场景下均为异常）
+    return false;
+  }
+
+  /// v4.3.0: 异常检测 — 判断识别结果是否为明显非汉字（乱码/噪声）
+  ///
+  /// 返回 true 表示该结果可疑，应被过滤或降权
+  static bool _isAnomalousResult(String result) {
+    if (result.isEmpty) return true;
+    final code = result.codeUnitAt(0);
+    // 标点符号（中英文）
+    if (code >= 0x21 && code <= 0x2F) return true; // ! " # $ % & ' ( ) * + , - . /
+    if (code >= 0x3A && code <= 0x40) return true; // : ; < = > ? @
+    if (code >= 0x5B && code <= 0x60) return true; // [ \ ] ^ _ `
+    if (code >= 0x7B && code <= 0x7E) return true; // { | } ~
+    // 数字
+    if (code >= 0x30 && code <= 0x39) return true; // 0-9
+    // 拉丁字母（大小写）
+    if (code >= 0x41 && code <= 0x5A) return true; // A-Z
+    if (code >= 0x61 && code <= 0x7A) return true; // a-z
+    // 中文标点
+    if (code >= 0x3000 && code <= 0x303F) return true; // CJK 标点符号
+    if (code >= 0xFF01 && code <= 0xFF0F) return true; // 全角标点
+    if (code >= 0xFF1A && code <= 0xFF20) return true; // 全角标点
+    if (code >= 0xFF3B && code <= 0xFF40) return true; // 全角标点
+    if (code >= 0xFF5B && code <= 0xFF65) return true; // 全角标点
+    // 日文假名
+    if (code >= 0x3040 && code <= 0x30FF) return true;
+    // 韩文
+    if (code >= 0xAC00 && code <= 0xD7AF) return true;
+    // 偏旁部首
+    if (code >= 0x2E80 && code <= 0x2EFF) return true;
+    if (code >= 0x2F00 && code <= 0x2FDF) return true;
     return false;
   }
 
   /// 验证并返回有效字符，无效则返回 null
+  /// v4.3.0: 增加异常检测，过滤非汉字结果
   static String? _validateResult(String? result) {
     if (result == null || result.isEmpty) return null;
     final ch = String.fromCharCodes(result.runes.take(1));
+    // 先检查是否为异常结果（标点/数字/字母等）
+    if (_isAnomalousResult(ch)) {
+      debugPrint('异常检测: 过滤非汉字结果 "$ch" (U+${ch.codeUnitAt(0).toRadixString(16)})');
+      return null;
+    }
     return _isValidChar(ch) ? ch : null;
   }
 
@@ -2621,11 +2662,13 @@ class RecognitionService {
               final text = element.text.trim();
               if (text.isNotEmpty && text.runes.isNotEmpty) {
                 final result = String.fromCharCodes(text.runes.take(1));
+                // v4.3.0: 异常检测 — 过滤非汉字结果
+                if (_isAnomalousResult(result)) {
+                  debugPrint('ML Kit 识别: 异常检测过滤 "$result" (U+${result.codeUnitAt(0).toRadixString(16)})');
+                  continue; // 跳过此结果，尝试下一个元素
+                }
                 // 计算并缓存识别置信度
-                // ML Kit element 没有直接置信度字段，使用文本长度和元素数量估算
-                // 单字符识别时，文本越短且匹配越精确，置信度越高
                 final confidence = _estimateConfidence(element, recognizedText);
-                // 复用已有的 pngBytes，避免重复编码
                 final imageHash = _hashBytes(pngBytes);
                 _confidenceCache[imageHash] = confidence;
                 debugPrint('ML Kit 识别: 置信度 ${(confidence * 100).toStringAsFixed(0)}%');
@@ -2839,17 +2882,20 @@ class RecognitionService {
                   debugPrint('云端识别: API 原始返回 "$content"');
 
                   if (content != null && content.isNotEmpty && content.runes.isNotEmpty) {
-                    // 优先提取第一个中文字符
+                    // 优先提取第一个中文字符（v4.3.0: 增加异常检测）
                     final chineseMatch = RegExp(r'[一-鿿]').firstMatch(content);
                     if (chineseMatch != null) {
-                      final result = chineseMatch.group(0);
-                      debugPrint('云端识别: ✓ 提取中文字符 "$result" (第${attempt + 1}次)');
-                      return result;
+                      final result = chineseMatch.group(0)!;
+                      if (!_isAnomalousResult(result)) {
+                        debugPrint('云端识别: ✓ 提取中文字符 "$result" (第${attempt + 1}次)');
+                        return result;
+                      }
+                      debugPrint('云端识别: 异常检测过滤 "$result"');
                     }
-                    // 否则遍历所有字符，取第一个有效字符
+                    // 否则遍历所有字符，取第一个有效字符（v4.3.0: 增加异常检测）
                     for (final rune in content.runes) {
                       final ch = String.fromCharCode(rune);
-                      if (_isValidChar(ch)) {
+                      if (_isValidChar(ch) && !_isAnomalousResult(ch)) {
                         debugPrint('云端识别: ✓ 提取有效字符 "$ch" (第${attempt + 1}次)');
                         return ch;
                       }
