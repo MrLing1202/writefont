@@ -2144,6 +2144,119 @@ class RecognitionService {
     return result;
   }
 
+  /// v4.7.0: 迭代反投影去模糊
+  ///
+  /// 使用迭代反投影（Iterative Back-Projection）思想：
+  /// 1. 假设模糊核为均匀模糊（适用于手写拍照的轻微运动模糊）
+  /// 2. 迭代估计清晰图像：每次用模糊残差修正当前估计
+  /// 3. 3-5次迭代后收敛，显著提升模糊图片的清晰度
+  img.Image _iterativeDeblur(img.Image src, {int iterations = 4}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 转为浮点数组
+    List<double> current = List.filled(w * h, 0);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        current[y * w + x] = gray.getPixel(x, y).r.toDouble();
+      }
+    }
+
+    // 迭代反投影
+    for (int iter = 0; iter < iterations; iter++) {
+      // 对当前估计做模糊（模拟模糊过程）
+      final blurred = _gaussianBlurFloat(current, w, h, sigma: 1.0 + iter * 0.3);
+
+      // 计算模糊残差 = 原图 - 模糊(当前估计)
+      List<double> residual = List.filled(w * h, 0);
+      for (int i = 0; i < w * h; i++) {
+        residual[i] = gray.getPixel(i % w, i ~/ w).r.toDouble() - blurred[i];
+      }
+
+      // 将残差反馈到当前估计（反投影）
+      final feedbackGain = 0.5 / (1 + iter * 0.15); // 逐次衰减增益
+      for (int i = 0; i < w * h; i++) {
+        current[i] = (current[i] + residual[i] * feedbackGain).clamp(0, 255);
+      }
+    }
+
+    // 转回图像
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = current[y * w + x].round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 辅助：浮点数组上的高斯模糊
+  static List<double> _gaussianBlurFloat(List<double> data, int w, int h, {double sigma = 1.0}) {
+    // 生成高斯核
+    final radius = (sigma * 2).ceil();
+    final kernelSize = radius * 2 + 1;
+    List<double> kernel = List.filled(kernelSize, 0);
+    double kernelSum = 0;
+    for (int i = 0; i < kernelSize; i++) {
+      final x = i - radius;
+      kernel[i] = _exp(-x * x / (2 * sigma * sigma));
+      kernelSum += kernel[i];
+    }
+    for (int i = 0; i < kernelSize; i++) {
+      kernel[i] /= kernelSum;
+    }
+
+    // 水平方向
+    List<double> temp = List.filled(w * h, 0);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        double sum = 0;
+        for (int k = 0; k < kernelSize; k++) {
+          final nx = (x + k - radius).clamp(0, w - 1);
+          sum += data[y * w + nx] * kernel[k];
+        }
+        temp[y * w + x] = sum;
+      }
+    }
+
+    // 垂直方向
+    List<double> result = List.filled(w * h, 0);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        double sum = 0;
+        for (int k = 0; k < kernelSize; k++) {
+          final ny = (y + k - radius).clamp(0, h - 1);
+          sum += temp[ny * w + x] * kernel[k];
+        }
+        result[y * w + x] = sum;
+      }
+    }
+    return result;
+  }
+
+  /// 辅助：快速 exp 近似
+  static double _exp(double x) {
+    x = x.clamp(-20, 20);
+    // Padé 近似
+    if (x < 0) return 1.0 / _exp(-x);
+    final intPart = x.floor();
+    final frac = x - intPart;
+    // e^frac 的 Padé 近似
+    final eFrac = (1 + frac + frac * frac / 2 + frac * frac * frac / 6) /
+                  (1 - frac * frac * frac / 6);
+    // e^intPart（快速幂）
+    double result = 1;
+    double base = 2.718281828;
+    int n = intPart;
+    while (n > 0) {
+      if (n % 2 == 1) result *= base;
+      base *= base;
+      n ~/= 2;
+    }
+    return result * eFrac;
+  }
+
   /// 辅助：以2为底的对数
   static double _log2(double x) => _ln(x) / _ln(2);
 
@@ -3024,6 +3137,18 @@ class RecognitionService {
           final edge = _multiScaleEdgeEnhance(src);
           return _unsharpMaskSharpen(edge, amount: 1.2);
         },
+        // v4.7.0: 迭代反投影去模糊（处理轻微运动模糊/手抖模糊）
+        '迭代去模糊': (src) => _iterativeDeblur(src, iterations: 4),
+        // v4.7.0: 去模糊+锐化 组合（先恢复高频再锐化）
+        '去模糊+锐化': (src) {
+          final deblurred = _iterativeDeblur(src, iterations: 3);
+          return _unsharpMaskSharpen(deblurred, amount: 1.2);
+        },
+        // v4.7.0: 去模糊+CLAHE 组合（先恢复清晰度再增强对比度）
+        '去模糊+CLAHE': (src) {
+          final deblurred = _iterativeDeblur(src, iterations: 3);
+          return ImageQualityService.instance.enhanceContrastAdaptive(deblurred);
+        },
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -3046,8 +3171,8 @@ class RecognitionService {
         }
       }
       if (features.blur > 0.5) {
-        // 模糊：加锐化类策略（含 v4.0.0 USM, v4.5.0 多尺度边缘增强）
-        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE', '多尺度边缘增强', '边缘增强+锐化']) {
+        // 模糊：加锐化类策略（含 v4.0.0 USM, v4.5.0 多尺度边缘增强, v4.7.0 去模糊）
+        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE', '多尺度边缘增强', '边缘增强+锐化', '迭代去模糊', '去模糊+锐化', '去模糊+CLAHE']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
