@@ -1063,13 +1063,30 @@ class ImageProcessor {
           // 可能是粘连字符，尝试垂直投影分割
           final splits = _verticalProjectionSplit(blackRows, minX, minY, maxX, maxY, w, h);
           if (splits.length >= 2) {
-            debugPrint('粘连分割: ${bw}x$bh (aspect=${aspect.toStringAsFixed(1)}) → ${splits.length} 个子区域');
+            debugPrint('粘连分割(垂直): ${bw}x$bh (aspect=${aspect.toStringAsFixed(1)}) → ${splits.length} 个子区域');
             for (final split in splits) {
               final sBw = split[2] - split[0] + 1;
               final sBh = split[3] - split[1] + 1;
               final sAspect = sBw > sBh ? sBw / sBh : sBh / sBw;
               if (sAspect < 3.0 && sBw > 5 && sBh > 5) {
                 bboxes.add([split[0], split[1], split[2], split[3], area ~/ splits.length]);
+              }
+            }
+            continue; // 已分割，跳过原始大框
+          }
+        }
+
+        // v4.6.0: 水平投影分割 — 高宽比 > 1.8 时尝试上下粘连分割
+        if (aspect > 1.8 && bh > bw && bh > 30) {
+          final hSplits = _horizontalProjectionSplit(blackRows, minX, minY, maxX, maxY, w, h);
+          if (hSplits.length >= 2) {
+            debugPrint('粘连分割(水平): ${bw}x$bh (aspect=${aspect.toStringAsFixed(1)}) → ${hSplits.length} 个子区域');
+            for (final split in hSplits) {
+              final sBw = split[2] - split[0] + 1;
+              final sBh = split[3] - split[1] + 1;
+              final sAspect = sBw > sBh ? sBw / sBh : sBh / sBw;
+              if (sAspect < 3.0 && sBw > 5 && sBh > 5) {
+                bboxes.add([split[0], split[1], split[2], split[3], area ~/ hSplits.length]);
               }
             }
             continue; // 已分割，跳过原始大框
@@ -1084,6 +1101,21 @@ class ImageProcessor {
     }
 
     debugPrint('轮廓提取: 找到 ${bboxes.length} 个连通区域 (图片 ${w}x$h)');
+
+    // v4.6.0: 断笔合并 — 将距离过近的连通域合并（处理断笔问题）
+    if (bboxes.length >= 2) {
+      double avgH = 0;
+      for (final bb in bboxes) {
+        avgH += (bb[3] - bb[1] + 1);
+      }
+      avgH /= bboxes.length;
+      final mergedBboxes = _mergeBrokenStrokes(bboxes, avgH);
+      if (mergedBboxes.length < bboxes.length) {
+        debugPrint('断笔合并: ${bboxes.length} → ${mergedBboxes.length} 个区域');
+        bboxes.clear();
+        bboxes.addAll(mergedBboxes);
+      }
+    }
 
     if (bboxes.isEmpty) return [];
 
@@ -1829,6 +1861,157 @@ class ImageProcessor {
       final ex = minX + splitPoints[i + 1] - 1;
       if (ex > sx) {
         result.add([sx, minY, ex, maxY]);
+      }
+    }
+
+    return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v4.6.0: 水平投影分割 — 处理上下粘连的字符
+  // ═══════════════════════════════════════════════════════════
+
+  /// 水平投影法分割上下粘连字符
+  ///
+  /// 对指定连通域区域计算水平投影（每行黑色像素数），
+  /// 找到投影谷底作为分割点，将高连通域拆分为多个字符。
+  ///
+  /// [blackRows] 预计算的二值像素数组
+  /// [minX],[minY],[maxX],[maxY] 连通域边界
+  /// [imgW],[imgH] 图像尺寸
+  /// 返回分割后的子区域列表 [[sx, sy, ex, ey], ...]
+  static List<List<int>> _horizontalProjectionSplit(
+    List<List<bool>> blackRows,
+    int minX, int minY, int maxX, int maxY,
+    int imgW, int imgH,
+  ) {
+    final regionW = maxX - minX + 1;
+    final regionH = maxY - minY + 1;
+
+    // 计算水平投影（每行黑色像素数）
+    final projection = List.filled(regionH, 0);
+    for (int y = minY; y <= maxY; y++) {
+      int count = 0;
+      for (int x = minX; x <= maxX; x++) {
+        if (y >= 0 && y < imgH && x >= 0 && x < imgW && blackRows[y][x]) {
+          count++;
+        }
+      }
+      projection[y - minY] = count;
+    }
+
+    // 平滑投影（3行滑动平均）
+    final smoothed = List.filled(regionH, 0);
+    for (int i = 0; i < regionH; i++) {
+      int sum = projection[i];
+      int cnt = 1;
+      if (i > 0) { sum += projection[i - 1]; cnt++; }
+      if (i < regionH - 1) { sum += projection[i + 1]; cnt++; }
+      smoothed[i] = sum ~/ cnt;
+    }
+
+    // 找到投影谷底：局部最小值且低于平均值的 35%
+    final avgProjection = smoothed.reduce((a, b) => a + b) / regionH;
+    final valleyThreshold = (avgProjection * 0.35).round().clamp(1, 99999);
+
+    // 候选分割点
+    final candidates = <int>[];
+    for (int i = 2; i < regionH - 2; i++) {
+      if (smoothed[i] <= valleyThreshold &&
+          smoothed[i] <= smoothed[i - 1] &&
+          smoothed[i] <= smoothed[i + 1]) {
+        candidates.add(i);
+      }
+    }
+
+    if (candidates.isEmpty) return [];
+
+    // 选择最佳分割点：间距要合理（至少 regionW * 0.3，即一个字符高度的最小值）
+    final minCharHeight = (regionW * 0.3).round().clamp(10, 99999);
+    final splitPoints = <int>[0]; // 起始位置
+    for (final c in candidates) {
+      if (c - splitPoints.last >= minCharHeight) {
+        splitPoints.add(c);
+      }
+    }
+    splitPoints.add(regionH); // 结束位置
+
+    // 至少要有 2 段才算分割成功
+    if (splitPoints.length < 3) return [];
+
+    // 生成子区域边界
+    final result = <List<int>>[];
+    for (int i = 0; i < splitPoints.length - 1; i++) {
+      final sy = minY + splitPoints[i];
+      final ey = minY + splitPoints[i + 1] - 1;
+      if (ey > sy) {
+        result.add([minX, sy, maxX, ey]);
+      }
+    }
+
+    return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v4.6.0: 连通域合并 — 处理断笔导致的同一字符被拆分
+  // ═══════════════════════════════════════════════════════════
+
+  /// 合并距离过近的连通域（处理断笔）
+  ///
+  /// 当两个连通域的边界框间距小于阈值时，将它们合并为一个区域。
+  /// 这解决了手写体断笔导致同一字符被错误拆分为多个区域的问题。
+  ///
+  /// [bboxes] 连通域列表 [[minX, minY, maxX, maxY, area], ...]
+  /// [avgHeight] 平均字符高度（用于计算合并阈值）
+  /// 返回合并后的连通域列表
+  static List<List<int>> _mergeBrokenStrokes(
+    List<List<int>> bboxes,
+    double avgHeight,
+  ) {
+    if (bboxes.length < 2) return bboxes;
+
+    // 合并阈值：平均字符高度的 25%（断笔间距通常很小）
+    final mergeThreshold = (avgHeight * 0.25).round().clamp(3, 30);
+
+    // 迭代合并直到没有可合并的对
+    bool merged = true;
+    final result = List<List<int>>.from(bboxes);
+
+    while (merged) {
+      merged = false;
+      for (int i = 0; i < result.length && !merged; i++) {
+        for (int j = i + 1; j < result.length && !merged; j++) {
+          final a = result[i];
+          final b = result[j];
+
+          // 计算两个边界框的扩展距离
+          final expandA = mergeThreshold;
+          final overlapX = a[0] - expandA <= b[2] && b[0] - expandA <= a[2];
+          final overlapY = a[1] - expandA <= b[3] && b[1] - expandA <= a[3];
+
+          if (overlapX && overlapY) {
+            // 合并两个边界框
+            final mergedBox = [
+              a[0] < b[0] ? a[0] : b[0], // minX
+              a[1] < b[1] ? a[1] : b[1], // minY
+              a[2] > b[2] ? a[2] : b[2], // maxX
+              a[3] > b[3] ? a[3] : b[3], // maxY
+              a[4] + b[4],                // area
+            ];
+
+            // 检查合并后的宽高比是否合理（单字 < 2.5:1）
+            final mW = mergedBox[2] - mergedBox[0] + 1;
+            final mH = mergedBox[3] - mergedBox[1] + 1;
+            final mAspect = mW > mH ? mW / mH : mH / mW;
+
+            if (mAspect < 2.5) {
+              result.removeAt(j);
+              result[i] = mergedBox;
+              merged = true;
+              debugPrint('断笔合并: 两个区域 → ${mW}x$mH (间距阈值=$mergeThreshold)');
+            }
+          }
+        }
       }
     }
 
