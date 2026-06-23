@@ -2887,6 +2887,41 @@ class RecognitionService {
           calibratedConf = (calibratedConf + 0.02).clamp(0.0, 1.0);
         }
 
+        // 10. v4.5.0: n-gram 上下文得分 — 与上下文越匹配，置信度越高
+        final ngramScore = DictionaryService.instance.getContextScore(
+          winner.key,
+          prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+        );
+        if (ngramScore > 0.7) {
+          calibratedConf = (calibratedConf + 0.04).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — n-gram高匹配 ${(ngramScore * 100).toStringAsFixed(0)}% (+0.04)');
+        } else if (ngramScore < 0.2 && ngramScore > 0) {
+          calibratedConf = (calibratedConf - 0.03).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — n-gram低匹配 ${(ngramScore * 100).toStringAsFixed(0)}% (-0.03)');
+        }
+
+        // 11. v4.5.0: 错误模式感知 — 如果该字符曾被频繁纠正，降低置信度
+        await _ensureErrorPatternsLoaded();
+        final errorCorrections = _errorPatterns[winner.key];
+        if (errorCorrections != null && errorCorrections.isNotEmpty) {
+          final totalCorrections = errorCorrections.values.fold(0, (a, b) => a + b);
+          if (totalCorrections >= 3) {
+            calibratedConf = (calibratedConf - 0.04).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 历史纠错${totalCorrections}次 (-0.04)');
+          }
+        }
+
+        // 12. v4.5.0: 投票一致性 — 所有策略中无异议票的比例
+        final totalVotesForWinner = voteMap[winner.key] ?? 0;
+        final totalVotesAll = voteMap.values.fold(0, (a, b) => a + b);
+        if (totalVotesAll > 0) {
+          final unanimity = totalVotesForWinner / totalVotesAll;
+          if (unanimity >= 0.9) {
+            calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 高度一致 ${(unanimity * 100).toStringAsFixed(0)}% (+0.03)');
+          }
+        }
+
         _lastLocalConfidence = calibratedConf;
 
         // ── 更新策略可靠性（v4.3.0: 持久化 + 时间衰减） ──
