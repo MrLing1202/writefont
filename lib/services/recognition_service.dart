@@ -4083,7 +4083,7 @@ class RecognitionService {
 
       // 二值化
       final threshold = ImageProcessor.otsuThreshold(processed);
-      processed = ImageProcessor._binarize(processed, threshold / 255.0, false);
+      processed = ImageProcessor.binarize(processed, threshold / 255.0, false);
 
       final pngBytes = img.encodePng(processed);
       final result = await _recognizeFromImageBytes(pngBytes);

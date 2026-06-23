@@ -1743,6 +1743,10 @@ class ImageProcessor {
     return hash & 0x7FFFFFFF;
   }
 
+  /// 二值化：将灰度图转为黑白图
+  /// [threshold] 阈值 0.0~1.0，[invert] 是否反转
+  static img.Image binarize(img.Image gray, double threshold, bool invert) => _binarize(gray, threshold, invert);
+
   static img.Image _binarize(img.Image gray, double threshold, bool invert) {
     final result = img.Image(width: gray.width, height: gray.height);
     final t = (threshold * 255).toInt();

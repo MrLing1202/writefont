@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import '../../models/project.dart';
 import '../../models/segmented_character.dart';
 import '../../services/image_processor.dart';
