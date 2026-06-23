@@ -2166,6 +2166,13 @@ class ImageProcessor {
     return binary.getPixel(x, y).r.toInt() < 128;
   }
 
+  /// v5.7.0: 公开版本的 isBlack，供 RecognitionService 的视觉分析使用
+  static bool isBlack(img.Image binary, int x, int y) => _isBlack(binary, x, y);
+
+  /// v5.7.0: 公开版本的 adaptiveThreshold，供 RecognitionService 的视觉分析使用
+  static img.Image adaptiveThreshold(img.Image gray, {int blockSize = 31, int c = 12, bool invert = false}) =>
+      _adaptiveThreshold(gray, blockSize: blockSize, c: c, invert: invert);
+
   static img.Image _erode(img.Image binary) {
     final result = img.Image(width: binary.width, height: binary.height);
     // Fill with white first

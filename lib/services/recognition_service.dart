@@ -3342,14 +3342,26 @@ class RecognitionService {
       prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
     );
 
-    // v5.2.0: 加权综合评分 — 置信度权重提升至 20%（ML Kit 内部置信度是强信号），
-    // 多样性降至 10%，增加笔画复杂度奖励（简单字 1-3 笔更容易确认）
-    double score = normalizedVotes * 0.35 +
-        confidence * 0.20 +
+    // 7. v5.7.0: 策略可靠性得分 (0.0~1.0) — 投票策略的历史成功率越高，得分越高
+    final candidateStrategies = resultStrategies[candidate] ?? {};
+    double strategyReliabilityScore = 0.5; // 默认中等
+    if (candidateStrategies.isNotEmpty) {
+      double totalReliability = 0.0;
+      for (final strat in candidateStrategies) {
+        totalReliability += _strategyReliability[strat] ?? 0.5;
+      }
+      strategyReliabilityScore = (totalReliability / candidateStrategies.length).clamp(0.0, 1.0);
+    }
+
+    // v5.7.0: 加权综合评分 — 增加策略可靠性维度
+    // 票数(30%) + 置信度(18%) + 上下文(15%) + 策略可靠性(10%) + 字频(10%) + 多样性(10%) + 多尺度(7%)
+    double score = normalizedVotes * 0.30 +
+        confidence * 0.18 +
+        contextScore * 0.15 +
+        strategyReliabilityScore * 0.10 +
         freqScore * 0.10 +
         diversityScore * 0.10 +
-        multiScaleScore * 0.10 +
-        contextScore * 0.15;
+        multiScaleScore * 0.07;
 
     // v5.2.0: 笔画复杂度奖励 — 简单字（1-3 笔画）在多策略确认时获得额外加分
     // 简单字的识别更容易被噪声干扰，但一旦多策略一致就非常可靠
@@ -5098,47 +5110,94 @@ class RecognitionService {
 
   /// v4.8.0: 预置常见手写体混淆对（高频误识别模式）
   /// 这些是手写体中经常互相混淆的字对，基于 OCR 频率统计
+  /// v5.7.0: 扩充至 120+ 组混淆对，覆盖更多手写体常见误识别
   static const Map<String, Map<String, int>> _builtinErrorPatterns = {
-    // 形近字混淆
+    // ── 形近字混淆（笔画结构相似）──
     '已': {'己': 5}, '己': {'已': 5},
     '末': {'未': 5}, '未': {'末': 5},
     '土': {'士': 5}, '士': {'土': 5},
     '天': {'夫': 4}, '夫': {'天': 4},
-    '大': {'太': 4}, '太': {'大': 4},
-    '日': {'曰': 5, '口': 3}, '曰': {'日': 5},
-    '入': {'人': 4}, '人': {'入': 4},
+    '大': {'太': 4, '犬': 3}, '太': {'大': 4, '犬': 3}, '犬': {'大': 3, '太': 3},
+    '日': {'曰': 5, '口': 3, '目': 3}, '曰': {'日': 5}, '目': {'日': 3},
+    '入': {'人': 4, '八': 3}, '人': {'入': 4}, '八': {'入': 3},
     '刀': {'力': 4}, '力': {'刀': 4},
-    '八': {'入': 3}, '几': {'九': 3}, '九': {'几': 3},
-    '干': {'千': 4}, '千': {'干': 4},
+    '几': {'九': 3}, '九': {'几': 3},
+    '干': {'千': 4, '于': 3}, '千': {'干': 4}, '于': {'干': 3},
     '王': {'玉': 3}, '玉': {'王': 3},
-    '甲': {'由': 4}, '由': {'甲': 4},
-    '田': {'由': 3}, '申': {'甲': 3},
+    '甲': {'由': 4, '田': 3}, '由': {'甲': 4, '田': 3}, '田': {'由': 3, '甲': 3}, '申': {'甲': 3},
     '贝': {'见': 3}, '见': {'贝': 3},
     '午': {'牛': 4}, '牛': {'午': 4},
     '鸟': {'乌': 3}, '乌': {'鸟': 3},
     '折': {'拆': 3}, '拆': {'折': 3},
     '拔': {'拨': 3}, '拨': {'拔': 3},
-    '辨': {'辩': 4}, '辩': {'辨': 4}, '辫': {'辨': 3},
-    '晴': {'睛': 3}, '睛': {'晴': 3},
-    '清': {'请': 3}, '请': {'清': 3},
-    '很': {'狠': 3}, '狠': {'很': 3},
-    '抱': {'跑': 3}, '跑': {'抱': 3},
+    '辨': {'辩': 4, '辫': 3}, '辩': {'辨': 4}, '辫': {'辨': 3},
     '体': {'休': 3}, '休': {'体': 3},
     '令': {'今': 3}, '今': {'令': 3},
     '候': {'侯': 3}, '侯': {'候': 3},
-    // 笔画缺失/多余
+    '水': {'永': 3}, '永': {'水': 3},
+    '手': {'毛': 3}, '毛': {'手': 3},
+    '心': {'必': 3}, '必': {'心': 3},
+    '禾': {'木': 3}, '木': {'禾': 3},
+    '电': {'龟': 3}, '龟': {'电': 3},
+    '万': {'方': 3}, '方': {'万': 3},
+    '无': {'天': 2}, '问': {'间': 3}, '间': {'问': 3},
+
+    // ── 偏旁部首相似 ──
+    '晴': {'睛': 3, '请': 3, '清': 3, '情': 3},
+    '睛': {'晴': 3},
+    '清': {'请': 3, '情': 3, '晴': 3},
+    '请': {'清': 3, '情': 3, '晴': 3},
+    '情': {'清': 3, '请': 3, '晴': 3},
+    '很': {'狠': 3, '恨': 2}, '狠': {'很': 3},
+    '抱': {'跑': 3, '泡': 2, '饱': 2}, '跑': {'抱': 3}, '泡': {'抱': 2}, '饱': {'抱': 2},
+    '科': {'料': 3}, '料': {'科': 3},
+    '话': {'活': 3}, '活': {'话': 3},
+    '起': {'越': 3}, '越': {'起': 3},
+    '阳': {'阴': 3}, '阴': {'阳': 3},
+    '风': {'凤': 3}, '凤': {'风': 3},
+    '颗': {'棵': 3}, '棵': {'颗': 3},
+    '买': {'卖': 3}, '卖': {'买': 3},
+    '座': {'坐': 3}, '坐': {'座': 3},
+    '做': {'作': 3}, '作': {'做': 3},
+    '密': {'蜜': 3}, '蜜': {'密': 3},
+    '妈': {'好': 2, '吗': 2}, '好': {'妈': 2},
+    '字': {'学': 2}, '学': {'字': 2},
+    '明': {'朋': 2}, '朋': {'明': 2},
+    '注': {'住': 2}, '住': {'注': 2},
+
+    // ── 同音/近音字混淆 ──
+    '的': {'地': 3, '得': 3, '白': 2},
+    '地': {'的': 3, '得': 2},
+    '得': {'的': 3, '地': 2},
+    '在': {'再': 3, '左': 2}, '再': {'在': 3},
+    '以': {'已': 3}, '已': {'以': 2},
+    '那': {'哪': 3}, '哪': {'那': 3},
+    '他': {'她': 3, '它': 3}, '她': {'他': 3}, '它': {'他': 3},
+    '有': {'又': 2, '右': 2}, '又': {'有': 2},
+    '分': {'份': 2}, '份': {'分': 2},
+    '近': {'进': 3}, '进': {'近': 3},
+    '气': {'汽': 3}, '汽': {'气': 3},
+    '工': {'公': 2}, '公': {'工': 2},
+    '带': {'戴': 2}, '戴': {'带': 2},
+    '只': {'支': 2}, '支': {'只': 2},
+    '知': {'之': 2}, '之': {'知': 2},
+
+    // ── 笔画缺失/多余 ──
     '口': {'日': 3},
-    '目': {'日': 3}, '月': {'日': 3},
+    '月': {'日': 3},
     '白': {'自': 3}, '自': {'白': 3},
-    '百': {'白': 3}, '万': {'方': 3},
-    '问': {'间': 3}, '间': {'问': 3},
+    '百': {'白': 3},
     '们': {'门': 3}, '门': {'们': 3},
-    // 常见手写体误识别
-    '的': {'白': 2}, '是': {'足': 2},
+
+    // ── 常见手写体误识别 ──
+    '是': {'足': 2, '事': 2},
     '了': {'子': 2}, '子': {'了': 2},
-    '在': {'左': 2}, '左': {'在': 2},
-    '有': {'右': 2}, '右': {'有': 2},
+    '左': {'在': 2},
+    '右': {'有': 2, '石': 2},
     '这': {'过': 2}, '过': {'这': 2},
+    '不': {'下': 2}, '下': {'不': 2},
+    '和': {'种': 2}, '种': {'和': 2},
+    '上': {'土': 2}, '中': {'口': 2},
   };
 
   /// 错误模式持久化 key
@@ -5390,7 +5449,7 @@ class RecognitionService {
     try {
       // 预处理：灰度 + 二值化
       final gray = img.grayscale(image);
-      final binary = ImageProcessor._adaptiveThreshold(gray, blockSize: 21, c: 10, invert: false);
+      final binary = ImageProcessor.adaptiveThreshold(gray, blockSize: 21, c: 10, invert: false);
       final w = binary.width, h = binary.height;
       if (w < 10 || h < 10) return scores;
 
@@ -5485,6 +5544,36 @@ class RecognitionService {
         else if (candidate == '王' || candidate == '玉') {
           score = _scoreWangYu(binary, candidate);
         }
+        // ── 刀/力 ──
+        // 刀: 横折钩为主，撇短
+        // 力: 横折钩 + 长撇穿过钩
+        else if (candidate == '刀' || candidate == '力') {
+          score = _scoreDaoLi(binary, horizontalProfile, candidate);
+        }
+        // ── 鸟/乌 ──
+        // 鸟: 头部有点（眼睛）
+        // 乌: 头部无点
+        else if (candidate == '鸟' || candidate == '乌') {
+          score = _scoreNiaoWu(binary, candidate);
+        }
+        // ── 买/卖 ──
+        // 买: 上部简单
+        // 卖: 上部有"十"
+        else if (candidate == '买' || candidate == '卖') {
+          score = _scoreMaiMai(binary, horizontalProfile, candidate);
+        }
+        // ── 请/清/情/晴 ──
+        // 通过左半部分偏旁特征区分
+        else if (candidate == '请' || candidate == '清' || candidate == '情' || candidate == '晴') {
+          score = _scoreQingFamily(binary, verticalProfile, candidate);
+        }
+        // ── 甲/申/田 ──
+        // 田: 框内十字
+        // 由: 竖向下延伸出框
+        // 甲: 竖向下延伸 + 框内十字
+        else if (candidate == '甲' || candidate == '申') {
+          score = _scoreTianYou(binary, verticalProfile, candidate);
+        }
 
         scores[candidate] = score;
       }
@@ -5505,7 +5594,7 @@ class RecognitionService {
     final total = binary.width * binary.height;
     for (int y = 0; y < binary.height; y++) {
       for (int x = 0; x < binary.width; x++) {
-        if (ImageProcessor._isBlack(binary, x, y)) fg++;
+        if (ImageProcessor.isBlack(binary, x, y)) fg++;
       }
     }
     return fg / total;
@@ -5516,7 +5605,7 @@ class RecognitionService {
     final proj = List<int>.filled(binary.width, 0);
     for (int x = 0; x < binary.width; x++) {
       for (int y = 0; y < binary.height; y++) {
-        if (ImageProcessor._isBlack(binary, x, y)) proj[x]++;
+        if (ImageProcessor.isBlack(binary, x, y)) proj[x]++;
       }
     }
     return proj;
@@ -5527,7 +5616,7 @@ class RecognitionService {
     final proj = List<int>.filled(binary.height, 0);
     for (int y = 0; y < binary.height; y++) {
       for (int x = 0; x < binary.width; x++) {
-        if (ImageProcessor._isBlack(binary, x, y)) proj[y]++;
+        if (ImageProcessor.isBlack(binary, x, y)) proj[y]++;
       }
     }
     return proj;
@@ -5547,10 +5636,10 @@ class RecognitionService {
     final midX = w ~/ 2;
     for (int y = bottomStart; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        if (ImageProcessor._isBlack(binary, x, y)) bottomInk++;
+        if (ImageProcessor.isBlack(binary, x, y)) bottomInk++;
       }
       for (int x = midX; x < w; x++) {
-        if (ImageProcessor._isBlack(binary, x, y)) bottomRightInk++;
+        if (ImageProcessor.isBlack(binary, x, y)) bottomRightInk++;
       }
     }
     final bottomDensity = bottomInk / (w * (h - bottomStart));
@@ -5673,7 +5762,7 @@ class RecognitionService {
     int topMass = 0, bottomMass = 0;
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        if (ImageProcessor._isBlack(binary, x, y)) {
+        if (ImageProcessor.isBlack(binary, x, y)) {
           if (y < h ~/ 2) topMass++;
           else bottomMass++;
         }
@@ -5815,7 +5904,7 @@ class RecognitionService {
     int fg = 0;
     for (int y = clampedY1; y < clampedY2; y++) {
       for (int x = clampedX1; x < clampedX2; x++) {
-        if (ImageProcessor._isBlack(binary, x, y)) fg++;
+        if (ImageProcessor.isBlack(binary, x, y)) fg++;
       }
     }
     return fg / area;
@@ -5844,7 +5933,7 @@ class RecognitionService {
     int maxWidth = 0;
     int currentWidth = 0;
     for (int x = 0; x < binary.width; x++) {
-      if (ImageProcessor._isBlack(binary, x, y)) {
+      if (ImageProcessor.isBlack(binary, x, y)) {
         currentWidth++;
         if (currentWidth > maxWidth) maxWidth = currentWidth;
       } else {
@@ -5852,6 +5941,96 @@ class RecognitionService {
       }
     }
     return maxWidth;
+  }
+
+  /// 刀/力 视觉评分
+  /// 刀: 横折钩为主，撇短
+  /// 力: 横折钩 + 长撇穿过钩
+  static double _scoreDaoLi(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 力的撇画更长更斜，左下区域墨迹更多
+    final leftBottomDensity = _regionDensity(binary, 0, (h * 0.5).round(), (w * 0.4).round(), h);
+    if (candidate == '力') {
+      return leftBottomDensity > 0.1 ? 0.75 : 0.35;
+    } else {
+      return leftBottomDensity < 0.08 ? 0.75 : 0.35;
+    }
+  }
+
+  /// 鸟/乌 视觉评分
+  /// 鸟: 头部有点（眼睛）
+  /// 乌: 头部无点
+  static double _scoreNiaoWu(img.Image binary, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 检查顶部区域（上 25%）是否有孤立的点
+    final topDensity = _regionDensity(binary, (w * 0.2).round(), 0, (w * 0.8).round(), (h * 0.25).round());
+    // 检查顶部是否有小的独立连通域（点状）
+    final topCenterDensity = _regionDensity(binary, (w * 0.35).round(), 0, (w * 0.65).round(), (h * 0.15).round());
+    if (candidate == '鸟') {
+      // 鸟有眼睛（点），顶部中心有墨迹
+      return topCenterDensity > 0.05 ? 0.8 : 0.35;
+    } else {
+      // 乌无点，顶部中心较空
+      return topCenterDensity < 0.03 ? 0.8 : 0.35;
+    }
+  }
+
+  /// 买/卖 视觉评分
+  /// 买: 上部"乛"无横
+  /// 卖: 上部有"十"（横+竖）
+  static double _scoreMaiMai(img.Image binary, List<int> hProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 检查上部 30% 区域的水平笔画数量
+    final topEnd = (h * 0.3).round();
+    int topHStrokes = 0;
+    bool inStroke = false;
+    for (int y = 0; y < topEnd; y++) {
+      if (hProj[y] > w * 0.15) {
+        if (!inStroke) { topHStrokes++; inStroke = true; }
+      } else {
+        inStroke = false;
+      }
+    }
+    if (candidate == '卖') {
+      // 卖上部有"十"，水平笔画 >= 2
+      return topHStrokes >= 2 ? 0.8 : 0.35;
+    } else {
+      // 买上部简单，水平笔画 <= 1
+      return topHStrokes <= 1 ? 0.8 : 0.35;
+    }
+  }
+
+  /// 请/清/情/晴 视觉评分 — 通过右半部分特征区分
+  /// 请: 右边"青"下有"月"
+  /// 清: 右边"青"下有"氵"（三点水在左边）
+  /// 情: 右边"青"下有"忄"（竖心旁在左边）
+  /// 晴: 右边"青"下有"日"
+  static double _scoreQingFamily(img.Image binary, List<int> vProj, String candidate) {
+    final w = binary.width, h = binary.height;
+    // 检查左半部分的特征
+    final midX = w ~/ 2;
+    final leftDensity = _regionDensity(binary, 0, (h * 0.3).round(), midX, h);
+    // 检查右下部分
+    final rightBottomDensity = _regionDensity(binary, midX, (h * 0.5).round(), w, h);
+    // 检查左半部分是否有三点水（3个分散的点）
+    int leftVerticalPeaks = 0;
+    for (int x = 0; x < midX; x++) {
+      if (vProj[x] > h * 0.1) leftVerticalPeaks++;
+    }
+
+    if (candidate == '清') {
+      // 三点水在左，左半部分有分散墨迹
+      return (leftDensity > 0.05 && leftVerticalPeaks > 2) ? 0.7 : 0.4;
+    } else if (candidate == '情') {
+      // 竖心旁在左，左半部分有竖直笔画
+      return (leftDensity > 0.08 && leftVerticalPeaks <= 2) ? 0.7 : 0.4;
+    } else if (candidate == '晴') {
+      // 日在右下，右下部分密度较高
+      return rightBottomDensity > 0.15 ? 0.7 : 0.4;
+    } else {
+      // 请: 言字旁在左
+      return (leftDensity > 0.1 && leftVerticalPeaks > 3) ? 0.7 : 0.4;
+    }
   }
 
   /// 形近字消歧 — 当识别结果属于形近字组时，利用视觉特征 + 上下文选择最可能的字
@@ -6000,88 +6179,11 @@ class RecognitionService {
   List<String> _getVerificationCandidates(String char) {
     final candidates = <String>{};
 
-    // 1. 从形近字组中获取
+    // 从形近字组中获取（v5.7.0: 统一使用 _confusableGroups，不再维护硬编码映射）
     for (final entry in _confusableGroups.entries) {
       if (entry.value.contains(char)) {
         candidates.addAll(entry.value);
-        break;
       }
-    }
-
-    // 2. 从 StrokeAnalyzer 的形近字映射中获取
-    const strokeConfusableMap = <String, List<String>>{
-      '己': ['已', '巳'],
-      '已': ['己', '巳'],
-      '巳': ['己', '已'],
-      '未': ['末'],
-      '末': ['未'],
-      '太': ['大', '犬'],
-      '大': ['太', '犬'],
-      '犬': ['太', '大'],
-      '土': ['士'],
-      '士': ['土'],
-      '天': ['夫'],
-      '夫': ['天'],
-      '日': ['曰'],
-      '曰': ['日'],
-      '田': ['由', '甲'],
-      '由': ['田', '甲'],
-      '甲': ['田', '由'],
-      '右': ['古', '石'],
-      '古': ['右', '石'],
-      '石': ['古', '右'],
-      '字': ['学'],
-      '学': ['字'],
-      '明': ['朋'],
-      '朋': ['明'],
-      '水': ['永'],
-      '永': ['水'],
-      '手': ['毛'],
-      '毛': ['手'],
-      '心': ['必'],
-      '必': ['心'],
-      '禾': ['木'],
-      '木': ['禾'],
-      '科': ['料'],
-      '料': ['科'],
-      '话': ['活'],
-      '活': ['话'],
-      '起': ['越'],
-      '越': ['起'],
-      '阳': ['阴'],
-      '阴': ['阳'],
-      '风': ['凤'],
-      '凤': ['风'],
-      '买': ['卖'],
-      '卖': ['买'],
-      '入': ['人', '八'],
-      '人': ['入', '八'],
-      '八': ['入', '人'],
-      '刀': ['力'],
-      '力': ['刀'],
-      '午': ['牛'],
-      '牛': ['午'],
-      '干': ['千', '于'],
-      '千': ['干', '于'],
-      '于': ['干', '千'],
-      '王': ['玉'],
-      '玉': ['王'],
-      '白': ['自'],
-      '自': ['白'],
-      '电': ['龟'],
-      '龟': ['电'],
-      '贝': ['见'],
-      '见': ['贝'],
-      '问': ['间'],
-      '间': ['问'],
-      '鸟': ['乌'],
-      '乌': ['鸟'],
-      '令': ['今'],
-      '今': ['令'],
-    };
-    final strokeConfusable = strokeConfusableMap[char];
-    if (strokeConfusable != null) {
-      candidates.addAll(strokeConfusable);
     }
 
     // 3. 从同音字中获取（通过字典服务的 correctWithHomophone 间接获取）
