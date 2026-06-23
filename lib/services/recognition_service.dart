@@ -4147,6 +4147,53 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 高质量大图特殊处理 — 使用更少的策略，避免过度处理
+      if (imageFeatures.qualityLevel == 'high' && maxDim >= 200) {
+        debugPrint('ML Kit 识别: 高质量大图特殊处理 (quality=high, size=${maxDim}px)');
+        final highQualityStrategies = [
+          ('高质量CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('高质量Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+        ];
+        for (final (label, fn) in highQualityStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 2; // 高质量图片策略权重更高
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 2;
+            debugPrint('ML Kit 识别: ✓ 高质量大图策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 低质量小图特殊处理 — 使用更多的策略，增加覆盖
+      if (imageFeatures.qualityLevel == 'low' && maxDim < 100) {
+        debugPrint('ML Kit 识别: 低质量小图特殊处理 (quality=low, size=${maxDim}px)');
+        final lowQualityStrategies = [
+          ('低质量CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('低质量USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 2.0)),
+          ('低质量Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+          ('低质量多阈值融合', (img.Image src) => _multiThresholdFusion(src)),
+          ('低质量笔画保留', (img.Image src) => _strokePreservingEnhance(src)),
+        ];
+        for (final (label, fn) in lowQualityStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 低质量小图策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
