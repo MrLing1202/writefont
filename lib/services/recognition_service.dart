@@ -324,6 +324,205 @@ class RecognitionService {
     return hash & 0x7FFFFFFF;
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // v4.4.0: 感知哈希缓存 — 相似图片模糊匹配
+  // ═══════════════════════════════════════════════════════════
+
+  /// 感知哈希缓存（pHash → 识别结果）— v4.4.0
+  /// 相似的图片（缩放、轻微变形）会产生相似的 pHash，实现模糊匹配
+  static final Map<int, String> _pHashCache = {};
+  static final Map<int, double> _pHashConfidenceCache = {};
+  static final Map<int, DateTime> _pHashTimeCache = {};
+  static const int _maxPHashCacheSize = 100;
+  static const Duration _pHashExpiration = Duration(hours: 24);
+
+  /// 计算图片的感知哈希（pHash）
+  ///
+  /// 算法：缩放到 8x8 灰度 → 计算平均灰度 → 生成 64-bit 哈希
+  /// 相似图片的 pHash 汉明距离很小（< 10），可实现模糊匹配
+  static int _computePHash(Uint8List imageBytes) {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return _hashBytes(imageBytes);
+
+      // 缩放到 8x8 灰度
+      final small = img.copyResize(img.grayscale(decoded), width: 8, height: 8,
+          interpolation: img.Interpolation.average);
+
+      // 计算平均灰度
+      double sum = 0;
+      for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+          sum += small.getPixel(x, y).r.toDouble();
+        }
+      }
+      final avg = sum / 64;
+
+      // 生成 64-bit 哈希：高于平均值为 1，低于为 0
+      int hash = 0;
+      int bit = 0;
+      for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+          if (small.getPixel(x, y).r.toDouble() >= avg) {
+            hash |= (1 << bit);
+          }
+          bit++;
+        }
+      }
+      return hash;
+    } catch (_) {
+      return _hashBytes(imageBytes);
+    }
+  }
+
+  /// 计算两个哈希的汉明距离（不同位的数量）
+  static int _hammingDistance(int a, int b) {
+    int xor = a ^ b;
+    int count = 0;
+    while (xor != 0) {
+      count += xor & 1;
+      xor >>= 1;
+    }
+    return count;
+  }
+
+  /// 在感知哈希缓存中查找相似图片
+  /// 汉明距离 < threshold 视为相似（默认 10）
+  static String? _lookupPHashCache(int pHash, {int threshold = 10}) {
+    String? bestMatch;
+    int bestDistance = threshold;
+
+    for (final entry in _pHashCache.entries) {
+      // 检查是否过期
+      final cachedTime = _pHashTimeCache[entry.key];
+      if (cachedTime != null && DateTime.now().difference(cachedTime) > _pHashExpiration) {
+        continue; // 过期，跳过
+      }
+
+      final distance = _hammingDistance(pHash, entry.key);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = entry.value;
+      }
+    }
+
+    if (bestMatch != null) {
+      debugPrint('感知哈希缓存: 命中 (汉明距离=$bestDistance)');
+    }
+    return bestMatch;
+  }
+
+  /// 写入感知哈希缓存
+  static void _insertPHashCache(int pHash, String result, double confidence) {
+    // 清理过期条目
+    _pHashTimeCache.removeWhere((key, time) =>
+        DateTime.now().difference(time) > _pHashExpiration);
+    for (final key in _pHashTimeCache.keys.toList()) {
+      if (!_pHashTimeCache.containsKey(key)) {
+        _pHashCache.remove(key);
+        _pHashConfidenceCache.remove(key);
+      }
+    }
+
+    // 超出上限时淘汰最旧条目
+    if (_pHashCache.length >= _maxPHashCacheSize) {
+      final oldestKey = _pHashTimeCache.entries
+          .reduce((a, b) => a.value.isBefore(b.value) ? a : b)
+          .key;
+      _pHashCache.remove(oldestKey);
+      _pHashConfidenceCache.remove(oldestKey);
+      _pHashTimeCache.remove(oldestKey);
+    }
+
+    _pHashCache[pHash] = result;
+    _pHashConfidenceCache[pHash] = confidence;
+    _pHashTimeCache[pHash] = DateTime.now();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v4.4.0: 持久化缓存 — 高置信度结果保存到本地存储
+  // ═══════════════════════════════════════════════════════════
+
+  static const String _prefKeyPersistentCache = 'ocr_persistent_cache';
+  static const int _maxPersistentCacheSize = 500;
+  static bool _persistentCacheLoaded = false;
+
+  /// 将高置信度的识别结果持久化到 SharedPreferences
+  static Future<void> _persistCacheEntry(int cacheKey, String result, double confidence) async {
+    // 只持久化高置信度结果（>= 0.8）
+    if (confidence < 0.8) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_prefKeyPersistentCache);
+      Map<String, dynamic> cache = {};
+      if (json != null && json.isNotEmpty) {
+        cache = jsonDecode(json) as Map<String, dynamic>;
+      }
+
+      // 超出上限时清理最旧的 20%
+      if (cache.length >= _maxPersistentCacheSize) {
+        final keys = cache.keys.toList();
+        final removeCount = (keys.length * 0.2).round();
+        for (int i = 0; i < removeCount && i < keys.length; i++) {
+          cache.remove(keys[i]);
+        }
+      }
+
+      cache[cacheKey.toString()] = {
+        'result': result,
+        'confidence': confidence,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      await prefs.setString(_prefKeyPersistentCache, jsonEncode(cache));
+    } catch (e) {
+      debugPrint('持久化缓存写入失败: $e');
+    }
+  }
+
+  /// 从持久化缓存加载识别结果
+  static Future<void> _loadPersistentCache() async {
+    if (_persistentCacheLoaded) return;
+    _persistentCacheLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_prefKeyPersistentCache);
+      if (json == null || json.isEmpty) return;
+
+      final cache = jsonDecode(json) as Map<String, dynamic>;
+      int loaded = 0;
+      int expired = 0;
+      final now = DateTime.now();
+
+      for (final entry in cache.entries) {
+        final key = int.tryParse(entry.key);
+        if (key == null) continue;
+
+        final data = entry.value as Map<String, dynamic>;
+        final timestamp = DateTime.tryParse(data['timestamp'] as String? ?? '');
+        final result = data['result'] as String?;
+
+        // 检查是否过期（7天）
+        if (timestamp != null && now.difference(timestamp).inDays > 7) {
+          expired++;
+          continue;
+        }
+
+        if (result != null && !_recognitionCache.containsKey(key)) {
+          _recognitionCache[key] = result;
+          _cacheAccessOrder.add(key);
+          loaded++;
+        }
+      }
+
+      if (loaded > 0 || expired > 0) {
+        debugPrint('持久化缓存: 加载 $loaded 条，跳过 $expired 条过期条目');
+      }
+    } catch (e) {
+      debugPrint('持久化缓存加载失败: $e');
+    }
+  }
+
   /// 获取 ML Kit 识别器（中文）
   TextRecognizer _getMlKitRecognizer() {
     _mlKitRecognizer ??= TextRecognizer(script: TextRecognitionScript.chinese);
@@ -461,6 +660,25 @@ class RecognitionService {
 
     _cacheMisses++;
 
+    // v4.4.0: 加载持久化缓存（首次使用时执行）
+    await _loadPersistentCache();
+
+    // v4.4.0: 感知哈希模糊匹配 — 相似图片命中缓存
+    final pHash = _computePHash(imageBytes);
+    final pHashResult = _lookupPHashCache(pHash);
+    if (pHashResult != null) {
+      _cacheHits++;
+      _addDebugLog('cache', '感知哈希缓存命中', data: {'pHash': pHash, 'result': pHashResult});
+      debugPrint('识别: 感知哈希缓存命中 "$pHashResult"');
+      // 同步写入精确缓存
+      _recognitionCache[cacheKey] = pHashResult;
+      _cacheAccessOrder.remove(cacheKey);
+      _cacheAccessOrder.add(cacheKey);
+      sw.stop();
+      _recordLatency(sw.elapsed.inMicroseconds / 1000.0);
+      return pHashResult;
+    }
+
     // 用户反馈学习：查找相似图片的纠正结果（优先级最高）
     final feedbackResult = await UserFeedbackService.instance.findSimilarFeedback(imageBytes);
     if (feedbackResult != null) {
@@ -576,6 +794,14 @@ class RecognitionService {
     _recognitionCache[cacheKey] = result;
     _cacheAccessOrder.add(cacheKey);
     _estimatedCacheBytes += imageBytes.length; // 估算缓存内存增长
+
+    // v4.4.0: 写入感知哈希缓存（模糊匹配）
+    if (result != null) {
+      final confidence = _confidenceCache[cacheKey] ?? 0.75;
+      _insertPHashCache(pHash, result, confidence);
+      // 异步写入持久化缓存（不阻塞返回）
+      _persistCacheEntry(cacheKey, result, confidence);
+    }
 
     return result;
   }
