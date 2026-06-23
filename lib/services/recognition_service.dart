@@ -89,6 +89,7 @@ class RecognitionService {
   static const String _prefKeyOfflineMode = 'ocr_offline_mode';
   static const String _prefKeyOfflineCache = 'ocr_offline_cache';
   static const String _prefKeyUseTflite = 'ocr_use_tflite';
+  static const String _prefKeyStrategyWeights = 'ocr_strategy_weights'; // v4.3.0: 策略权重持久化
 
   // DeepSeek-OCR (硅基流动) 默认配置
   static const String defaultCloudUrl = 'https://api.siliconflow.cn/v1/chat/completions';
@@ -119,8 +120,12 @@ class RecognitionService {
   double _lastLocalConfidence = 0.0;
 
   /// 策略可靠性追踪（策略名 → 历史成功率 0.0~1.0）— v2.6.0
-  /// 用于加权投票：高可靠性策略的投票获得 1.2x 权重加成
+  /// v4.3.0: 持久化到 SharedPreferences，启动时加载，识别后更新
+  /// 用于加权投票：高可靠性策略的投票获得权重加成
   static final Map<String, double> _strategyReliability = {};
+  static bool _strategyWeightsLoaded = false;
+  static int _strategyUpdateCount = 0; // 更新计数，每10次持久化一次
+  static DateTime _lastStrategyDecay = DateTime.now(); // 上次衰减时间
 
   // 原子计数器，用于临时文件名防碰撞
   static int _fileCounter = 0;
@@ -2438,7 +2443,10 @@ class RecognitionService {
 
         _lastLocalConfidence = calibratedConf;
 
-        // ── 更新策略可靠性 ──
+        // ── 更新策略可靠性（v4.3.0: 持久化 + 时间衰减） ──
+        await _ensureStrategyWeightsLoaded();
+        // 时间衰减：每天衰减 1%，防止旧数据过度影响
+        _applyTimeDecay();
         final winnerStrategies = resultStrategies[winner.key] ?? {};
         for (final strat in winnerStrategies) {
           final old = _strategyReliability[strat] ?? 0.5;
@@ -2453,6 +2461,12 @@ class RecognitionService {
               _strategyReliability[strat] = (old * 0.9).clamp(0.0, 1.0);
             }
           }
+        }
+        // v4.3.0: 每10次识别持久化一次策略权重
+        _strategyUpdateCount++;
+        if (_strategyUpdateCount >= 10) {
+          _strategyUpdateCount = 0;
+          await _saveStrategyWeights();
         }
 
         // v2.7.0: 存储识别投票详情（供 UI 展示）
@@ -2957,7 +2971,10 @@ class RecognitionService {
     _detailCache.clear();
     _cacheAccessOrder.clear();
     _estimatedCacheBytes = 0;
-    _strategyReliability.clear(); // 重置策略可靠性
+    // v4.3.0: 退出前保存策略权重
+    _saveStrategyWeights();
+    _strategyReliability.clear();
+    _strategyWeightsLoaded = false;
     // 重置调试统计
     _totalRecognitions = 0;
     _successfulRecognitions = 0;
@@ -2966,6 +2983,71 @@ class RecognitionService {
     _cacheMisses = 0;
     _latencyHistory.clear();
     _debugLogBuffer.clear();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v4.3.0: 策略权重持久化
+  // ═══════════════════════════════════════════════════════════
+
+  /// 确保策略权重已从持久化存储加载
+  static Future<void> _ensureStrategyWeightsLoaded() async {
+    if (_strategyWeightsLoaded) return;
+    _strategyWeightsLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_prefKeyStrategyWeights);
+      if (json != null && json.isNotEmpty) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        for (final entry in map.entries) {
+          _strategyReliability[entry.key] = (entry.value as num).toDouble();
+        }
+        debugPrint('策略权重: 已加载 ${_strategyReliability.length} 个策略权重');
+      }
+    } catch (e) {
+      debugPrint('策略权重: 加载失败 $e');
+    }
+  }
+
+  /// 保存策略权重到持久化存储
+  static Future<void> _saveStrategyWeights() async {
+    if (_strategyReliability.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, dynamic>{};
+      for (final entry in _strategyReliability.entries) {
+        map[entry.key] = double.parse(entry.value.toStringAsFixed(4));
+      }
+      await prefs.setString(_prefKeyStrategyWeights, jsonEncode(map));
+      debugPrint('策略权重: 已保存 ${_strategyReliability.length} 个策略权重');
+    } catch (e) {
+      debugPrint('策略权重: 保存失败 $e');
+    }
+  }
+
+  /// 时间衰减：每天衰减 1%，防止旧数据过度影响
+  static void _applyTimeDecay() {
+    final now = DateTime.now();
+    final daysSinceLastDecay = now.difference(_lastStrategyDecay).inDays;
+    if (daysSinceLastDecay <= 0) return;
+    // 每天衰减 1%（向 0.5 中间值靠拢）
+    final decayFactor = 0.99 * daysSinceLastDecay;
+    if (decayFactor >= 1.0) return;
+    for (final key in _strategyReliability.keys.toList()) {
+      final val = _strategyReliability[key]!;
+      // 向 0.5 靠拢：newVal = 0.5 + (val - 0.5) * decayFactor
+      _strategyReliability[key] = (0.5 + (val - 0.5) * decayFactor).clamp(0.0, 1.0);
+    }
+    _lastStrategyDecay = now;
+    debugPrint('策略权重: 时间衰减 ${daysSinceLastDecay}天');
+  }
+
+  /// 获取策略权重统计（供 UI 展示）
+  static Map<String, dynamic> getStrategyWeightStats() {
+    return {
+      'weights': Map.unmodifiable(_strategyReliability),
+      'loaded': _strategyWeightsLoaded,
+      'updateCount': _strategyUpdateCount,
+    };
   }
 
   // ═══════════════════════════════════════════════════════════
