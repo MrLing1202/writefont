@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/recognition_history.dart';
 import '../theme/app_theme.dart';
+import 'recognition_diagnostic_screen.dart';
 
 /// 识别历史记录页面
 ///
@@ -56,8 +57,18 @@ class _RecognitionHistoryScreenState extends State<RecognitionHistoryScreen> {
         title: '识别历史',
         actions: [
           IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const RecognitionDiagnosticScreen()),
+              );
+            },
+            icon: const Icon(Icons.analytics_outlined),
+            tooltip: '识别诊断报告',
+          ),
+          IconButton(
             onPressed: () => setState(() => _showStats = !_showStats),
-            icon: Icon(_showStats ? Icons.list : Icons.analytics_outlined),
+            icon: Icon(_showStats ? Icons.list : Icons.bar_chart),
             tooltip: _showStats ? '查看列表' : '查看统计',
           ),
           IconButton(

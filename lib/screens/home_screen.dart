@@ -38,6 +38,8 @@ import 'home/home_actions.dart';
 import 'batch_import_screen.dart';
 import 'font_test_suite_screen.dart';
 import 'font_package_screen.dart';
+import 'practice_sheet_screen.dart';
+import 'recognition_diagnostic_screen.dart';
 import 'package:flutter/services.dart';
 import '../main.dart';
 
@@ -217,12 +219,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WhatsNewDialog.checkAndShow(
       context,
       version: currentVersion,
-      subtitle: '全部 19 项优化完成！识别更准、分割更精',
+      subtitle: '智能字帖 + 识别诊断，让造字更高效',
       items: const [
-        WhatsNewItem(icon: '🎯', title: '智能手写区域检测', description: '自动检测并移除方格纸网格线，字符识别更精准'),
-        WhatsNewItem(icon: '✂️', title: '手写区域自动裁剪', description: '方格纸只写一部分也能准确定位手写区域'),
-        WhatsNewItem(icon: '📐', title: '网格线间距验证', description: '智能区分网格线与笔画，避免误检'),
-        WhatsNewItem(icon: '🎉', title: '19/19 全部完成', description: '识别率优化清单 100% 达成'),
+        WhatsNewItem(icon: '📝', title: '智能字帖生成器', description: '分析薄弱字符，自动生成田字格练习字帖，可分享图片'),
+        WhatsNewItem(icon: '📊', title: '识别诊断报告', description: '全面的识别统计、置信度分布、薄弱字符分析和趋势追踪'),
+        WhatsNewItem(icon: '🎯', title: '针对性练习', description: '按置信度排序，最弱的字符优先练习，效率更高'),
+        WhatsNewItem(icon: '📈', title: '识别模式对比', description: '对比本地 vs 云端识别效果，找到最适合你的方式'),
       ],
     );
   }
@@ -2325,7 +2327,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         );
                       },
                       onPracticeModeTap: () {
-                        HomeActions.openProjectList(context);
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const PracticeSheetScreen()),
+                        );
                       },
                       // 预览
                       onFontPreviewTap: () {
@@ -2375,6 +2380,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         Navigator.push(
                           context,
                           WFAnimations.slideRoute(const FontPackageScreen()),
+                        );
+                      },
+                      onDiagnosticTap: () {
+                        Navigator.push(
+                          context,
+                          WFAnimations.slideRoute(const RecognitionDiagnosticScreen()),
                         );
                       },
                     ),

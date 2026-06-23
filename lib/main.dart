@@ -20,6 +20,8 @@ import 'screens/project_list_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/font_test_suite_screen.dart';
 import 'screens/font_package_screen.dart';
+import 'screens/practice_sheet_screen.dart';
+import 'screens/recognition_diagnostic_screen.dart';
 import 'services/app_config_service.dart';
 import 'services/locale_service.dart';
 import 'services/recognition_service.dart';
@@ -1503,6 +1505,10 @@ class _WriteFontAppState extends State<WriteFontApp> with WidgetsBindingObserver
             return WFAnimations.slideRoute(const FontTestSuiteScreen());
           case '/fontPackage':
             return WFAnimations.slideRoute(const FontPackageScreen());
+          case '/practice-sheet':
+            return WFAnimations.slideRoute(const PracticeSheetScreen());
+          case '/diagnostic':
+            return WFAnimations.slideRoute(const RecognitionDiagnosticScreen());
           case '/my-fonts':
             return WFAnimations.slideRoute(const ProjectListScreen());
           case '/settings':

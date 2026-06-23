@@ -62,6 +62,9 @@ class SecondaryEntryCard extends StatefulWidget {
   final VoidCallback onFontTestSuiteTap;
   final VoidCallback onFontPackageTap;
 
+  // ── 诊断 ──
+  final VoidCallback onDiagnosticTap;
+
   const SecondaryEntryCard({
     super.key,
     required this.savedProjectCount,
@@ -87,6 +90,7 @@ class SecondaryEntryCard extends StatefulWidget {
     required this.onMyFontsTap,
     required this.onFontTestSuiteTap,
     required this.onFontPackageTap,
+    required this.onDiagnosticTap,
   });
 
   @override
@@ -222,6 +226,13 @@ class _SecondaryEntryCardState extends State<SecondaryEntryCard> {
                 title: '笔画顺序',
                 subtitle: '演示汉字书写笔画顺序',
                 onTap: widget.onStrokeOrderTap,
+              ),
+              _EntryItem(
+                icon: Icons.analytics_outlined,
+                iconColor: const Color(0xFF3498DB),
+                title: '识别诊断',
+                subtitle: '识别统计 · 薄弱字符 · 趋势分析',
+                onTap: widget.onDiagnosticTap,
               ),
             ],
           ),
