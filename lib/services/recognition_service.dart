@@ -3859,6 +3859,70 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 粗笔画图特殊处理 — 使用更强的细化策略
+      if (imageFeatures.lineThickness > 0.8) {
+        debugPrint('ML Kit 识别: 粗笔画图特殊处理 (thickness=${imageFeatures.lineThickness.toStringAsFixed(2)})');
+        final thickStrategies = [
+          ('强细化+CLAHE', (img.Image src) {
+            final thinned = _morphologicalSkeletonize(img.grayscale(src));
+            return ImageQualityService.instance.enhanceContrastAdaptive(thinned);
+          }),
+          ('强细化+Sauvola', (img.Image src) {
+            final thinned = _morphologicalSkeletonize(img.grayscale(src));
+            return _sauvolaBinarizeAdaptive(thinned, features: imageFeatures);
+          }),
+          ('强细化+USM', (img.Image src) {
+            final thinned = _morphologicalSkeletonize(img.grayscale(src));
+            return _unsharpMaskSharpen(thinned, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in thickStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 粗笔画策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 细笔画图特殊处理 — 使用更强的增粗策略
+      if (imageFeatures.lineThickness < 0.2) {
+        debugPrint('ML Kit 识别: 细笔画图特殊处理 (thickness=${imageFeatures.lineThickness.toStringAsFixed(2)})');
+        final thinStrategies = [
+          ('强增粗+CLAHE', (img.Image src) {
+            final thickened = _thinStrokeEnhance(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(thickened);
+          }),
+          ('强增粗+Sauvola', (img.Image src) {
+            final thickened = _thinStrokeEnhance(src);
+            return _sauvolaBinarizeAdaptive(thickened, features: imageFeatures);
+          }),
+          ('强增粗+USM', (img.Image src) {
+            final thickened = _thinStrokeEnhance(src);
+            return _unsharpMaskSharpen(thickened, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in thinStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 细笔画策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
