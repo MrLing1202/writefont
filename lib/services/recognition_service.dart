@@ -4020,6 +4020,29 @@ class RecognitionService {
         }
       }
 
+      // v5.7.0: 自适应策略数量 — 根据图像质量和字符复杂度调整
+      // 高质量大图 + 简单字符：减少策略数量，避免过度处理引入噪声
+      // 低质量/复杂字符：使用更多策略，增加覆盖
+      int maxStrategies = 30; // 默认上限
+      if (imageFeatures.qualityLevel == 'high' && imageFeatures.inkDensity < 0.3) {
+        maxStrategies = 15; // 高质量简单字：精简策略
+        debugPrint('自适应策略: 高质量简单字，限制策略数=$maxStrategies');
+      } else if (imageFeatures.qualityLevel == 'high' && maxDim >= 150) {
+        maxStrategies = 12; // 高质量大图：最少策略
+        debugPrint('自适应策略: 高质量大图，限制策略数=$maxStrategies');
+      } else if (imageFeatures.inkDensity > 0.6) {
+        maxStrategies = 30; // 复杂字：最多策略
+        debugPrint('自适应策略: 复杂字，策略数=$maxStrategies');
+      }
+      if (orderedPreprocessors.length > maxStrategies) {
+        final limited = orderedPreprocessors.entries.take(maxStrategies).toList();
+        orderedPreprocessors.clear();
+        for (final entry in limited) {
+          orderedPreprocessors[entry.key] = entry.value;
+        }
+        debugPrint('自适应策略: 限制为 $maxStrategies 个策略');
+      }
+
       debugPrint('ML Kit 识别: 智能策略选择 ${orderedPreprocessors.length}/${preprocessors.length} 种 '
           '(风格=${features.styleName}, 对比度=${features.contrast.toStringAsFixed(2)}, '
           '噪声=${features.noise.toStringAsFixed(2)}, 模糊=${features.blur.toStringAsFixed(2)})');
