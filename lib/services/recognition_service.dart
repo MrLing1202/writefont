@@ -5357,6 +5357,152 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 自适应对比度+形态学闭运算识别 — 先增强对比度再修复断笔
+      if (imageFeatures.connection < 0.3 && imageFeatures.contrast < 0.4) {
+        debugPrint('ML Kit 识别: 自适应对比度+形态学闭运算识别 (connection=${imageFeatures.connection.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final contrastCloseStrategies = [
+          ('自适应对比度+形态学闭运算CLAHE', (img.Image src) {
+            final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+            final closed = _morphologicalClose(img.grayscale(enhanced), radius: 1);
+            return ImageQualityService.instance.enhanceContrastAdaptive(closed);
+          }),
+          ('自适应对比度+形态学闭运算USM', (img.Image src) {
+            final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+            final closed = _morphologicalClose(img.grayscale(enhanced), radius: 1);
+            return _unsharpMaskSharpen(closed, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in contrastCloseStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 自适应对比度+形态学闭运算策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 笔画保留增强+CLAHE识别 — 先保留笔画再增强对比度
+      if (imageFeatures.noise > 0.3 && imageFeatures.contrast < 0.4) {
+        debugPrint('ML Kit 识别: 笔画保留增强+CLAHE识别 (noise=${imageFeatures.noise.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final strokePreserveClaheStrategies = [
+          ('笔画保留增强+CLAHE增强', (img.Image src) {
+            final preserved = _strokePreservingEnhance(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(preserved);
+          }),
+          ('笔画保留增强+CLAHEUSM', (img.Image src) {
+            final preserved = _strokePreservingEnhance(src);
+            return _unsharpMaskSharpen(preserved, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in strokePreserveClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 笔画保留增强+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 多阈值融合+CLAHE识别 — 先融合再增强对比度
+      if (imageFeatures.contrast < 0.3) {
+        debugPrint('ML Kit 识别: 多阈值融合+CLAHE识别 (contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final multiThreshClaheStrategies = [
+          ('多阈值融合+CLAHE增强', (img.Image src) {
+            final fused = _multiThresholdFusion(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(fused);
+          }),
+          ('多阈值融合+CLAHEUSM', (img.Image src) {
+            final fused = _multiThresholdFusion(src);
+            return _unsharpMaskSharpen(fused, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in multiThreshClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 多阈值融合+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 自适应对比度+USM锐化+CLAHE识别 — 三重组合
+      if (imageFeatures.blur > 0.4 && imageFeatures.contrast < 0.4) {
+        debugPrint('ML Kit 识别: 自适应对比度+USM锐化+CLAHE识别 (blur=${imageFeatures.blur.toStringAsFixed(2)}, contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final contrastUsmClaheStrategies = [
+          ('自适应对比度+USM锐化+CLAHE增强', (img.Image src) {
+            final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+            final sharpened = _unsharpMaskSharpen(enhanced, amount: 1.3);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('自适应对比度+USM锐化+CLAHEUSM', (img.Image src) {
+            final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+            final sharpened = _unsharpMaskSharpen(enhanced, amount: 1.3);
+            return _unsharpMaskSharpen(sharpened, amount: 1.2);
+          }),
+        ];
+        for (final (label, fn) in contrastUsmClaheStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 自适应对比度+USM锐化+CLAHE策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 伽马+Sauvola+USM识别 — 三重组合
+      if (imageFeatures.contrast < 0.3 && imageFeatures.blur > 0.4) {
+        debugPrint('ML Kit 识别: 伽马+Sauvola+USM识别 (contrast=${imageFeatures.contrast.toStringAsFixed(2)}, blur=${imageFeatures.blur.toStringAsFixed(2)})');
+        final gammaSauvolaUsmStrategies = [
+          ('伽马+Sauvola+USM增强', (img.Image src) {
+            final gamma = _adaptiveGammaCorrection(src);
+            final sauvola = _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+            return _unsharpMaskSharpen(sauvola, amount: 1.0);
+          }),
+          ('伽马+Sauvola+USMCLAHE', (img.Image src) {
+            final gamma = _adaptiveGammaCorrection(src);
+            final sauvola = _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sauvola);
+          }),
+        ];
+        for (final (label, fn) in gammaSauvolaUsmStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 伽马+Sauvola+USM策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
