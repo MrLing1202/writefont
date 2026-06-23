@@ -4194,6 +4194,138 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 混合风格图特殊处理 — 使用多种策略组合
+      if (imageFeatures.style == HandwritingStyle.mixed) {
+        debugPrint('ML Kit 识别: 混合风格图特殊处理');
+        final mixedStrategies = [
+          ('混合风格CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('混合风格USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 1.5)),
+          ('混合风格Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+          ('混合风格多阈值融合', (img.Image src) => _multiThresholdFusion(src)),
+          ('混合风格笔画保留', (img.Image src) => _strokePreservingEnhance(src)),
+          ('混合风格自适应对比度+USM', (img.Image src) {
+            final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+            return _unsharpMaskSharpen(enhanced, amount: 1.2);
+          }),
+          ('混合风格伽马+Sauvola+USM', (img.Image src) {
+            final gamma = _adaptiveGammaCorrection(src);
+            final sauvola = _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+            return _unsharpMaskSharpen(sauvola, amount: 1.0);
+          }),
+        ];
+        for (final (label, fn) in mixedStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 混合风格策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 行书风格图特殊处理 — 使用更强的分离策略
+      if (imageFeatures.style == HandwritingStyle.cursive) {
+        debugPrint('ML Kit 识别: 行书风格图特殊处理');
+        final cursiveStyleStrategies = [
+          ('行书CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('行书USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 1.5)),
+          ('行书Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+          ('行书骨架化', (img.Image src) => _morphologicalSkeletonize(img.grayscale(src))),
+          ('行书局部阈值', (img.Image src) => _localThresholdBinarize(src)),
+        ];
+        for (final (label, fn) in cursiveStyleStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 行书风格策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 轻笔风格图特殊处理 — 使用更强的增粗策略
+      if (imageFeatures.style == HandwritingStyle.light) {
+        debugPrint('ML Kit 识别: 轻笔风格图特殊处理');
+        final lightStyleStrategies = [
+          ('轻笔CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('轻笔USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 2.0)),
+          ('轻笔Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+          ('轻笔增粗', (img.Image src) => _thinStrokeEnhance(src)),
+          ('轻笔断笔修复', (img.Image src) => _morphologicalClose(img.grayscale(src), radius: 1)),
+        ];
+        for (final (label, fn) in lightStyleStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 轻笔风格策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 重笔风格图特殊处理 — 使用更强的细化策略
+      if (imageFeatures.style == HandwritingStyle.heavy) {
+        debugPrint('ML Kit 识别: 重笔风格图特殊处理');
+        final heavyStyleStrategies = [
+          ('重笔CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('重笔USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 1.5)),
+          ('重笔Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+          ('重笔骨架化', (img.Image src) => _morphologicalSkeletonize(img.grayscale(src))),
+          ('重笔开运算去噪', (img.Image src) => _morphologicalOpen(img.grayscale(src), radius: 1)),
+        ];
+        for (final (label, fn) in heavyStyleStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 重笔风格策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 楷书风格图特殊处理 — 使用标准策略
+      if (imageFeatures.style == HandwritingStyle.regular) {
+        debugPrint('ML Kit 识别: 楷书风格图特殊处理');
+        final regularStyleStrategies = [
+          ('楷书CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('楷书USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 1.5)),
+          ('楷书Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+        ];
+        for (final (label, fn) in regularStyleStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 楷书风格策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
