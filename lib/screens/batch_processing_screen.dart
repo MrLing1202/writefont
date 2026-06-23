@@ -533,18 +533,23 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
     final currentName = progress?.currentProjectName;
     final isCancelled = progress?.isCancelled ?? false;
 
-    // 计算预估剩余时间
+    // v4.6.0: 改进 ETA 计算 — 基于已完成数量和已用时间
     String? estimatedRemaining;
-    if (_processStartTime != null && progressValue > 0 && progressValue < 1) {
+    double? speed; // 每秒处理项目数
+    if (_processStartTime != null && completed > 0 && completed < total) {
       final elapsed = DateTime.now().difference(_processStartTime!);
-      final totalEstimated = elapsed ~/ progressValue.toInt();
-      final remaining = totalEstimated - elapsed;
-      if (remaining.inSeconds > 0) {
-        final remMinutes = remaining.inMinutes;
-        final remSeconds = remaining.inSeconds % 60;
-        estimatedRemaining = remMinutes > 0
-            ? '预计剩余 $remMinutes 分 $remSeconds 秒'
-            : '预计剩余 $remSeconds 秒';
+      final elapsedSec = elapsed.inMilliseconds / 1000.0;
+      if (elapsedSec > 0) {
+        speed = completed / elapsedSec;
+        final remainingItems = total - completed;
+        final remainingSec = speed > 0 ? remainingItems / speed : 0;
+        if (remainingSec > 0) {
+          final remMinutes = (remainingSec / 60).floor();
+          final remSeconds = (remainingSec % 60).round();
+          estimatedRemaining = remMinutes > 0
+              ? '预计剩余 $remMinutes 分 $remSeconds 秒'
+              : '预计剩余 $remSeconds 秒';
+        }
       }
     }
 
@@ -598,35 +603,45 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
             ),
           ),
           const SizedBox(height: 8),
+          // v4.6.0: 进度百分比 + 已完成/总数
           Text(
-            '$completed / $total',
+            '${(progressValue * 100).toStringAsFixed(1)}%  ·  $completed / $total',
             style: TextStyle(
               fontSize: 16,
+              fontWeight: FontWeight.w500,
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          // 已用时间
-          if (_elapsedTime.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              '已用时间 $_elapsedTime',
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-          // 预估剩余时间
-          if (estimatedRemaining != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              estimatedRemaining,
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
+          // v4.6.0: 时间信息行（已用时间 + 预估剩余 + 速度）
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            alignment: WrapAlignment.center,
+            children: [
+              // 已用时间
+              if (_elapsedTime.isNotEmpty)
+                _buildProgressInfoChip(
+                  icon: Icons.timer_outlined,
+                  label: '已用 $_elapsedTime',
+                  colorScheme: colorScheme,
+                ),
+              // 预估剩余
+              if (estimatedRemaining != null)
+                _buildProgressInfoChip(
+                  icon: Icons.schedule,
+                  label: estimatedRemaining!.replaceAll('预计剩余 ', ''),
+                  colorScheme: colorScheme,
+                ),
+              // 处理速度
+              if (speed != null && speed > 0)
+                _buildProgressInfoChip(
+                  icon: Icons.speed,
+                  label: '${speed.toStringAsFixed(1)} 项/秒',
+                  colorScheme: colorScheme,
+                ),
+            ],
+          ),
           if (currentName != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -721,6 +736,35 @@ class _BatchProcessingScreenState extends State<BatchProcessingScreen> {
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// v4.6.0: 进度信息小标签（用于 ETA、速度等显示）
+  Widget _buildProgressInfoChip({
+    required IconData icon,
+    required String label,
+    required ColorScheme colorScheme,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             ),
           ),
         ],
