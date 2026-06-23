@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 新版本更新提示弹窗 — v2.7.0
+/// 新版本更新提示弹窗
 /// 首次启动新版本时展示，让用户立刻感知到升级
 class WhatsNewDialog extends StatelessWidget {
   final String version;
