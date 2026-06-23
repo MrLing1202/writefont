@@ -3131,9 +3131,12 @@ class RecognitionService {
       }
 
       // ═══ 第二轮：多级预处理 + 投票 ═══
-      // 根据图片大小分级，定义放大目标尺寸序列
+      // v4.8.0: 优化分级策略 — 小图更激进放大，大图更智能
       List<int> upscaleTargets;
-      if (maxDim < 50) {
+      if (maxDim < 30) {
+        // 极小图：非常激进放大（需要更多放大倍数来补偿信息损失）
+        upscaleTargets = [500, 700, 1000];
+      } else if (maxDim < 50) {
         upscaleTargets = [400, 600, 800];
       } else if (maxDim < 100) {
         upscaleTargets = [300, 500, 700];
@@ -3146,6 +3149,15 @@ class RecognitionService {
       if (imageFeatures.qualityLevel == 'high' && maxDim >= 150) {
         upscaleTargets = [0];
         debugPrint('ML Kit 识别: 高质量大图，跳过放大');
+      }
+      // v4.8.0: 低对比度图片额外放大（小笔画在低对比度下更容易丢失）
+      if (imageFeatures.contrast < 0.3 && maxDim < 150 && upscaleTargets != [0]) {
+        final extraTargets = <int>[];
+        for (final t in upscaleTargets) {
+          extraTargets.add(t);
+          if (t < 600) extraTargets.add(t + 200); // 每个目标额外加一个更大的
+        }
+        upscaleTargets = extraTargets.toSet().toList()..sort();
       }
       debugPrint('ML Kit 识别: 分级策略 targets=$upscaleTargets');
 
@@ -3381,6 +3393,14 @@ class RecognitionService {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
         debugPrint('手写风格自适应: 边缘模糊 (sharpness=${features.edgeSharpness.toStringAsFixed(2)})，添加锐化策略');
+      }
+
+      // v4.8.0: 极小图特殊处理 — 添加更多增强策略
+      if (maxDim < 50) {
+        for (final k in ['USM强锐化', 'CLAHE自适应', '伽马+CLAHE', 'Sauvola二值化', '伽马+Sauvola']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+        debugPrint('小图优化: 添加增强策略（USM强锐化+CLAHE+Sauvola）');
       }
 
       // 确保至少有5个策略
