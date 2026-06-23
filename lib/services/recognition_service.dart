@@ -961,6 +961,18 @@ class RecognitionService {
         '开运算去噪': (src) => _morphologicalOpen(img.grayscale(src), radius: 1),
         // v4.3.0: 多尺度形态学（小膨胀+闭运算，兼顾断笔修复和笔画增强）
         '多尺度形态学': (src) => _multiScaleMorphology(src),
+        // v4.5.0 新增预处理策略
+        '自适应伽马校正': (src) => _adaptiveGammaCorrection(src),
+        '多尺度边缘增强': (src) => _multiScaleEdgeEnhance(src),
+        '笔画感知去噪': (src) => _strokeAwareDenoise(src),
+        '伽马+CLAHE': (src) {
+          final gamma = _adaptiveGammaCorrection(src);
+          return ImageQualityService.instance.enhanceContrastAdaptive(gamma);
+        },
+        '边缘增强+锐化': (src) {
+          final edge = _multiScaleEdgeEnhance(src);
+          return _unsharpMaskSharpen(edge, amount: 1.2);
+        },
       };
 
       for (final targetSize in upscaleTargets) {
@@ -1780,6 +1792,191 @@ class RecognitionService {
     return _morphologicalClose(dilated, radius: 1);
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // v4.5.0: 新增图像增强预处理策略
+  // ═══════════════════════════════════════════════════════════
+
+  /// v4.5.0: 自适应伽马校正
+  ///
+  /// 根据图像平均亮度自动计算伽马值：
+  /// - 过暗图片（均值<80）：gamma < 1，提亮暗部
+  /// - 过亮图片（均值>180）：gamma > 1，压暗亮部
+  /// - 正常范围：跳过校正
+  ///
+  /// 有效解决手写照片中光照不均、阴影遮挡等问题。
+  img.Image _adaptiveGammaCorrection(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 计算平均亮度
+    double sum = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        sum += gray.getPixel(x, y).r.toDouble();
+      }
+    }
+    final mean = sum / (w * h);
+
+    // 计算伽马值：gamma = log(0.5) / log(mean/255)
+    // 目标：将平均亮度映射到 128 附近
+    double gamma;
+    if (mean < 10) {
+      gamma = 0.3; // 极暗，强提亮
+    } else if (mean < 80) {
+      gamma = _log2(0.5) / _log2(mean / 255.0);
+      gamma = gamma.clamp(0.3, 0.8);
+    } else if (mean > 200) {
+      gamma = _log2(0.5) / _log2(mean / 255.0);
+      gamma = gamma.clamp(1.2, 3.0);
+    } else {
+      return src; // 正常亮度，跳过
+    }
+
+    debugPrint('伽马校正: 亮度均值=${mean.toStringAsFixed(0)}, gamma=${gamma.toStringAsFixed(2)}');
+
+    // 构建查找表
+    final lut = List<int>.generate(256, (i) {
+      final normalized = i / 255.0;
+      final corrected = _pow(normalized, gamma);
+      return (corrected * 255).round().clamp(0, 255);
+    });
+
+    // 应用查找表
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = lut[gray.getPixel(x, y).r.toInt()];
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// v4.5.0: 多尺度边缘增强
+  ///
+  /// 使用不同尺度的 Sobel 算子分别检测粗笔画和细笔画边缘，
+  /// 然后加权合成。比单一尺度 Sobel 能同时增强粗笔画结构和细笔画细节。
+  img.Image _multiScaleEdgeEnhance(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+
+        // 尺度1: 3x3 Sobel（细笔画边缘）
+        double edge1 = 0;
+        if (y > 0 && y < h - 1 && x > 0 && x < w - 1) {
+          final gx1 = _sobelX(gray, x, y).abs().toDouble();
+          final gy1 = _sobelY(gray, x, y).abs().toDouble();
+          edge1 = _sqrt(gx1 * gx1 + gy1 * gy1);
+        }
+
+        // 尺度2: 5x5 Sobel（粗笔画结构）
+        double edge2 = 0;
+        if (y > 1 && y < h - 2 && x > 1 && x < w - 2) {
+          int gx2 = 0, gy2 = 0;
+          // 5x5 Sobel X
+          const kx = [-1,-2,0,2,1, -4,-8,0,8,4, -6,-12,0,12,6, -4,-8,0,8,4, -1,-2,0,2,1];
+          const ky = [-1,-4,-6,-4,-1, -2,-8,-12,-8,-2, 0,0,0,0,0, 2,8,12,8,2, 1,4,6,4,1];
+          int ki = 0;
+          for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+              final v = gray.getPixel(x + dx, y + dy).r.toInt();
+              gx2 += v * kx[ki];
+              gy2 += v * ky[ki];
+              ki++;
+            }
+          }
+          edge2 = _sqrt((gx2 * gx2 + gy2 * gy2).toDouble()) / 4; // 归一化
+        }
+
+        // 加权合成：细边缘 60% + 粗边缘 40%
+        final edge = edge1 * 0.6 + edge2 * 0.4;
+
+        // 叠加到原图（50% 权重）
+        final v = (orig + edge * 0.5).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// v4.5.0: 笔画感知去噪
+  ///
+  /// 使用各向异性扩散思想：在笔画边缘处（梯度大）抑制平滑，
+  /// 在平坦区域（梯度小）加强平滑。这样去噪的同时保留笔画边缘。
+  img.Image _strokeAwareDenoise(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    final result = img.Image(width: w, height: h);
+
+    // 先做一次中值滤波获取粗略去噪结果
+    final median = _medianFilter(gray);
+
+    for (int y = 1; y < h - 1; y++) {
+      for (int x = 1; x < w - 1; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final med = median.getPixel(x, y).r.toDouble();
+
+        // 计算局部梯度幅值（边缘强度）
+        final gx = (gray.getPixel(x + 1, y).r.toDouble() - gray.getPixel(x - 1, y).r.toDouble()).abs();
+        final gy = (gray.getPixel(x, y + 1).r.toDouble() - gray.getPixel(x, y - 1).r.toDouble()).abs();
+        final gradient = _sqrt(gx * gx + gy * gy);
+
+        // 边缘保护权重：梯度越大，越保留原图
+        // gradient=0 → 完全用中值滤波结果
+        // gradient>50 → 完全保留原图
+        final edgeWeight = (gradient / 50.0).clamp(0.0, 1.0);
+
+        // 加权混合
+        final v = (orig * edgeWeight + med * (1.0 - edgeWeight)).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
+  /// 辅助：以2为底的对数
+  static double _log2(double x) => _ln(x) / _ln(2);
+
+  /// 辅助：自然对数（Newton 级数近似）
+  static double _ln(double x) {
+    if (x <= 0) return -999;
+    // 利用 ln(x) = 2 * atanh((x-1)/(x+1))
+    final t = (x - 1) / (x + 1);
+    double sum = 0;
+    double term = t;
+    for (int i = 0; i < 20; i++) {
+      sum += term / (2 * i + 1);
+      term *= t * t;
+    }
+    return 2 * sum;
+  }
+
+  /// 辅助：幂函数（快速近似）
+  static double _pow(double base, double exponent) {
+    if (base <= 0) return 0;
+    if (exponent == 0) return 1;
+    if (exponent == 1) return base;
+    // 利用 e^(exponent * ln(base))
+    return _exp(exponent * _ln(base));
+  }
+
+  /// 辅助：指数函数（Taylor 展开）
+  static double _exp(double x) {
+    if (x < -10) return 0;
+    if (x > 10) return 22026.0;
+    double sum = 1;
+    double term = 1;
+    for (int i = 1; i < 30; i++) {
+      term *= x / i;
+      sum += term;
+    }
+    return sum;
+  }
+
   /// 水平投影方差（用于倾斜检测）
   /// 方差越大说明文字行越整齐（倾斜越小）
   double _horizontalProjectionVariance(img.Image binary) {
@@ -2585,6 +2782,22 @@ class RecognitionService {
         '开运算去噪': (src) => _morphologicalOpen(img.grayscale(src), radius: 1),
         // v4.3.0: 多尺度形态学（小膨胀+闭运算，兼顾断笔修复和笔画增强）
         '多尺度形态学': (src) => _multiScaleMorphology(src),
+        // v4.5.0: 自适应伽马校正（亮度归一化，处理过暗/过亮图片）
+        '自适应伽马校正': (src) => _adaptiveGammaCorrection(src),
+        // v4.5.0: 多尺度边缘增强（同时增强粗笔画和细笔画边缘）
+        '多尺度边缘增强': (src) => _multiScaleEdgeEnhance(src),
+        // v4.5.0: 笔画感知去噪（保留边缘，去除背景噪声）
+        '笔画感知去噪': (src) => _strokeAwareDenoise(src),
+        // v4.5.0: 伽马+CLAHE 组合（先亮度归一化再对比度增强）
+        '伽马+CLAHE': (src) {
+          final gamma = _adaptiveGammaCorrection(src);
+          return ImageQualityService.instance.enhanceContrastAdaptive(gamma);
+        },
+        // v4.5.0: 边缘增强+锐化 组合
+        '边缘增强+锐化': (src) {
+          final edge = _multiScaleEdgeEnhance(src);
+          return _unsharpMaskSharpen(edge, amount: 1.2);
+        },
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -2601,14 +2814,14 @@ class RecognitionService {
         }
       }
       if (features.noise > 0.5) {
-        // 高噪声：加降噪类策略
-        for (final k in ['灰度+去噪', '灰度+去噪+锐化', '高斯模糊去噪+锐化']) {
+        // 高噪声：加降噪类策略（v4.5.0: 新增笔画感知去噪）
+        for (final k in ['灰度+去噪', '灰度+去噪+锐化', '高斯模糊去噪+锐化', '笔画感知去噪']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
       if (features.blur > 0.5) {
-        // 模糊：加锐化类策略（含 v4.0.0 USM）
-        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE']) {
+        // 模糊：加锐化类策略（含 v4.0.0 USM, v4.5.0 多尺度边缘增强）
+        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE', '多尺度边缘增强', '边缘增强+锐化']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
