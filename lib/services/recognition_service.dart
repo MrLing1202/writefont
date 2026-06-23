@@ -3577,8 +3577,25 @@ class RecognitionService {
             winner = MapEntry(candidateA, winner.value);
           } else if (tieBreakB > tieBreakA) {
             winner = MapEntry(candidateB, sorted[1].value);
+          } else {
+            // v4.8.0: 视觉决胜平手时，用 n-gram 上下文模型做最终判断
+            final ctxScoreA = DictionaryService.instance.getContextScore(
+              candidateA,
+              prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+            );
+            final ctxScoreB = DictionaryService.instance.getContextScore(
+              candidateB,
+              prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+            );
+            if (ctxScoreA > ctxScoreB + 0.1) {
+              winner = MapEntry(candidateA, winner.value);
+              debugPrint('ML Kit 识别: 平局决胜 → 上下文倾向 "$candidateA" (${(ctxScoreA * 100).toStringAsFixed(0)}% vs ${(ctxScoreB * 100).toStringAsFixed(0)}%)');
+            } else if (ctxScoreB > ctxScoreA + 0.1) {
+              winner = MapEntry(candidateB, sorted[1].value);
+              debugPrint('ML Kit 识别: 平局决胜 → 上下文倾向 "$candidateB" (${(ctxScoreB * 100).toStringAsFixed(0)}% vs ${(ctxScoreA * 100).toStringAsFixed(0)}%)');
+            }
+            // 若上下文也无法判断，保持原排序（置信度高的优先）
           }
-          // 若决胜仍平手，保持原排序（置信度高的优先）
         }
 
         // ── 置信度校准（v4.2.0 增强） ──
@@ -3690,6 +3707,32 @@ class RecognitionService {
           if (unanimity >= 0.9) {
             calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
             debugPrint('ML Kit 识别: 置信度校准 — 高度一致 ${(unanimity * 100).toStringAsFixed(0)}% (+0.03)');
+          }
+        }
+
+        // 13. v4.8.0: 策略可靠性加成 — 如果投票策略的历史可靠性高，提升置信度
+        final winnerStrategiesForConf = resultStrategies[winner.key] ?? {};
+        double avgReliability = 0.0;
+        int reliableCount = 0;
+        for (final strat in winnerStrategiesForConf) {
+          final rel = _strategyReliability[strat] ?? 0.5;
+          avgReliability += rel;
+          if (rel >= 0.7) reliableCount++;
+        }
+        if (winnerStrategiesForConf.isNotEmpty) {
+          avgReliability /= winnerStrategiesForConf.length;
+          if (avgReliability >= 0.7) {
+            calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 策略可靠性高 ${(avgReliability * 100).toStringAsFixed(0)}% (+0.03)');
+          }
+        }
+
+        // 14. v4.8.0: Runner-up 差距 — winner 与 runner-up 的票数差距越大，置信度越高
+        if (sorted.length >= 2) {
+          final voteGap = winner.value - sorted[1].value;
+          if (voteGap >= 4) {
+            calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 票数差距大 $voteGap (+0.03)');
           }
         }
 
