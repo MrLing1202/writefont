@@ -3603,13 +3603,13 @@ class RecognitionService {
       strategyReliabilityScore = (totalReliability / candidateStrategies.length).clamp(0.0, 1.0);
     }
 
-    // v5.7.0: 加权综合评分 — 增加策略可靠性维度
-    // 票数(30%) + 置信度(18%) + 上下文(15%) + 策略可靠性(10%) + 字频(10%) + 多样性(10%) + 多尺度(7%)
-    double score = normalizedVotes * 0.30 +
-        confidence * 0.18 +
+    // v6.0.0: 加权综合评分 — 提升策略可靠性权重，降低字频权重
+    // 票数(28%) + 置信度(15%) + 上下文(15%) + 策略可靠性(18%) + 字频(7%) + 多样性(10%) + 多尺度(7%)
+    double score = normalizedVotes * 0.28 +
+        confidence * 0.15 +
         contextScore * 0.15 +
-        strategyReliabilityScore * 0.10 +
-        freqScore * 0.10 +
+        strategyReliabilityScore * 0.18 +
+        freqScore * 0.07 +
         diversityScore * 0.10 +
         multiScaleScore * 0.07;
 
@@ -3625,6 +3625,92 @@ class RecognitionService {
     }
 
     return score;
+  }
+
+  /// v6.0.0: 并行策略执行 — 批量处理预处理+ML Kit识别，用信号量控制并发
+  ///
+  /// 将策略列表分批（每批最多 [batchSize] 个），批内并行执行，批间串行。
+  /// 每批执行后检查提前终止条件，满足时立即返回。
+  ///
+  /// [strategies] 策略列表 (标签, 预处理函数)
+  /// [enhanced] 原始增强图片
+  /// [voteMap] 投票统计
+  /// [confidenceMap] 置信度映射
+  /// [resultStrategies] 策略来源映射
+  /// [strategyVotes] 策略投票明细
+  /// [featureBlockCalls] 已调用计数（引用传递）
+  /// [maxCalls] 最大调用次数
+  /// [batchSize] 批次大小（默认3，与ML Kit并发上限一致）
+  /// 返回是否触发了提前终止
+  Future<bool> _applyStrategiesParallel(
+    List<(String, img.Image Function(img.Image))> strategies,
+    img.Image enhanced,
+    Map<String, int> voteMap,
+    Map<String, double> confidenceMap,
+    Map<String, Set<String>> resultStrategies,
+    Map<String, Map<String, int>> strategyVotes,
+    int featureBlockCalls,
+    int maxCalls, {
+    int batchSize = 3,
+  }) async {
+    final semaphore = _Semaphore(batchSize);
+    int callsUsed = 0;
+
+    for (int i = 0; i < strategies.length; i += batchSize) {
+      final batch = strategies.sublist(i, (i + batchSize).clamp(0, strategies.length));
+      final futures = <Future<void>>[];
+
+      for (final (label, fn) in batch) {
+        if (featureBlockCalls + callsUsed >= maxCalls) break;
+        callsUsed++;
+
+        futures.add(() async {
+          await semaphore.acquire();
+          try {
+            final processed = fn(enhanced);
+            final raw = await _recognizeFromImage(processed);
+            final r = _validateResult(raw);
+            if (r != null) {
+              // v6.0.0: 加权投票 — 根据策略可靠性历史加权
+              final reliability = _strategyReliability[label] ?? 0.5;
+              final weight = reliability > 0.7 ? 2 : 1; // 高可靠性策略双倍权重
+              voteMap[r] = (voteMap[r] ?? 0) + weight;
+              resultStrategies.putIfAbsent(r, () => <String>{});
+              resultStrategies[r]!.add(label);
+              strategyVotes.putIfAbsent(r, () => {});
+              strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + weight;
+
+              final hash = _hashBytes(img.encodePng(processed));
+              final conf = _confidenceCache[hash] ?? 0.75;
+              confidenceMap[r] = (confidenceMap[r] ?? 0) > conf
+                  ? confidenceMap[r]!
+                  : conf;
+            }
+          } finally {
+            semaphore.release();
+          }
+        }());
+      }
+
+      await Future.wait(futures);
+
+      // v6.0.0: 批次间提前终止检查 — 票数领先 + 多策略确认
+      if (voteMap.isNotEmpty) {
+        final sorted = voteMap.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        if (sorted.length >= 2) {
+          final topVotes = sorted[0].value;
+          final secondVotes = sorted[1].value;
+          final topStrategies = resultStrategies[sorted[0].key]?.length ?? 0;
+          // 提前终止条件：票数 >= 6 且领先 >= 3 票且 >= 2 种策略确认
+          if (topVotes >= 6 && topVotes - secondVotes >= 3 && topStrategies >= 2) {
+            debugPrint('ML Kit 识别: 并行策略提前终止 "${sorted[0].key}" (${topVotes}票, 领先${topVotes - secondVotes}票, ${topStrategies}种策略)');
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   /// 判断是否为简单汉字（1-3 笔画的常见字）
@@ -14414,6 +14500,7 @@ class RecognitionService {
         }
 
         // 7. v4.2.0: 共识强度 — winner票数占总票数比例越高，置信度越高
+        // v6.0.0: 增强共识信号 — 高可靠性策略的投票权重更高
         final consensusTotalVotes = voteMap.values.reduce((a, b) => a + b);
         if (consensusTotalVotes > 0) {
           final consensusRatio = winner.value / consensusTotalVotes;
@@ -14423,6 +14510,11 @@ class RecognitionService {
           } else if (consensusRatio < 0.4) {
             calibratedConf = (calibratedConf - 0.05).clamp(0.0, 1.0);
             debugPrint('ML Kit 识别: 置信度校准 — 低共识度 ${(consensusRatio * 100).toStringAsFixed(0)}% (-0.05)');
+          }
+          // v6.0.0: 超高共识度奖励 — 超过 85% 的投票一致
+          if (consensusRatio >= 0.85 && strategyCount >= 3) {
+            calibratedConf = (calibratedConf + 0.03).clamp(0.0, 1.0);
+            debugPrint('ML Kit 识别: 置信度校准 — 超高共识度 ${(consensusRatio * 100).toStringAsFixed(0)}% + 3+策略 (+0.03)');
           }
         }
 
