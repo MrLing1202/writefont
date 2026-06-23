@@ -219,12 +219,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WhatsNewDialog.checkAndShow(
       context,
       version: currentVersion,
-      subtitle: '识别率持续优化，修正学习+多尺度确认',
+      subtitle: '连笔字智能切分，行书草书也能准确识别',
       items: const [
-        WhatsNewItem(icon: '🔍', title: '多尺度二次确认', description: '低置信度结果自动放大重识别，一致则提升置信度，识别更可靠'),
-        WhatsNewItem(icon: '🧠', title: '修正学习增强', description: '支持候选匹配+时间衰减，近期修正优先，学习效果更好'),
-        WhatsNewItem(icon: '🔗', title: '修正学习集成', description: '修正记录自动应用于识别后处理，历史修正持续发挥作用'),
-        WhatsNewItem(icon: '📈', title: '评分权重优化', description: '置信度权重进一步提升，ML Kit信号更受信任'),
+        WhatsNewItem(icon: '✂️', title: '连笔字智能切分', description: '两个字连在一起？自动检测并切分识别，每个字独立识别后组合结果'),
+        WhatsNewItem(icon: '📐', title: '垂直投影分割', description: '用投影分析找到最佳切分点，切分后验证墨迹密度，避免切出空白'),
+        WhatsNewItem(icon: '🎯', title: '连笔字自动检测', description: '根据宽高比和墨迹分布自动判断，正常单字不会误触发切分'),
+        WhatsNewItem(icon: '🔄', title: '识别管道升级', description: '切分后的每个片段走完整识别管道，保证每个字的识别质量'),
       ],
     );
   }
