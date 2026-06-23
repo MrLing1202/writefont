@@ -217,13 +217,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WhatsNewDialog.checkAndShow(
       context,
       version: currentVersion,
-      subtitle: '识别更准，体验更佳',
+      subtitle: '全部 19 项优化完成！识别更准、分割更精',
       items: const [
-        WhatsNewItem(icon: '✒️', title: '笔画特征提取', description: '精准分析笔画形态与走向'),
-        WhatsNewItem(icon: '📖', title: 'n-gram 语言模型', description: '结合上下文语义提升识别准确率'),
-        WhatsNewItem(icon: '🎯', title: '置信度校准优化', description: '识别结果评分更精确可靠'),
-        WhatsNewItem(icon: '🖼️', title: '图像增强预处理', description: '自动优化手写图片质量'),
-        WhatsNewItem(icon: '🔧', title: '后处理管道优化', description: '识别结果后处理全面升级'),
+        WhatsNewItem(icon: '🎯', title: '智能手写区域检测', description: '自动检测并移除方格纸网格线，字符识别更精准'),
+        WhatsNewItem(icon: '✂️', title: '手写区域自动裁剪', description: '方格纸只写一部分也能准确定位手写区域'),
+        WhatsNewItem(icon: '📐', title: '网格线间距验证', description: '智能区分网格线与笔画，避免误检'),
+        WhatsNewItem(icon: '🎉', title: '19/19 全部完成', description: '识别率优化清单 100% 达成'),
       ],
     );
   }

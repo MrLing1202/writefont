@@ -983,10 +983,22 @@ class ImageProcessor {
       binary = adaptiveResult;
     }
 
+    // v5.0.0: 智能手写区域检测 — 网格线检测与移除 + 手写区域自动裁剪
+    // 1. 检测并移除方格纸网格线（避免网格线干扰字符连通域分析）
+    // 2. 自动裁剪到手写区域（让字符占据更大比例）
+    final gridMasked = _detectAndMaskGridLines(binary);
+    final cropped = _autoCropHandwritingRegion(gridMasked);
+    if (cropped.width != binary.width || cropped.height != binary.height) {
+      debugPrint('手写区域检测: 原图 ${binary.width}x${binary.height} → 裁剪后 ${cropped.width}x${cropped.height}');
+    }
+    binary = cropped;
+
     // Apply morphological operations
     img.Image processed = binary;
     // Scale erosion/dilation based on resolution relative to a 1500px reference
-    final resolutionScale = refWidth / 1500.0;
+    // 使用裁剪后的宽度计算，因为裁剪后字符占据更大比例
+    final currentWidth = processed.width.toDouble();
+    final resolutionScale = currentWidth / 1500.0;
     final scaledErosion = (params.erosion * resolutionScale).round().clamp(0, 10);
     final scaledDilation = (params.dilation * resolutionScale).round().clamp(0, 10);
     for (int i = 0; i < scaledErosion; i++) {
@@ -1643,6 +1655,215 @@ class ImageProcessor {
       }
     }
     return blackCount / total;
+  }
+
+  /// v5.0.0: 智能网格线检测与移除
+  ///
+  /// 使用水平投影和垂直投影分析检测方格纸网格线。
+  /// 网格线的特征：整行/整列连续黑色像素，密度远高于手写笔画。
+  /// 检测到的网格线会被置白，避免干扰后续字符连通域分析。
+  ///
+  /// 算法：
+  /// 1. 计算每行/每列的黑色像素密度
+  /// 2. 密度超过阈值的行/列标记为网格线候选
+  /// 3. 对候选线进行间距一致性验证（网格线应近似等间距）
+  /// 4. 确认的网格线及其 ±1px 邻域全部置白
+  static img.Image _detectAndMaskGridLines(img.Image binary) {
+    final w = binary.width;
+    final h = binary.height;
+
+    // 阈值：网格线覆盖 >55% 宽度/高度（保守阈值，避免误检横竖笔画）
+    final hThreshold = (w * 0.55).toInt();
+    final vThreshold = (h * 0.55).toInt();
+
+    // 水平投影：统计每行黑色像素数
+    final hProjection = List.filled(h, 0);
+    for (int y = 0; y < h; y++) {
+      int count = 0;
+      for (int x = 0; x < w; x++) {
+        if (_isBlack(binary, x, y)) count++;
+      }
+      hProjection[y] = count;
+    }
+
+    // 垂直投影：统计每列黑色像素数
+    final vProjection = List.filled(w, 0);
+    for (int x = 0; x < w; x++) {
+      int count = 0;
+      for (int y = 0; y < h; y++) {
+        if (_isBlack(binary, x, y)) count++;
+      }
+      vProjection[x] = count;
+    }
+
+    // 候选网格线（密度超过阈值的行/列）
+    final hLineCandidates = <int>[];
+    final vLineCandidates = <int>[];
+
+    for (int y = 0; y < h; y++) {
+      if (hProjection[y] > hThreshold) hLineCandidates.add(y);
+    }
+    for (int x = 0; x < w; x++) {
+      if (vProjection[x] > vThreshold) vLineCandidates.add(x);
+    }
+
+    // 需要至少 2 条线才能构成网格
+    if (hLineCandidates.length < 2 || vLineCandidates.length < 2) {
+      debugPrint('网格检测: 水平${hLineCandidates.length}条 垂直${vLineCandidates.length}条 — 未检测到网格，跳过');
+      return binary;
+    }
+
+    // 合并相邻的候选线（间距 ≤ 3px 视为同一条线的粗细）
+    final hLines = _mergeGridLines(hLineCandidates);
+    final vLines = _mergeGridLines(vLineCandidates);
+
+    if (hLines.length < 2 || vLines.length < 2) {
+      debugPrint('网格检测: 合并后水平${hLines.length}条 垂直${vLines.length}条 — 线数不足，跳过');
+      return binary;
+    }
+
+    // 验证间距一致性：网格线应近似等间距
+    // 计算间距的变异系数（CV = 标准差/均值），CV < 0.35 视为规则网格
+    final hSpacings = <int>[];
+    for (int i = 1; i < hLines.length; i++) {
+      hSpacings.add(hLines[i] - hLines[i - 1]);
+    }
+    final vSpacings = <int>[];
+    for (int i = 1; i < vLines.length; i++) {
+      vSpacings.add(vLines[i] - vLines[i - 1]);
+    }
+
+    final hCV = _coefficientOfVariation(hSpacings);
+    final vCV = _coefficientOfVariation(vSpacings);
+
+    // 至少一个方向间距规则（CV < 0.4），才确认为网格
+    if (hCV > 0.40 && vCV > 0.40) {
+      debugPrint('网格检测: 间距不规则 (hCV=${hCV.toStringAsFixed(2)}, vCV=${vCV.toStringAsFixed(2)})，跳过');
+      return binary;
+    }
+
+    debugPrint('网格检测: ${hLines.length}×${vLines.length} 网格 (hCV=${hCV.toStringAsFixed(2)}, vCV=${vCV.toStringAsFixed(2)})');
+
+    // 复制图像并移除网格线
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final pixel = binary.getPixel(x, y);
+        result.setPixelRgba(x, y, pixel.r.toInt(), pixel.g.toInt(), pixel.b.toInt(), 255);
+      }
+    }
+
+    // 移除水平网格线（上下各扩展 1px）
+    for (final y in hLines) {
+      for (int dy = -1; dy <= 1; dy++) {
+        final ry = y + dy;
+        if (ry >= 0 && ry < h) {
+          for (int x = 0; x < w; x++) {
+            result.setPixelRgba(x, ry, 255, 255, 255, 255);
+          }
+        }
+      }
+    }
+
+    // 移除垂直网格线（左右各扩展 1px）
+    for (final x in vLines) {
+      for (int dx = -1; dx <= 1; dx++) {
+        final rx = x + dx;
+        if (rx >= 0 && rx < w) {
+          for (int y = 0; y < h; y++) {
+            result.setPixelRgba(rx, y, 255, 255, 255, 255);
+          }
+        }
+      }
+    }
+
+    debugPrint('网格线已移除: ${hLines.length} 水平 + ${vLines.length} 垂直');
+    return result;
+  }
+
+  /// 合并相邻的网格线候选（间距 ≤ 3px 的视为同一条线）
+  static List<int> _mergeGridLines(List<int> candidates) {
+    if (candidates.isEmpty) return [];
+    final merged = <int>[];
+    int current = candidates[0];
+    for (int i = 1; i < candidates.length; i++) {
+      if (candidates[i] - current <= 3) {
+        // 同一条线，取中间位置
+        current = (current + candidates[i]) ~/ 2;
+      } else {
+        merged.add(current);
+        current = candidates[i];
+      }
+    }
+    merged.add(current);
+    return merged;
+  }
+
+  /// 计算一组数值的变异系数（CV = 标准差 / 均值）
+  static double _coefficientOfVariation(List<int> values) {
+    if (values.length < 2) return 0;
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    if (mean == 0) return 0;
+    final variance = values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) / values.length;
+    return sqrt(variance) / mean;
+  }
+
+  /// v5.0.0: 手写区域智能裁剪
+  ///
+  /// 移除网格线后，检测所有墨迹像素的包围盒。
+  /// 如果手写区域仅占图片的一部分（有大量空白边距），
+  /// 自动裁剪到手写区域，让字符在图片中占据更大比例。
+  ///
+  /// 这对以下场景特别有效：
+  /// - 方格纸只写了一部分，剩下是空白
+  /// - 拍照时包含大量白色边距
+  /// - 多张方格纸只用了一张
+  static img.Image _autoCropHandwritingRegion(img.Image binary) {
+    final w = binary.width;
+    final h = binary.height;
+
+    // 扫描所有黑色像素，计算包围盒
+    int minX = w, minY = h, maxX = 0, maxY = 0;
+    int inkCount = 0;
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (_isBlack(binary, x, y)) {
+          inkCount++;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    // 无墨迹或墨迹极少，返回原图
+    if (inkCount < 10) return binary;
+
+    // 计算墨迹区域占图片的比例
+    final inkW = maxX - minX + 1;
+    final inkH = maxY - minY + 1;
+    final inkRatio = (inkW * inkH) / (w * h);
+
+    // 墨迹区域 > 80% 图片面积，不需要裁剪
+    if (inkRatio > 0.80) return binary;
+
+    // 添加 8% padding（保留字符边距）
+    final padX = (inkW * 0.08).toInt().clamp(5, 100);
+    final padY = (inkH * 0.08).toInt().clamp(5, 100);
+    final cropX = (minX - padX).clamp(0, w - 1);
+    final cropY = (minY - padY).clamp(0, h - 1);
+    final cropW = (inkW + padX * 2).clamp(1, w - cropX);
+    final cropH = (inkH + padY * 2).clamp(1, h - cropY);
+
+    // 确保裁剪有意义
+    if (cropW >= w * 0.9 && cropH >= h * 0.9) return binary;
+
+    debugPrint('手写区域自动裁剪: ${w}x$h → ${cropW}x${cropH} '
+        '(墨迹占比 ${(inkRatio * 100).toStringAsFixed(1)}%)');
+
+    return img.copyCrop(binary, x: cropX, y: cropY, width: cropW, height: cropH);
   }
 
   static bool _isBlack(img.Image binary, int x, int y) {
