@@ -2350,6 +2350,32 @@ class RecognitionService {
     return _morphologicalDilate(eroded, radius: radius);
   }
 
+  /// v5.7.0: 形态学梯度（膨胀 - 腐蚀）— 提取边缘轮廓
+  ///
+  /// 梯度图突出显示笔画边缘，对以下场景特别有效：
+  /// - 笔画密集的复杂字：边缘增强帮助分离相邻笔画
+  /// - 笔画粗细不均的字：统一边缘响应
+  /// - 低对比度图片：边缘比内部更易检测
+  img.Image _morphologicalGradient(img.Image src, {int radius = 1}) {
+    final gray = img.grayscale(src);
+    final binary = _adaptiveBinarize(gray, blockSize: 25, c: 10);
+    final dilated = _morphologicalDilate(binary, radius: radius);
+    final eroded = _morphologicalErode(binary, radius: radius);
+    // 梯度 = 膨蚀 - 腐蚀（边缘像素）
+    final w = binary.width, h = binary.height;
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final dVal = dilated.getPixel(x, y).r.toInt();
+        final eVal = eroded.getPixel(x, y).r.toInt();
+        // 边缘 = 膨胀区域 - 腐蚀区域
+        final v = (dVal - eVal).clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
   /// v4.3.0: 细笔画增强 — 自适应膨胀
   /// 根据前景像素比例判断笔画粗细，细笔画自动膨胀加粗
   img.Image _thinStrokeEnhance(img.Image src) {
@@ -3747,6 +3773,13 @@ class RecognitionService {
           final gamma = _adaptiveGammaCorrection(src);
           return _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
         },
+        // v5.7.0: 形态学梯度 — 提取边缘轮廓，分离密集笔画
+        '形态学梯度': (src) => _morphologicalGradient(src, radius: 1),
+        // v5.7.0: 梯度+CLAHE — 边缘增强后再增强对比度
+        '梯度+CLAHE': (src) {
+          final gradient = _morphologicalGradient(src, radius: 1);
+          return ImageQualityService.instance.enhanceContrastAdaptive(gradient);
+        },
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -3872,7 +3905,7 @@ class RecognitionService {
         for (final k in [
           '形态学骨架化', '开运算去噪', '局部阈值二值化',
           'Sauvola二值化', '去噪+Sauvola', '伽马+Sauvola',
-          '多尺度形态学', '笔画感知去噪',
+          '多尺度形态学', '笔画感知去噪', '形态学梯度', '梯度+CLAHE',
         ]) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
