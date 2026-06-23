@@ -3763,6 +3763,38 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 高噪声图特殊处理 — 使用更强的降噪策略
+      if (imageFeatures.noise > 0.7) {
+        debugPrint('ML Kit 识别: 高噪声图特殊处理 (noise=${imageFeatures.noise.toStringAsFixed(2)})');
+        final denoiseStrategies = [
+          ('强降噪+CLAHE', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(denoised);
+          }),
+          ('强降噪+Sauvola', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            return _sauvolaBinarizeAdaptive(denoised, features: imageFeatures);
+          }),
+          ('强降噪+USM', (img.Image src) {
+            final denoised = _strokeAwareDenoise(src);
+            return _unsharpMaskSharpen(denoised, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in denoiseStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 高噪声策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
