@@ -3795,6 +3795,38 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 低对比度图特殊处理 — 使用更强的对比度增强策略
+      if (imageFeatures.contrast < 0.2) {
+        debugPrint('ML Kit 识别: 低对比度图特殊处理 (contrast=${imageFeatures.contrast.toStringAsFixed(2)})');
+        final lowContrastStrategies = [
+          ('强对比度+CLAHE', (img.Image src) {
+            final enhanced = img.adjustColor(img.grayscale(src), contrast: 2.0, brightness: 1.2);
+            return ImageQualityService.instance.enhanceContrastAdaptive(enhanced);
+          }),
+          ('强对比度+Sauvola', (img.Image src) {
+            final enhanced = img.adjustColor(img.grayscale(src), contrast: 2.0, brightness: 1.2);
+            return _sauvolaBinarizeAdaptive(enhanced, features: imageFeatures);
+          }),
+          ('强对比度+USM', (img.Image src) {
+            final enhanced = img.adjustColor(img.grayscale(src), contrast: 2.0, brightness: 1.2);
+            return _unsharpMaskSharpen(enhanced, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in lowContrastStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 低对比度策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
