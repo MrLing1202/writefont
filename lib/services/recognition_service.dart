@@ -4558,6 +4558,44 @@ class RecognitionService {
           }
         }
 
+        // 15. v5.8.0: 图像边缘锐度 — 边缘清晰的图片识别更可靠
+        if (imageFeatures.edgeSharpness > 0.7) {
+          calibratedConf = (calibratedConf + 0.02).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 边缘锐度高 ${(imageFeatures.edgeSharpness * 100).toStringAsFixed(0)}% (+0.02)');
+        } else if (imageFeatures.edgeSharpness < 0.3) {
+          calibratedConf = (calibratedConf - 0.02).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 边缘锐度低 ${(imageFeatures.edgeSharpness * 100).toStringAsFixed(0)}% (-0.02)');
+        }
+
+        // 16. v5.8.0: 笔画变异度 — 笔画均匀的书写识别更可靠
+        if (imageFeatures.strokeVariability < 0.3) {
+          calibratedConf = (calibratedConf + 0.02).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 笔画均匀 (+0.02)');
+        } else if (imageFeatures.strokeVariability > 0.7) {
+          calibratedConf = (calibratedConf - 0.02).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 笔画不均匀 (-0.02)');
+        }
+
+        // 17. v5.8.0: 简单字加成 — 笔画少的简单字识别更可靠
+        final winnerCodePoint = winner.key.codeUnitAt(0);
+        if (_isSimpleChar(winnerCodePoint)) {
+          calibratedConf = (calibratedConf + 0.02).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 简单字 (+0.02)');
+        }
+
+        // 18. v5.8.0: 形近字组惩罚 — 如果结果属于形近字组，降低置信度（需要更多证据）
+        bool inConfusableGroup = false;
+        for (final entry in _confusableGroups.entries) {
+          if (entry.value.contains(winner.key)) {
+            inConfusableGroup = true;
+            break;
+          }
+        }
+        if (inConfusableGroup && calibratedConf < 0.85) {
+          calibratedConf = (calibratedConf - 0.02).clamp(0.0, 1.0);
+          debugPrint('ML Kit 识别: 置信度校准 — 形近字组成员 (-0.02)');
+        }
+
         _lastLocalConfidence = calibratedConf;
 
         // ── 更新策略可靠性（v4.3.0: 持久化 + 时间衰减） ──
