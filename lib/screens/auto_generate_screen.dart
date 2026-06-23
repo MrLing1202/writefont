@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/app_config_service.dart';
+import '../services/generation_service.dart';
 import '../theme/app_theme.dart';
 import 'auto_generate/processing_view.dart';
 import 'auto_generate/confirm_view.dart';
@@ -69,9 +70,13 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   @override
   void dispose() { _animController?.dispose(); super.dispose(); }
 
-  /// 取消处理
+  /// 取消处理（仅取消初始图像处理，不影响已启动的字体生成）
   void _cancelProcessing() {
     _cancelled = true;
+    // 如果正在生成字体，不取消生成（让它在后台继续）
+    if (_isGenerating) {
+      _generationService.cancelGeneration();
+    }
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -258,32 +263,52 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
     }
   }
 
-  /// 确认生成字体
+  /// 确认生成字体（通过 GenerationService 支持后台运行）
   Future<void> _confirmAndGenerate() async {
     setState(() { _isGenerating = true; _progress = 0.0; _status = '正在生成字体...'; });
-    try {
-      final finalAssignments = <int, String>{};
-      for (int i = 0; i < _cells.length; i++) {
-        final char = _getCharAt(i);
-        if (char != null && char.isNotEmpty) finalAssignments[i] = char;
-      }
-      if (!mounted) return;
-      final project = await generateFontFromCells(
-        _cells, finalAssignments, _params, widget.imageBytes,
-        onProgress: (p, s) { if (mounted) setState(() { _progress = p; _status = s; }); },
-      );
-      if (project != null && mounted) {
-        Navigator.of(context).pushReplacementNamed('/preview', arguments: {'project': project});
-      }
-    } catch (e) {
+
+    final finalAssignments = <int, String>{};
+    for (int i = 0; i < _cells.length; i++) {
+      final char = _getCharAt(i);
+      if (char != null && char.isNotEmpty) finalAssignments[i] = char;
+    }
+
+    // 监听进度
+    void onProgressUpdate() {
       if (mounted) {
         setState(() {
-          _isGenerating = false; _isConfirming = true; _hasError = true;
-          _errorMessage = '生成字体出错：请检查字符数据是否完整，或尝试重新识别。\n错误详情：$e';
-          _status = '生成失败';
+          _progress = _generationService.progressNotifier.value;
+          _status = _generationService.statusNotifier.value;
         });
       }
     }
+    _generationService.progressNotifier.addListener(onProgressUpdate);
+    _generationService.statusNotifier.addListener(onProgressUpdate);
+
+    await _generationService.startGeneration(
+      cells: _cells,
+      finalAssignments: finalAssignments,
+      params: _params,
+      sourceImage: widget.imageBytes,
+      onComplete: (project) {
+        _generationService.progressNotifier.removeListener(onProgressUpdate);
+        _generationService.statusNotifier.removeListener(onProgressUpdate);
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/preview', arguments: {'project': project});
+        }
+      },
+      onError: (error) {
+        _generationService.progressNotifier.removeListener(onProgressUpdate);
+        _generationService.statusNotifier.removeListener(onProgressUpdate);
+        if (mounted) {
+          setState(() {
+            _isGenerating = false; _isConfirming = true; _hasError = true;
+            _errorMessage = '生成字体出错：请检查字符数据是否完整，或尝试重新识别。\n错误详情：$error';
+            _status = '生成失败';
+          });
+        }
+      },
+    );
   }
 
   /// 重置并重新识别
