@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:typed_data';
 import '../../models/project.dart';
+import '../../models/segmented_character.dart';
 import '../../services/image_processor.dart';
 import '../../services/recognition_service.dart';
 import '../../services/app_config_service.dart';
+import '../../services/correction_learning_service.dart';
 
 /// 处理结果
 class ProcessingResult {
@@ -12,6 +14,10 @@ class ProcessingResult {
   final Set<int> aiRecognized;
   final Set<int> failedRecognition;
   final Map<int, double> confidenceMap;
+  /// v5.1.0: 每个字符的 Top-N 候选列表
+  final Map<int, List<String>> topCandidates;
+  /// v5.1.0: 分割后的字符元数据
+  final List<SegmentedCharacter>? segmentedCharacters;
   final String? error;
   final String? errorStatus;
 
@@ -21,6 +27,8 @@ class ProcessingResult {
     required this.aiRecognized,
     required this.failedRecognition,
     this.confidenceMap = const {},
+    this.topCandidates = const {},
+    this.segmentedCharacters,
     this.error,
     this.errorStatus,
   });
@@ -115,7 +123,9 @@ Future<ProcessingResult> runProcessing(
   onProgress(0.1, '正在分割字符...');
   await Future.delayed(const Duration(milliseconds: 300));
 
-  final cells = ImageProcessor.segmentCharacters(imageBytes, params);
+  // v5.1.0: 使用增强分割获取元数据
+  final segmentedChars = ImageProcessor.segmentCharactersEnhanced(imageBytes, params);
+  final cells = segmentedChars.map((c) => c.imageBytes).toList();
 
   if (cells.isEmpty) {
     return ProcessingResult(
@@ -183,6 +193,26 @@ Future<ProcessingResult> runProcessing(
     }
   }
 
+  // v5.1.0: 获取 Top-N 候选列表
+  final topCandidates = RecognitionService.getBatchTopCandidates(cells, n: 3);
+
+  // v5.1.0: 应用修正学习 — 低置信度结果尝试修正
+  for (final i in aiRecognized) {
+    final conf = confidenceMap[i] ?? 0.7;
+    if (conf < 0.8 && charAssignments[i] != null) {
+      final correction = await CorrectionLearningService.instance.findCorrection(
+        recognizedChar: charAssignments[i]!,
+        confidence: conf,
+        imageWidth: segmentedChars[i].originalWidth,
+        imageHeight: segmentedChars[i].originalHeight,
+      );
+      if (correction != null && correction != charAssignments[i]) {
+        debugPrint('修正学习: 字符$i "${charAssignments[i]}" → "$correction"');
+        charAssignments[i] = correction;
+      }
+    }
+  }
+
   onProgress(1.0, '识别完成');
 
   return ProcessingResult(
@@ -191,5 +221,7 @@ Future<ProcessingResult> runProcessing(
     aiRecognized: aiRecognized,
     failedRecognition: failedRecognition,
     confidenceMap: confidenceMap,
+    topCandidates: topCandidates,
+    segmentedCharacters: segmentedChars,
   );
 }

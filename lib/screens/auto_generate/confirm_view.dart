@@ -4,6 +4,8 @@ import 'character_cell.dart';
 import 'stats_bar.dart';
 
 /// 确认字符视图 — 统计栏 + 字符网格 + 底部操作按钮
+///
+/// v5.1.0: 新增 Top-3 候选展示、置信度颜色编码、手动修正支持
 class ConfirmView extends StatelessWidget {
   final List<Uint8List> cells;
   final String? Function(int index) getCharAt;
@@ -15,8 +17,12 @@ class ConfirmView extends StatelessWidget {
   final String status;
   final Map<String, int> stats;
   final Map<int, double> confidenceMap;
+  /// v5.1.0: 每个字符的 Top-N 候选列表
+  final Map<int, List<String>> topCandidates;
   final void Function(int index) onQuickEdit;
   final void Function(int index) onRetryRecognition;
+  /// v5.1.0: 选择候选字符的回调
+  final void Function(int index, String candidate)? onSelectCandidate;
   final VoidCallback onReidentify;
   final VoidCallback onConfirmGenerate;
   final ColorScheme colorScheme;
@@ -33,8 +39,10 @@ class ConfirmView extends StatelessWidget {
     required this.status,
     required this.stats,
     this.confidenceMap = const {},
+    this.topCandidates = const {},
     required this.onQuickEdit,
     required this.onRetryRecognition,
+    this.onSelectCandidate,
     required this.onReidentify,
     required this.onConfirmGenerate,
     required this.colorScheme,
@@ -48,7 +56,7 @@ class ConfirmView extends StatelessWidget {
         StatsBar(
           stats: stats,
           colorScheme: colorScheme,
-          lowConfidenceCount: confidenceMap.values.where((c) => c < 0.6).length,
+          lowConfidenceCount: confidenceMap.values.where((c) => c < 0.7).length,
         ),
 
         // 字符网格
@@ -71,8 +79,12 @@ class ConfirmView extends StatelessWidget {
                 isGenerating: isGenerating,
                 index: index,
                 confidence: confidenceMap[index] ?? 0.7,
+                topCandidates: topCandidates[index] ?? [],
                 onTap: () => onQuickEdit(index),
                 onRetry: () => onRetryRecognition(index),
+                onSelectCandidate: onSelectCandidate != null
+                    ? (candidate) => onSelectCandidate!(index, candidate)
+                    : null,
               );
             },
           ),
@@ -99,7 +111,7 @@ class ConfirmView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '点击字符可修改识别结果',
+            '点击字符可修改识别结果，长按查看候选',
             style: TextStyle(
               fontSize: 13,
               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
@@ -107,11 +119,22 @@ class ConfirmView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // 图例说明
+          // 图例说明：置信度颜色编码
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildLegendDot(Colors.green.shade500, 'AI 识别'),
+              _buildLegendDot(Colors.green.shade500, '高置信 >90%'),
+              const SizedBox(width: 12),
+              _buildLegendDot(Colors.amber.shade600, '中置信 70-90%'),
+              const SizedBox(width: 12),
+              _buildLegendDot(Colors.red.shade400, '低置信 <70%'),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLegendDot(Colors.green.shade400, 'AI 识别'),
               const SizedBox(width: 16),
               _buildLegendDot(Colors.blue.shade400, '已修正'),
               const SizedBox(width: 16),

@@ -13,6 +13,7 @@ import '../services/recognition_service.dart';
 import 'auto_generate/processing_logic.dart';
 import 'auto_generate/generate_font.dart';
 import 'auto_generate/character_ops.dart';
+import '../services/correction_learning_service.dart';
 
 /// 一键生成页面
 /// 拍照后自动完成：分割字符 → AI 识别 → 确认字符 → 生成字体 → 跳转预览
@@ -40,6 +41,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   List<Uint8List> _cells = [];
   final Map<int, String> _charAssignments = {};
   final Map<int, double> _confidenceMap = {};
+  // v5.1.0: Top-N 候选列表
+  final Map<int, List<String>> _topCandidates = {};
 
   // 确认模式相关状态
   bool _isConfirming = false;
@@ -186,6 +189,8 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
         _aiRecognized..clear()..addAll(result.aiRecognized);
         _failedRecognition..clear()..addAll(result.failedRecognition);
         _confidenceMap..clear()..addAll(result.confidenceMap);
+        // v5.1.0: 加载 Top-N 候选
+        _topCandidates..clear()..addAll(result.topCandidates);
         _progress = 1.0; _status = '识别完成'; _isConfirming = true;
       });
     } catch (e) {
@@ -263,7 +268,40 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
       });
       // 存入用户反馈学习系统，提升后续识别率
       RecognitionService.correctRecognition(_cells[index], newChar);
+
+      // v5.1.0: 记录修正学习
+      CorrectionLearningService.instance.recordCorrection(
+        originalResult: currentChar,
+        correctedChar: newChar,
+        confidence: _confidenceMap[index] ?? 0.7,
+        topCandidates: _topCandidates[index],
+      );
     }
+  }
+
+  /// v5.1.0: 从候选列表选择字符（长按菜单回调）
+  void _selectCandidate(int index, String candidate) {
+    if (!mounted) return;
+    final currentChar = _getCharAt(index) ?? '';
+    if (candidate == currentChar) return;
+
+    setState(() {
+      _editedAssignments[index] = candidate;
+      _confidenceMap[index] = 1.0; // 用户选择 = 最高置信度
+    });
+
+    // 记录修正学习
+    CorrectionLearningService.instance.recordCorrection(
+      originalResult: currentChar,
+      correctedChar: candidate,
+      confidence: _confidenceMap[index] ?? 0.7,
+      topCandidates: _topCandidates[index],
+      imageWidth: null,
+      imageHeight: null,
+    );
+
+    // 存入用户反馈学习系统
+    RecognitionService.correctRecognition(_cells[index], candidate);
   }
 
   /// 确认生成字体（通过 GenerationService 支持后台运行）
@@ -365,8 +403,12 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
                     _failedRecognition, _editedAssignments,
                   ),
                   confidenceMap: _confidenceMap,
+                  // v5.1.0: 传递 Top-N 候选
+                  topCandidates: _topCandidates,
                   onQuickEdit: _quickEditCharacter,
                   onRetryRecognition: _retryRecognition,
+                  // v5.1.0: 候选选择回调
+                  onSelectCandidate: _selectCandidate,
                   onReidentify: _resetAndReidentify,
                   onConfirmGenerate: _confirmAndGenerate,
                   colorScheme: colorScheme,

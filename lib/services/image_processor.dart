@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../models/project.dart';
+import '../models/segmented_character.dart';
 import 'image_analyzer.dart';
 
 /// 进度回调类型：progress 范围 0.0 ~ 1.0，message 描述当前步骤
@@ -1196,6 +1197,284 @@ class ImageProcessor {
       _taskCompleted(sw.elapsed);
       _recordPerfTiming('segmentCharacters', sw.elapsed);
     }
+  }
+
+  /// v5.1.0: 增强版字符分割 — 返回带元数据的 SegmentedCharacter 对象
+  ///
+  /// 在原有分割逻辑基础上，额外输出：
+  /// - 每个字符的原始尺寸和宽高比
+  /// - 在原图中的边界框
+  /// - 字符大小分类（small / medium / large）
+  ///
+  /// 内部复用 segmentCharacters 的核心逻辑，仅改变输出格式。
+  static List<SegmentedCharacter> segmentCharactersEnhanced(
+    Uint8List imageBytes,
+    ProcessingParams params,
+  ) {
+    _recordUsage('segmentCharactersEnhanced');
+    final sw = Stopwatch()..start();
+    _taskStarted();
+    try {
+      final image = img.decodeImage(imageBytes);
+      if (image == null) {
+        _recordError('segmentCharactersEnhanced', '图片解码失败',
+            context: 'imageSize=${imageBytes.length}');
+        return [];
+      }
+
+      // --- 与 segmentCharacters 相同的预处理流程 ---
+      img.Image workImage = image;
+      if (workImage.width > 2000) {
+        final scale = 1500.0 / workImage.width;
+        final newW = (workImage.width * scale).round().clamp(1, 99999);
+        final newH = (workImage.height * scale).round().clamp(1, 99999);
+        workImage = img.copyResize(workImage,
+            width: newW, height: newH, interpolation: img.Interpolation.linear);
+      }
+
+      final gray = img.grayscale(workImage);
+      final contrasted = img.adjustColor(gray, contrast: params.contrast);
+      final noiseLevel = _estimateNoiseLevel(contrasted);
+      final blurred = _gaussianBlur(contrasted, strong: noiseLevel > 0.15);
+
+      img.Image binary;
+      final adaptiveBlockSize = (workImage.width > 1000) ? 41 : 31;
+      final adaptiveResult =
+          _adaptiveThreshold(blurred, blockSize: adaptiveBlockSize, c: 10, invert: params.invertColors);
+      final blackRatio = _blackPixelRatio(adaptiveResult);
+      if (blackRatio > 0.80 || blackRatio < 0.01) {
+        if ((params.threshold - 0.5).abs() < 0.001) {
+          final otsuT = otsuThreshold(blurred);
+          binary = _binarize(blurred, otsuT / 255.0, params.invertColors);
+        } else {
+          binary = _binarize(blurred, params.threshold, params.invertColors);
+        }
+      } else {
+        binary = adaptiveResult;
+      }
+
+      final gridMasked = _detectAndMaskGridLines(binary);
+      final cropped = _autoCropHandwritingRegion(gridMasked);
+      binary = cropped;
+
+      // 形态学处理
+      img.Image processed = binary;
+      final currentWidth = processed.width.toDouble();
+      final resolutionScale = currentWidth / 1500.0;
+      final scaledErosion = (params.erosion * resolutionScale).round().clamp(0, 10);
+      final scaledDilation = (params.dilation * resolutionScale).round().clamp(0, 10);
+      for (int i = 0; i < scaledErosion; i++) {
+        processed = _erode(processed);
+      }
+      for (int i = 0; i < scaledDilation; i++) {
+        processed = _dilate(processed);
+      }
+
+      // 连通域检测
+      final w = processed.width;
+      final h = processed.height;
+      final totalArea = w * h;
+      final baseRef = 1500.0 * 1500.0;
+      final resolutionFactor = totalArea / baseRef;
+      final minArea = (150 * resolutionFactor).toInt().clamp(20, 999999);
+      final maxArea = (totalArea * 0.15).toInt();
+
+      final visited = List.generate(h, (_) => List.filled(w, false));
+      final directions = const [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      final blackRows = List.generate(
+        h,
+        (y) => List.generate(w, (x) => _isBlack(processed, x, y)),
+      );
+
+      final List<List<int>> bboxes = [];
+
+      for (int sy = 0; sy < h; sy++) {
+        for (int sx = 0; sx < w; sx++) {
+          if (visited[sy][sx] || !blackRows[sy][sx]) continue;
+
+          int minX = sx, maxX = sx, minY = sy, maxY = sy, area = 0;
+          final queue = Queue<List<int>>();
+          queue.addLast([sx, sy]);
+          visited[sy][sx] = true;
+
+          while (queue.isNotEmpty) {
+            final p = queue.removeFirst();
+            final px = p[0], py = p[1];
+            area++;
+            if (px < minX) minX = px;
+            if (px > maxX) maxX = px;
+            if (py < minY) minY = py;
+            if (py > maxY) maxY = py;
+
+            for (final d in directions) {
+              final nx = px + d[0], ny = py + d[1];
+              if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
+                  !visited[ny][nx] && blackRows[ny][nx]) {
+                visited[ny][nx] = true;
+                queue.addLast([nx, ny]);
+              }
+            }
+          }
+
+          if (area < minArea || area > maxArea) continue;
+          final bw = maxX - minX + 1;
+          final bh = maxY - minY + 1;
+          if (bw > w * 0.45 || bh > h * 0.45) continue;
+
+          final aspect = bw > bh ? bw / bh : bh / bw;
+          if (aspect > 1.8 && bw > bh && bw > 30) {
+            final splits = _verticalProjectionSplit(blackRows, minX, minY, maxX, maxY, w, h);
+            if (splits.length >= 2) {
+              for (final split in splits) {
+                final sBw = split[2] - split[0] + 1;
+                final sBh = split[3] - split[1] + 1;
+                final sAspect = sBw > sBh ? sBw / sBh : sBh / sBw;
+                if (sAspect < 3.0 && sBw > 5 && sBh > 5) {
+                  bboxes.add([split[0], split[1], split[2], split[3], area ~/ splits.length]);
+                }
+              }
+              continue;
+            }
+          }
+
+          if (aspect > 1.8 && bh > bw && bh > 30) {
+            final hSplits = _horizontalProjectionSplit(blackRows, minX, minY, maxX, maxY, w, h);
+            if (hSplits.length >= 2) {
+              for (final split in hSplits) {
+                final sBw = split[2] - split[0] + 1;
+                final sBh = split[3] - split[1] + 1;
+                final sAspect = sBw > sBh ? sBw / sBh : sBh / sBw;
+                if (sAspect < 3.0 && sBw > 5 && sBh > 5) {
+                  bboxes.add([split[0], split[1], split[2], split[3], area ~/ hSplits.length]);
+                }
+              }
+              continue;
+            }
+          }
+
+          if (aspect > 2.5) continue;
+          bboxes.add([minX, minY, maxX, maxY, area]);
+        }
+      }
+
+      // 断笔合并
+      if (bboxes.length >= 2) {
+        double avgH = 0;
+        for (final bb in bboxes) {
+          avgH += (bb[3] - bb[1] + 1);
+        }
+        avgH /= bboxes.length;
+        final mergedBboxes = _mergeBrokenStrokes(bboxes, avgH);
+        if (mergedBboxes.length < bboxes.length) {
+          bboxes.clear();
+          bboxes.addAll(mergedBboxes);
+        }
+      }
+
+      if (bboxes.isEmpty) return [];
+
+      // 按位置排序
+      double avgHeight = 0;
+      for (final bb in bboxes) {
+        avgHeight += (bb[3] - bb[1] + 1);
+      }
+      avgHeight /= bboxes.length;
+      final rowTolerance = avgHeight * 0.5;
+
+      bboxes.sort((a, b) => a[1].compareTo(b[1]));
+      final List<List<List<int>>> rows = [];
+      for (final bb in bboxes) {
+        final centerY = (bb[1] + bb[3]) / 2.0;
+        bool placed = false;
+        for (final row in rows) {
+          final rowCenterY = (row.first[1] + row.first[3]) / 2.0;
+          if ((centerY - rowCenterY).abs() <= rowTolerance) {
+            row.add(bb);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          rows.add([bb]);
+        }
+      }
+      for (final row in rows) {
+        row.sort((a, b) => a[0].compareTo(b[0]));
+      }
+
+      // 构建 SegmentedCharacter 列表
+      final List<SegmentedCharacter> result = [];
+      final allAreas = bboxes.map((bb) => (bb[2] - bb[0] + 1) * (bb[3] - bb[1] + 1)).toList();
+      allAreas.sort();
+      final medianArea = allAreas[allAreas.length ~/ 2].toDouble();
+
+      for (final row in rows) {
+        for (final bb in row) {
+          final minX = bb[0], minY = bb[1], maxX = bb[2], maxY = bb[3];
+          final bw = maxX - minX + 1;
+          final bh = maxY - minY + 1;
+          final padX = (bw * 0.1).toInt();
+          final padY = (bh * 0.1).toInt();
+
+          final cropX = (minX - padX).clamp(0, w - 1);
+          final cropY = (minY - padY).clamp(0, h - 1);
+          final cropW = (bw + padX * 2).clamp(1, w - cropX);
+          final cropH = (bh + padY * 2).clamp(1, h - cropY);
+
+          final cell = img.copyCrop(processed,
+              x: cropX, y: cropY, width: cropW, height: cropH);
+          final cellBytes = img.encodePng(cell);
+
+          final charArea = bw * bh;
+          final aspect = bw / bh.clamp(1, 99999);
+          final sizeCategory = _detectCharacterSize(charArea, medianArea);
+
+          result.add(SegmentedCharacter(
+            imageBytes: cellBytes,
+            originalWidth: image.width,
+            originalHeight: image.height,
+            aspectRatio: aspect,
+            boundingBox: BoundingBox(
+              x: minX,
+              y: minY,
+              width: bw,
+              height: bh,
+            ),
+            sizeCategory: sizeCategory,
+            areaRatio: charArea / totalArea,
+          ));
+        }
+      }
+
+      debugPrint('增强分割: ${result.length} 个字符 '
+          '(小=${result.where((c) => c.sizeCategory == CharacterSize.small).length}, '
+          '中=${result.where((c) => c.sizeCategory == CharacterSize.medium).length}, '
+          '大=${result.where((c) => c.sizeCategory == CharacterSize.large).length})');
+
+      return result;
+    } catch (e) {
+      _recordError('segmentCharactersEnhanced', e,
+          context: 'imageSize=${imageBytes.length}');
+      rethrow;
+    } finally {
+      sw.stop();
+      _taskCompleted(sw.elapsed);
+      _recordPerfTiming('segmentCharactersEnhanced', sw.elapsed);
+    }
+  }
+
+  /// v5.1.0: 检测字符大小分类
+  ///
+  /// 根据字符面积与中位数面积的比值进行分类：
+  /// - small: 面积 < 中位数的 50%（标点、简单笔画）
+  /// - medium: 正常大小
+  /// - large: 面积 > 中位数的 200%（复杂汉字、合体字）
+  static CharacterSize _detectCharacterSize(int charArea, double medianArea) {
+    if (medianArea <= 0) return CharacterSize.medium;
+    final ratio = charArea / medianArea;
+    if (ratio < 0.5) return CharacterSize.small;
+    if (ratio > 2.0) return CharacterSize.large;
+    return CharacterSize.medium;
   }
 
   /// Process a single character image with given parameters.

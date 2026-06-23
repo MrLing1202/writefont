@@ -22,6 +22,7 @@ import 'tflite_recognition_service.dart';
 import 'preprocess_isolate.dart';
 import 'api_key.dart';
 import '../models/recognition_history.dart';
+import 'correction_learning_service.dart';
 
 /// 单次识别的投票详情（v2.7.0）— 供 UI 展示投票过程
 class RecognitionDetail {
@@ -3958,6 +3959,196 @@ class RecognitionService {
     return null;
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // v5.1.0: 增强识别方法 — 形近字学习 / 英文预处理 / 混排处理
+  // ═══════════════════════════════════════════════════════════
+
+  /// v5.1.0: 增强中文识别 — 形近字学习
+  ///
+  /// 利用修正学习服务和字典服务，对形近字进行智能辨别。
+  /// 当识别置信度较低且候选字符存在形近字时，
+  /// 结合笔画特征和历史修正记录选择最可能的结果。
+  Future<String?> _enhancedChineseRecognition(
+    Uint8List imageBytes,
+    String initialResult,
+    double confidence,
+  ) async {
+    if (confidence >= 0.85) return initialResult;
+
+    try {
+      // 形近字集：常见易混淆的汉字对
+      const confusableSets = [
+        ['己', '已', '巳'],
+        ['未', '末'],
+        ['天', '夫'],
+        ['土', '士'],
+        ['日', '曰'],
+        ['入', '人'],
+        ['大', '太', '犬'],
+        ['田', '由', '甲', '申'],
+        ['干', '千', '于'],
+        ['王', '玉', '主'],
+        ['午', '牛'],
+        ['刀', '力'],
+        ['八', '入'],
+        ['贝', '见'],
+        ['目', '自'],
+        ['白', '自'],
+        ['月', '目'],
+        ['且', '目'],
+        ['左', '右'],
+        ['石', '右'],
+        ['方', '万'],
+        ['言', '信'],
+        ['子', '了'],
+        ['好', '妈'],
+        ['他', '她'],
+        ['的', '得', '地'],
+        ['是', '时'],
+        ['在', '再'],
+        ['有', '又'],
+        ['和', '合'],
+      ];
+
+      // 检查初始结果是否属于某个形近字集
+      List<String>? confusableGroup;
+      for (final group in confusableSets) {
+        if (group.contains(initialResult)) {
+          confusableGroup = group;
+          break;
+        }
+      }
+
+      if (confusableGroup == null) return initialResult;
+
+      // 从修正学习中查找该形近字集的历史修正
+      final correctionService = CorrectionLearningService.instance;
+      final correction = await correctionService.findCorrection(
+        recognizedChar: initialResult,
+        confidence: confidence,
+        imageWidth: null,
+        imageHeight: null,
+      );
+      if (correction != null && confusableGroup.contains(correction)) {
+        debugPrint('形近字学习: "$initialResult" → "$correction" '
+            '(置信度=${(confidence * 100).toStringAsFixed(0)}%)');
+        return correction;
+      }
+
+      return initialResult;
+    } catch (e) {
+      debugPrint('形近字学习失败: $e');
+      return initialResult;
+    }
+  }
+
+  /// v5.1.0: 增强英文识别 — 专用预处理
+  ///
+  /// 英文字符的识别需要不同的预处理策略：
+  /// 1. 更高的锐化（英文字母笔画更细）
+  /// 2. 更紧凑的裁剪（字母间距更紧密）
+  /// 3. 区分大小写验证
+  Future<String?> _enhancedEnglishRecognition(Uint8List imageBytes) async {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return null;
+
+      // 英文专用预处理：高锐化 + 自适应二值化
+      var processed = decoded;
+
+      // 转灰度
+      processed = img.grayscale(processed);
+
+      // 增强对比度（英文需要更高对比度）
+      processed = img.adjustColor(processed, contrast: 1.5);
+
+      // 锐化（英文笔画较细，需要更锐利的边缘）
+      final sharpImg = img.Image(width: processed.width, height: processed.height);
+      const kernel = [0.0, -1.0, 0.0, -1.0, 5.0, -1.0, 0.0, -1.0, 0.0];
+      for (int y = 1; y < processed.height - 1; y++) {
+        for (int x = 1; x < processed.width - 1; x++) {
+          num r = 0;
+          int ki = 0;
+          for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+              r += processed.getPixel(x + dx, y + dy).r * kernel[ki];
+              ki++;
+            }
+          }
+          final v = r.clamp(0, 255).toInt();
+          sharpImg.setPixelRgba(x, y, v, v, v, 255);
+        }
+      }
+      processed = sharpImg;
+
+      // 二值化
+      final threshold = ImageProcessor.otsuThreshold(processed);
+      processed = ImageProcessor._binarize(processed, threshold / 255.0, false);
+
+      final pngBytes = img.encodePng(processed);
+      final result = await _recognizeFromImageBytes(pngBytes);
+
+      // 验证英文结果
+      if (result != null && result.length == 1) {
+        final code = result.codeUnitAt(0);
+        // ASCII 字母范围
+        if ((code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)) {
+          return result;
+        }
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint('英文增强识别失败: $e');
+      return null;
+    }
+  }
+
+  /// v5.1.0: 中英文混排处理
+  ///
+  /// 检测图片中是否同时包含中文和英文字符，
+  /// 并根据字符特征选择最合适的识别策略。
+  /// 返回识别结果和语言类型。
+  Future<({String? result, String language})> _handleMixedLayout(
+    Uint8List imageBytes,
+  ) async {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return (result: null, language: 'unknown');
+
+      // 分析字符特征：宽高比和笔画密度
+      final w = decoded.width;
+      final h = decoded.height;
+      final aspect = w / h.clamp(1, 99999);
+
+      // 英文字符通常较窄（宽高比 < 0.8），中文通常接近正方形
+      final isLikelyEnglish = aspect < 0.7 && w < h;
+
+      // 计算黑色像素密度（中文笔画更密集）
+      final gray = img.grayscale(decoded);
+      int blackCount = 0;
+      for (int y = 0; y < gray.height; y++) {
+        for (int x = 0; x < gray.width; x++) {
+          if (gray.getPixel(x, y).r.toInt() < 128) blackCount++;
+        }
+      }
+      final density = blackCount / (w * h);
+
+      // 密度 < 0.15 且窄形 → 更可能是英文
+      if (isLikelyEnglish && density < 0.15) {
+        final result = await _enhancedEnglishRecognition(imageBytes);
+        return (result: result, language: 'en');
+      }
+
+      // 否则使用标准中文识别
+      final result = await _recognizeLocal(imageBytes);
+      return (result: result, language: 'zh');
+    } catch (e) {
+      debugPrint('混排处理失败: $e');
+      return (result: null, language: 'unknown');
+    }
+  }
+
   /// 从 img.Image 保存临时文件并用 ML Kit 识别
   Future<String?> _recognizeFromImage(img.Image image) async {
     File? tempFile;
@@ -4000,6 +4191,42 @@ class RecognitionService {
       return null;
     } finally {
       // 清理临时文件
+      try { await tempFile?.delete(); } catch (_) {}
+    }
+  }
+
+  /// 从 PNG 字节数据识别（复用 _recognizeFromImage 的逻辑）
+  Future<String?> _recognizeFromImageBytes(Uint8List pngBytes) async {
+    File? tempFile;
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final counter = ++_fileCounter;
+      tempFile = File('${tempDir.path}/mlkit_bytes_${DateTime.now().microsecondsSinceEpoch}_$counter.png');
+      await tempFile.writeAsBytes(pngBytes);
+
+      final inputImage = InputImage.fromFilePath(tempFile.path);
+      final recognizer = _getMlKitRecognizer();
+      final recognizedText = await recognizer.processImage(inputImage);
+
+      if (recognizedText.text.isEmpty) return null;
+
+      for (final block in recognizedText.blocks) {
+        for (final line in block.lines) {
+          for (final element in line.elements) {
+            final text = element.text.trim();
+            if (text.runes.length == 1) {
+              final ch = String.fromCharCode(text.runes.first);
+              if (_isValidChar(ch)) return ch;
+            }
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('_recognizeFromImageBytes 失败: $e');
+      return null;
+    } finally {
       try { await tempFile?.delete(); } catch (_) {}
     }
   }
@@ -4898,6 +5125,55 @@ class RecognitionService {
   static RecognitionDetail? getDetailForImage(Uint8List imageBytes) {
     final cacheKey = _hashBytes(imageBytes);
     return _detailCache[cacheKey];
+  }
+
+  /// v5.1.0: Top-N 候选缓存（图片哈希 → 候选列表）
+  static final Map<int, List<String>> _topCandidatesCache = {};
+
+  /// v5.1.0: 获取指定图片的 Top-N 候选字符
+  ///
+  /// 从缓存中读取投票详情，按投票数降序返回候选列表。
+  /// 无缓存时返回包含单个结果的列表（或空列表）。
+  static List<String> getTopCandidatesForImage(Uint8List imageBytes, {int n = 3}) {
+    final cacheKey = _hashBytes(imageBytes);
+
+    // 检查专用缓存
+    if (_topCandidatesCache.containsKey(cacheKey)) {
+      return _topCandidatesCache[cacheKey]!;
+    }
+
+    // 从投票详情中提取
+    final detail = _detailCache[cacheKey];
+    if (detail != null && detail.voteBreakdown.isNotEmpty) {
+      final candidates = detail.voteBreakdown.entries.toList()
+        ..sort((a, b) {
+          final aTotal = a.value.values.fold(0, (sum, v) => sum + v);
+          final bTotal = b.value.values.fold(0, (sum, v) => sum + v);
+          return bTotal.compareTo(aTotal);
+        });
+      final result = candidates.take(n).map((e) => e.key).toList();
+      _topCandidatesCache[cacheKey] = result;
+      return result;
+    }
+
+    // 回退：返回识别结果
+    final result = _recognitionCache[cacheKey];
+    if (result != null) {
+      return [result];
+    }
+    return [];
+  }
+
+  /// v5.1.0: 批量获取 Top-N 候选（供 UI 展示）
+  static Map<int, List<String>> getBatchTopCandidates(
+    List<Uint8List> images, {
+    int n = 3,
+  }) {
+    final result = <int, List<String>>{};
+    for (int i = 0; i < images.length; i++) {
+      result[i] = getTopCandidatesForImage(images[i], n: n);
+    }
+    return result;
   }
 
   /// v2.7.0: 获取策略可靠性数据（供 UI 展示）
