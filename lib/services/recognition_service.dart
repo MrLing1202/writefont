@@ -1241,6 +1241,22 @@ class RecognitionService {
         }
       }
 
+      // v5.7.0: 字符频率最终校验 — 极罕见字符降低置信度，极常见字符微提升
+      if (result != null && result.length == 1) {
+        final freqRank = DictionaryService.instance.getFrequency(result);
+        final currentConf = _confidenceCache[cacheKey] ?? confidence;
+        if (freqRank >= 3000) {
+          // 极罕见字符：可能是误识别，降低置信度
+          final newConf = (currentConf - 0.03).clamp(0.0, 1.0);
+          _confidenceCache[cacheKey] = newConf;
+          debugPrint('频率校验: "$result" 极罕见(freq=$freqRank)，置信度 -3%');
+        } else if (freqRank >= 0 && freqRank < 50) {
+          // 极常见字符：轻微提升
+          final newConf = (currentConf + 0.01).clamp(0.0, 0.98);
+          _confidenceCache[cacheKey] = newConf;
+        }
+      }
+
       // 记录用户识别的字符，更新用户常用字缓存（异步，不阻塞返回）
       DictionaryService.instance.recordUsage(result);
 
