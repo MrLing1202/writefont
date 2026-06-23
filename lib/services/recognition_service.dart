@@ -3986,6 +3986,17 @@ class RecognitionService {
         },
         // v5.8.0: 笔画保留增强 — 增强笔画同时抑制噪声
         '笔画保留增强': (src) => _strokePreservingEnhance(src),
+        // v5.8.0: 自适应对比度+USM锐化 — 先增强对比度再锐化笔画
+        '自适应对比度+USM': (src) {
+          final enhanced = ImageQualityService.instance.enhanceContrastAdaptive(src);
+          return _unsharpMaskSharpen(enhanced, amount: 1.2);
+        },
+        // v5.8.0: 伽马+Sauvola+USM — 亮度归一化+二值化+锐化三重组合
+        '伽马+Sauvola+USM': (src) {
+          final gamma = _adaptiveGammaCorrection(src);
+          final sauvola = _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
+          return _unsharpMaskSharpen(sauvola, amount: 1.0);
+        },
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -4009,7 +4020,7 @@ class RecognitionService {
       }
       if (features.blur > 0.5) {
         // 模糊：加锐化类策略（含 v4.0.0 USM, v4.5.0 多尺度边缘增强, v4.7.0 去模糊）
-        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE', '多尺度边缘增强', '边缘增强+锐化', '迭代去模糊', '去模糊+锐化', '去模糊+CLAHE', '对比度+去模糊+USM']) {
+        for (final k in ['灰度+锐化', '灰度+去噪+锐化', '方向边缘增强', 'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE', '多尺度边缘增强', '边缘增强+锐化', '迭代去模糊', '去模糊+锐化', '去模糊+CLAHE', '对比度+去模糊+USM', '自适应对比度+USM', '伽马+Sauvola+USM']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
@@ -4068,7 +4079,7 @@ class RecognitionService {
             '形态学骨架化', '开运算去噪', '笔画粗细自适应',
             '多尺度边缘增强', '边缘增强+锐化',
             'Sauvola二值化', '灰度+对比度+二值化',
-            '多阈值融合',
+            '多阈值融合', '伽马+Sauvola+USM',
           ]) {
             if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
           }
@@ -4255,9 +4266,25 @@ class RecognitionService {
           final rawResult = await _recognizeFromImage(processed);
           final result = _validateResult(rawResult);
           if (result != null) {
-            // v2.6.0: 加权投票 — 高可靠性策略获得 1.2x 权重
+            // v5.8.0: 智能加权投票 — 多维度权重计算
             final reliability = _strategyReliability[label] ?? 0.5;
-            final voteWeight = reliability >= 0.7 ? 2 : 1; // 高可靠性策略多计 1 票
+            // 基础权重：高可靠性策略获得 2 票
+            int voteWeight = reliability >= 0.7 ? 2 : 1;
+            // 放大尺寸加成：大图识别更可靠
+            if (targetSize >= 500) {
+              voteWeight += 1;
+            } else if (targetSize >= 300) {
+              voteWeight += 0; // 中等尺寸不加不减
+            }
+            // 图像质量加成：高质量图片的策略投票权重更高
+            if (imageFeatures.qualityLevel == 'high') {
+              voteWeight += 1;
+            }
+            // 策略类型加成：某些策略类型更可靠
+            if (label.contains('Sauvola') || label.contains('CLAHE') || label.contains('多阈值融合')) {
+              voteWeight += 1; // 二值化和对比度增强策略更可靠
+            }
+            voteWeight = voteWeight.clamp(1, 5); // 限制权重范围
             voteMap[result] = (voteMap[result] ?? 0) + voteWeight;
             // 记录策略来源
             resultStrategies.putIfAbsent(result, () => <String>{});
