@@ -978,7 +978,8 @@ class RecognitionService {
     }
 
     // ═══ v5.5.0: 微旋转重试 ═══
-    // 对低置信度结果，尝试 ±10° 和 ±20° 微旋转后重新识别。
+    // v5.7.0: 投影轮廓倾斜检测 — 先检测最佳倾斜角度，再用检测到的角度校正
+    // 对低置信度结果，尝试微旋转后重新识别。
     // 手写时纸张轻微倾斜很常见，微旋转可以消除倾斜带来的识别误差。
     // 仅在本地识别且置信度 40%~75% 时执行（太低说明不是倾斜问题，太高不需要）。
     if (result != null && !useCloud) {
@@ -988,7 +989,16 @@ class RecognitionService {
         try {
           final decoded = img.decodeImage(imageBytes);
           if (decoded != null) {
-            const angles = [10.0, -10.0, 20.0, -20.0];
+            // v5.7.0: 投影轮廓倾斜检测 — 找到最佳角度
+            final skewAngle = _detectSkewByProjection(decoded);
+            // 优先使用检测到的倾斜角度，回退到固定角度
+            final angles = <double>[];
+            if (skewAngle.abs() > 1.0 && skewAngle.abs() < 20.0) {
+              angles.addAll([skewAngle, -skewAngle]);
+              debugPrint('微旋转重试: 检测到倾斜 ${skewAngle.toStringAsFixed(1)}°，优先校正');
+            }
+            angles.addAll([10.0, -10.0, 20.0, -20.0]);
+
             double bestRotConf = rotConf;
             String? bestRotResult;
 
@@ -1414,15 +1424,15 @@ class RecognitionService {
           final edge = _multiScaleEdgeEnhance(src);
           return _unsharpMaskSharpen(edge, amount: 1.2);
         },
-        // v4.8.0: Sauvola 自适应二值化
-        'Sauvola二值化': (src) => _sauvolaBinarize(src, blockSize: 25, k: 0.2),
+        // v5.7.0: 自适应 Sauvola 二值化
+        'Sauvola二值化': (src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures),
         '去噪+Sauvola': (src) {
           final denoised = _strokeAwareDenoise(src);
-          return _sauvolaBinarize(denoised, blockSize: 25, k: 0.2);
+          return _sauvolaBinarizeAdaptive(denoised, features: imageFeatures);
         },
         '伽马+Sauvola': (src) {
           final gamma = _adaptiveGammaCorrection(src);
-          return _sauvolaBinarize(gamma, blockSize: 25, k: 0.2);
+          return _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
         },
       };
 
@@ -3003,6 +3013,38 @@ class RecognitionService {
   /// - 同时考虑局部均值和方差，对光照不均匀更鲁棒
   /// - 对比度低的区域自动降低阈值，保留更多笔画细节
   /// - 对纸面阴影、折痕有很好的抑制效果
+  /// v5.7.0: 自适应 Sauvola 二值化 — 根据图像特征自动选择最优参数
+  ///
+  /// 参数自适应规则：
+  /// - 高噪声 → 大 blockSize (35), 大 k (0.3) — 更强平滑
+  /// - 低对比度 → 小 blockSize (19), 小 k (0.15) — 保留淡笔画
+  /// - 高分辨率 → 按比例增大 blockSize
+  img.Image _sauvolaBinarizeAdaptive(img.Image src, {required ImageFeatures features}) {
+    int blockSize = 25;
+    double k = 0.2;
+
+    if (features.noise > 0.5) {
+      blockSize = 35;
+      k = 0.3;
+    } else if (features.noise < 0.2) {
+      blockSize = 21;
+      k = 0.18;
+    }
+    if (features.contrast < 0.3) {
+      blockSize = (blockSize * 0.8).round().clamp(15, blockSize);
+      k = (k * 0.75).clamp(0.1, k);
+    }
+    final maxDim = src.width > src.height ? src.width : src.height;
+    if (maxDim > 1000) {
+      blockSize = (blockSize * 1.3).round().clamp(blockSize, 51);
+    } else if (maxDim < 200) {
+      blockSize = (blockSize * 0.8).round().clamp(11, blockSize);
+    }
+    if (blockSize.isEven) blockSize++;
+    debugPrint('自适应Sauvola: blockSize=$blockSize, k=${k.toStringAsFixed(2)}');
+    return _sauvolaBinarize(src, blockSize: blockSize, k: k);
+  }
+
   img.Image _sauvolaBinarize(img.Image src, {int blockSize = 25, double k = 0.2, double R = 128.0}) {
     final gray = img.grayscale(src);
     final w = gray.width, h = gray.height;
@@ -3691,16 +3733,17 @@ class RecognitionService {
           return ImageQualityService.instance.enhanceContrastAdaptive(deblurred);
         },
         // v4.8.0: Sauvola 自适应二值化（经典文档二值化，对手写体效果优于 Otsu/Niblack）
-        'Sauvola二值化': (src) => _sauvolaBinarize(src, blockSize: 25, k: 0.2),
+        // v5.7.0: 参数自适应 — 根据噪声/对比度/分辨率自动调整 blockSize 和 k
+        'Sauvola二值化': (src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures),
         // v4.8.0: Sauvola + 去噪组合
         '去噪+Sauvola': (src) {
           final denoised = _strokeAwareDenoise(src);
-          return _sauvolaBinarize(denoised, blockSize: 25, k: 0.2);
+          return _sauvolaBinarizeAdaptive(denoised, features: imageFeatures);
         },
         // v4.8.0: 伽马校正 + Sauvola（先亮度归一化再二值化）
         '伽马+Sauvola': (src) {
           final gamma = _adaptiveGammaCorrection(src);
-          return _sauvolaBinarize(gamma, blockSize: 25, k: 0.2);
+          return _sauvolaBinarizeAdaptive(gamma, features: imageFeatures);
         },
       };
 
@@ -4069,7 +4112,7 @@ class RecognitionService {
             _sharpen(img.adjustColor(img.grayscale(enhanced), contrast: 1.8, brightness: 1.2)),
             _adaptiveBinarize(img.grayscale(enhanced), blockSize: 25, c: 8),
             _clahe(enhanced),
-            _sauvolaBinarize(enhanced, blockSize: 25, k: 0.2), // v4.8.0: Sauvola
+            _sauvolaBinarizeAdaptive(enhanced, features: imageFeatures), // v5.7.0: 自适应Sauvola
             _iterativeDeblur(enhanced, iterations: 3), // v4.8.0: 去模糊
           ];
           for (final tieProcessed in tieBreakers) {
@@ -5941,6 +5984,51 @@ class RecognitionService {
       }
     }
     return maxWidth;
+  }
+
+  /// v5.7.0: 投影轮廓倾斜检测 — 通过水平投影方差找到最佳倾斜角度
+  ///
+  /// 原理：文字正确对齐时，水平投影的方差最大（有清晰的行峰值）。
+  /// 倾斜时投影变平缓，方差降低。
+  ///
+  /// [image] 灰度图片
+  /// [angleRange] 搜索范围（默认 -15° ~ +15°）
+  /// [angleStep] 搜索步长（默认 1°）
+  /// 返回最佳倾斜角度（度），正值=顺时针
+  static double _detectSkewByProjection(img.Image image, {double angleRange = 15.0, double angleStep = 1.0}) {
+    final gray = img.grayscale(image);
+    final binary = ImageProcessor.binarize(gray, 0.5, false);
+
+    double bestAngle = 0.0;
+    double bestVariance = 0.0;
+
+    for (double angle = -angleRange; angle <= angleRange; angle += angleStep) {
+      final rotated = img.copyRotate(binary, angle: angle);
+      // 计算水平投影
+      final proj = List.filled(rotated.height, 0);
+      for (int y = 0; y < rotated.height; y++) {
+        int count = 0;
+        for (int x = 0; x < rotated.width; x++) {
+          if (ImageProcessor.isBlack(rotated, x, y)) count++;
+        }
+        proj[y] = count;
+      }
+      // 计算投影方差
+      double mean = 0;
+      for (final v in proj) { mean += v; }
+      mean /= proj.length;
+      double variance = 0;
+      for (final v in proj) { variance += (v - mean) * (v - mean); }
+      variance /= proj.length;
+
+      if (variance > bestVariance) {
+        bestVariance = variance;
+        bestAngle = angle;
+      }
+    }
+
+    debugPrint('倾斜检测: 最佳角度=${bestAngle.toStringAsFixed(1)}°, 方差=${bestVariance.toStringAsFixed(0)}');
+    return bestAngle;
   }
 
   /// 刀/力 视觉评分
