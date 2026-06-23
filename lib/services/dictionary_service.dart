@@ -2547,6 +2547,35 @@ class DictionaryService {
       }
     }
 
+    // ── v5.5.0: n-gram 评分回退 ──
+    // 当没有同音字能与上下文组成精确词时，使用 bigram/trigram 语言模型
+    // 为每个同音字评分，选择上下文概率最高的候选。
+    // 这覆盖了词表中没有但语言模型能判断的场景（如罕见搭配、新词）。
+    if (prevChar != null || nextChar != null || prev2Char != null) {
+      final currentScore = getContextScore(result,
+          prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+      // 仅当当前结果上下文得分低于中性分时才尝试
+      if (currentScore < 0.45) {
+        String? bestCandidate;
+        double bestScore = currentScore;
+        for (final candidate in homophones) {
+          if (candidate == result) continue;
+          final score = getContextScore(candidate,
+              prevChar: prevChar, nextChar: nextChar, prev2Char: prev2Char);
+          if (score > bestScore + 0.08) { // 需要明显优于当前结果
+            bestScore = score;
+            bestCandidate = candidate;
+          }
+        }
+        if (bestCandidate != null) {
+          debugPrint('同音字纠错(语言模型): "$result" → "$bestCandidate" '
+              '(n-gram得分: ${(currentScore * 100).toStringAsFixed(0)}% → ${(bestScore * 100).toStringAsFixed(0)}%, '
+              '置信度=${(confidence * 100).toStringAsFixed(0)}%)');
+          return bestCandidate;
+        }
+      }
+    }
+
     return result;
   }
 

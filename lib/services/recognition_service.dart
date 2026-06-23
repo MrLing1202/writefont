@@ -156,10 +156,12 @@ class RecognitionService {
 
   /// 根据图像特征生成特征签名
   /// v4.8.0: 新增风格维度 — S(regular/cursive/light/heavy/mixed)
+  /// v5.5.0: 新增墨迹密度维度 — D(1/2/3)，区分简单字/复杂字
   static String _buildFeatureSignature(ImageFeatures features) {
     final c = _discretizeFeature(features.contrast);
     final b = _discretizeFeature(features.blur);
     final t = _discretizeFeature(features.lineThickness);
+    final d = _discretizeFeature(features.inkDensity); // v5.5.0: 笔画密度
     // 风格缩写
     String s;
     switch (features.style) {
@@ -178,7 +180,7 @@ class RecognitionService {
       default:
         s = 'RE'; // regular
     }
-    return 'C${c}_B${b}_T${t}_$s';
+    return 'C${c}_B${b}_T${t}_D${d}_$s';
   }
 
   /// 加载策略组合性能数据
@@ -975,6 +977,68 @@ class RecognitionService {
       }
     }
 
+    // ═══ v5.5.0: 微旋转重试 ═══
+    // 对低置信度结果，尝试 ±10° 和 ±20° 微旋转后重新识别。
+    // 手写时纸张轻微倾斜很常见，微旋转可以消除倾斜带来的识别误差。
+    // 仅在本地识别且置信度 40%~75% 时执行（太低说明不是倾斜问题，太高不需要）。
+    if (result != null && !useCloud) {
+      final rotConf = _confidenceCache[cacheKey] ?? _lastLocalConfidence;
+      if (rotConf > 0.40 && rotConf < 0.75) {
+        debugPrint('微旋转重试: 置信度 ${(rotConf * 100).toStringAsFixed(0)}%，尝试微旋转');
+        try {
+          final decoded = img.decodeImage(imageBytes);
+          if (decoded != null) {
+            const angles = [10.0, -10.0, 20.0, -20.0];
+            double bestRotConf = rotConf;
+            String? bestRotResult;
+
+            for (final angle in angles) {
+              final rotated = img.copyRotate(decoded, angle: angle);
+              final rotBytes = Uint8List.fromList(img.encodePng(rotated));
+              final rotResult = await _recognizeLocal(rotBytes);
+              if (rotResult != null) {
+                final rotResultConf = _lastLocalConfidence;
+                if (rotResult == result) {
+                  // 旋转后结果一致 → 识别可靠，提升置信度
+                  final boost = (0.08 * (1 - (angle.abs() / 20.0))).clamp(0.02, 0.08);
+                  if (rotResultConf + boost > bestRotConf) {
+                    bestRotConf = rotResultConf + boost;
+                    bestRotResult = result;
+                  }
+                } else if (rotResultConf > bestRotConf + 0.05) {
+                  // 旋转后得到不同且更高置信度的结果 → 可能是正确结果
+                  bestRotConf = rotResultConf;
+                  bestRotResult = rotResult;
+                  debugPrint('微旋转重试: ${angle}° 得到 "$rotResult" '
+                      '(置信度 ${(rotResultConf * 100).toStringAsFixed(0)}%)');
+                }
+              }
+            }
+
+            if (bestRotResult != null && bestRotResult != result && bestRotConf > rotConf + 0.05) {
+              debugPrint('微旋转重试: "$result" → "$bestRotResult" '
+                  '(置信度 ${(rotConf * 100).toStringAsFixed(0)}% → ${(bestRotConf * 100).toStringAsFixed(0)}%)');
+              _addDebugLog('recognition', '微旋转重试替换', data: {
+                'original': result,
+                'rotated': bestRotResult,
+                'originalConf': rotConf,
+                'rotatedConf': bestRotConf,
+              });
+              result = bestRotResult;
+              _confidenceCache[cacheKey] = bestRotConf;
+            } else if (bestRotResult == result && bestRotConf > rotConf) {
+              // 旋转确认了原结果，提升置信度
+              _confidenceCache[cacheKey] = bestRotConf;
+              debugPrint('微旋转重试: 确认 "$result"，置信度 '
+                  '${(rotConf * 100).toStringAsFixed(0)}% → ${(bestRotConf * 100).toStringAsFixed(0)}%');
+            }
+          }
+        } catch (e) {
+          debugPrint('微旋转重试异常: $e');
+        }
+      }
+    }
+
     // 写入缓存，超出上限时使用 LRU 策略淘汰最久未访问的条目
     // 内存优化：同时检查条目数和内存占用
     if (_recognitionCache.length >= _maxCacheSize ||
@@ -1038,10 +1102,16 @@ class RecognitionService {
 
       // ── 第3步：n-gram 上下文纠错（代价低，查表）──
       // v4.5.0: 利用前后文预测最可能的字
+      // v5.5.0: 传递 prev2Char 以支持 trigram 语言模型评分
       if (result != null && confidence < 0.85 && !wasErrorCorrected) {
+        final prevChar = _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null;
+        final prev2Char = _lastRecognizedChars.length >= 2
+            ? _lastRecognizedChars[_lastRecognizedChars.length - 2]
+            : null;
         final contextResult = DictionaryService.instance.correctWithHomophone(
           result,
-          prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+          prevChar: prevChar,
+          prev2Char: prev2Char,
           confidence: confidence,
         );
         if (contextResult != result) {
@@ -3559,6 +3629,33 @@ class RecognitionService {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
         debugPrint('手写风格自适应: 边缘模糊 (sharpness=${features.edgeSharpness.toStringAsFixed(2)})，添加锐化策略');
+      }
+
+      // ═══ v5.5.0: 笔画密度自适应 — 根据墨迹密度选择策略 ═══
+      // 高墨迹密度（复杂字，如"龍""鬱"）：笔画密集，需增强分离和去噪
+      // 低墨迹密度（简单字，如"一""人"）：笔画稀疏，需增强细节和增粗
+      if (features.inkDensity > 0.6) {
+        // 复杂字：笔画密集，优先分离和去噪策略
+        for (final k in [
+          '形态学骨架化', '开运算去噪', '局部阈值二值化',
+          'Sauvola二值化', '去噪+Sauvola', '伽马+Sauvola',
+          '多尺度形态学', '笔画感知去噪',
+        ]) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+        debugPrint('笔画密度自适应: 高密度 (inkDensity=${features.inkDensity.toStringAsFixed(2)})，'
+            '添加分离+去噪策略');
+      } else if (features.inkDensity < 0.3) {
+        // 简单字：笔画稀疏，优先增粗和细节保留策略
+        for (final k in [
+          '细笔画增强', '断笔修复', '笔画粗细自适应',
+          'USM笔画锐化', '手写体笔画增强', '笔画归一化',
+          '自适应伽马校正', '伽马+CLAHE',
+        ]) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+        debugPrint('笔画密度自适应: 低密度 (inkDensity=${features.inkDensity.toStringAsFixed(2)})，'
+            '添加增粗+细节保留策略');
       }
 
       // v4.8.0: 极小图特殊处理 — 添加更多增强策略
