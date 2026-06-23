@@ -3923,6 +3923,38 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 连笔字图特殊处理 — 使用更强的分离策略
+      if (imageFeatures.connection > 0.7) {
+        debugPrint('ML Kit 识别: 连笔字图特殊处理 (connection=${imageFeatures.connection.toStringAsFixed(2)})');
+        final cursiveStrategies = [
+          ('强分离+CLAHE', (img.Image src) {
+            final separated = _morphologicalSkeletonize(img.grayscale(src));
+            return ImageQualityService.instance.enhanceContrastAdaptive(separated);
+          }),
+          ('强分离+Sauvola', (img.Image src) {
+            final separated = _morphologicalSkeletonize(img.grayscale(src));
+            return _sauvolaBinarizeAdaptive(separated, features: imageFeatures);
+          }),
+          ('强分离+USM', (img.Image src) {
+            final separated = _morphologicalSkeletonize(img.grayscale(src));
+            return _unsharpMaskSharpen(separated, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in cursiveStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 连笔字策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
