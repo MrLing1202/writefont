@@ -26,6 +26,7 @@ import 'services/recognition_service.dart';
 import 'services/image_processor.dart';
 import 'services/cloud_sync_service.dart';
 import 'services/storage_service.dart';
+import 'services/generation_service.dart';
 import 'theme/app_theme.dart';
 import 'dart:typed_data';
 
@@ -856,6 +857,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init(); // 初始化通知服务
   await CategoryService.instance.init(); // 初始化分类服务
+  await GenerationService().init(); // 初始化字体生成服务（恢复生成状态）
   runApp(const WriteFontApp());
 }
 
