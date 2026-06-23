@@ -3732,6 +3732,37 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 极小图特殊处理 — 使用更激进的放大和增强策略
+      if (maxDim < 30 && maxDim >= 10) {
+        debugPrint('ML Kit 识别: 极小图特殊处理 (${maxDim}px)');
+        // 使用更激进的放大
+        final aggressiveScale = 800.0 / maxDim;
+        final aggressiveW = (w * aggressiveScale).round();
+        final aggressiveH = (h * aggressiveScale).round();
+        final aggressiveUpscaled = img.copyResize(enhanced,
+            width: aggressiveW, height: aggressiveH,
+            interpolation: img.Interpolation.cubic);
+        // 使用多种增强策略
+        final aggressiveStrategies = [
+          ('极小图CLAHE', (img.Image src) => ImageQualityService.instance.enhanceContrastAdaptive(src)),
+          ('极小图USM', (img.Image src) => _unsharpMaskSharpen(src, amount: 2.0)),
+          ('极小图Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
+        ];
+        for (final (label, fn) in aggressiveStrategies) {
+          final processed = fn(aggressiveUpscaled);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 2; // 极小图策略权重更高
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 2;
+            debugPrint('ML Kit 识别: ✓ 极小图策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
