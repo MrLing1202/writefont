@@ -3544,7 +3544,7 @@ class RecognitionService {
         var winner = sorted.first;
         debugPrint('ML Kit 识别: 综合评分排序 — ${sorted.take(3).map((e) => '"${e.key}" score=${(candidateScores[e.key]! * 100).toStringAsFixed(0)}% votes=${e.value}').join(', ')}');
 
-        // ── 平局决胜：top-2 票数差仅为 1 时，用多种预处理投票决胜（v3.2.0） ──
+        // ── v4.8.0: 平局决胜 — 扩展到5种预处理，覆盖更多场景 ──
         if (sorted.length >= 2 && (winner.value - sorted[1].value) <= 1) {
           debugPrint('ML Kit 识别: 平局决胜触发 (top1="${winner.key}"=${winner.value}票, top2="${sorted[1].key}"=${sorted[1].value}票)');
           final candidateA = winner.key;
@@ -3552,11 +3552,13 @@ class RecognitionService {
           int tieBreakA = 0;
           int tieBreakB = 0;
 
-          // v3.2.0: 用3种不同预处理做决胜投票（而非原来只用1种）
+          // v4.8.0: 用5种不同预处理做决胜投票（覆盖更多场景）
           final tieBreakers = [
             _sharpen(img.adjustColor(img.grayscale(enhanced), contrast: 1.8, brightness: 1.2)),
             _adaptiveBinarize(img.grayscale(enhanced), blockSize: 25, c: 8),
             _clahe(enhanced),
+            _sauvolaBinarize(enhanced, blockSize: 25, k: 0.2), // v4.8.0: Sauvola
+            _iterativeDeblur(enhanced, iterations: 3), // v4.8.0: 去模糊
           ];
           for (final tieProcessed in tieBreakers) {
             final tieRawResult = await _recognizeFromImage(tieProcessed);
