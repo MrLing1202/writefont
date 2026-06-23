@@ -1106,6 +1106,34 @@ class ImageProcessor {
           }
         }
 
+        // v5.7.0: 笔画宽度一致性过滤 — 噪声组件的笔画宽度通常不一致
+        // 计算边界框内每行的最大连续黑色像素数（笔画宽度），检查变异系数
+        if (bw > 10 && bh > 10) {
+          final strokeWidths = <int>[];
+          for (int sy = minY; sy <= maxY; sy++) {
+            int maxRun = 0, currentRun = 0;
+            for (int sx = minX; sx <= maxX; sx++) {
+              if (sx >= 0 && sx < w && sy >= 0 && sy < h && blackRows[sy][sx]) {
+                currentRun++;
+                if (currentRun > maxRun) maxRun = currentRun;
+              } else {
+                currentRun = 0;
+              }
+            }
+            if (maxRun > 0) strokeWidths.add(maxRun);
+          }
+          if (strokeWidths.length >= 3) {
+            final meanSW = strokeWidths.reduce((a, b) => a + b) / strokeWidths.length;
+            final varianceSW = strokeWidths.map((v) => (v - meanSW) * (v - meanSW)).reduce((a, b) => a + b) / strokeWidths.length;
+            final cvSW = meanSW > 0 ? (varianceSW > 0 ? sqrt(varianceSW) / meanSW : 0.0) : 999.0;
+            // 噪声组件的笔画宽度变异系数通常 > 1.5，真实字符 < 1.0
+            if (cvSW > 2.0) {
+              debugPrint('笔画宽度过滤: ${bw}x$bh cv=${cvSW.toStringAsFixed(2)} > 2.0，判定为噪声');
+              continue;
+            }
+          }
+        }
+
         // Filter by aspect ratio: single character should be roughly square (< 2.5:1)
         if (aspect > 2.5) continue;
 
