@@ -218,6 +218,8 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                               status: cellResults[index]?.status ?? CellStatus.pending,
                               confidence: cellResults[index]?.confidence ?? ConfidenceLevel.low,
                               bounceController: bounceControllers[index],
+                              preciseConfidence: cellResults[index]?.preciseConfidence,
+                              candidates: cellResults[index]?.candidates,
                               onTap: () {
                                 _playSelectionHaptic(); // 选择触觉反馈
                                 setState(() {
@@ -231,6 +233,16 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                               onLongPress: () {
                                 _playHeavyHaptic(); // 长按重触反馈
                                 showEditDialog(index);
+                              },
+                              onCandidateSelected: (selected) {
+                                // v4.6.0: 候选字选择回调
+                                setState(() {
+                                  charAssignments[index] = selected;
+                                  cellResults[index] = cellResults[index]?.copyWith(
+                                    character: selected,
+                                    confidence: ConfidenceLevel.medium,
+                                  );
+                                });
                               },
                             );
                           },

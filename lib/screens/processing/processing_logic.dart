@@ -240,9 +240,17 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
           }
 
           String? result;
+          double? preciseConf;
+          List<String>? candidates;
           try {
             result = await recognitionService.recognizeCharacter(cells[i])
                 .timeout(const Duration(seconds: 30), onTimeout: () => null);
+            // v4.6.0: 获取精确置信度和候选字列表
+            if (result != null) {
+              preciseConf = RecognitionService.getConfidenceForImage(cells[i]);
+              candidates = await recognitionService.recognizeCharacterTopN(cells[i], n: 5)
+                  .timeout(const Duration(seconds: 15), onTimeout: () => <String>[]);
+            }
           } catch (_) {
             result = null;
           }
@@ -263,6 +271,8 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
                 character: result,
                 status: status,
                 confidence: confidence,
+                preciseConfidence: preciseConf,
+                candidates: candidates,
               );
               completed++;
               recognizedCount = completed;
