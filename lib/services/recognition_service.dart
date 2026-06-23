@@ -1179,6 +1179,16 @@ class RecognitionService {
           final edge = _multiScaleEdgeEnhance(src);
           return _unsharpMaskSharpen(edge, amount: 1.2);
         },
+        // v4.8.0: Sauvola 自适应二值化
+        'Sauvola二值化': (src) => _sauvolaBinarize(src, blockSize: 25, k: 0.2),
+        '去噪+Sauvola': (src) {
+          final denoised = _strokeAwareDenoise(src);
+          return _sauvolaBinarize(denoised, blockSize: 25, k: 0.2);
+        },
+        '伽马+Sauvola': (src) {
+          final gamma = _adaptiveGammaCorrection(src);
+          return _sauvolaBinarize(gamma, blockSize: 25, k: 0.2);
+        },
       };
 
       for (final targetSize in upscaleTargets) {
@@ -2145,11 +2155,13 @@ class RecognitionService {
   }
 
   /// v4.7.0: 迭代反投影去模糊
+  /// v4.8.0: 增加边缘感知 — 边缘区域增强更多，平滑区域抑制噪声
   ///
   /// 使用迭代反投影（Iterative Back-Projection）思想：
   /// 1. 假设模糊核为均匀模糊（适用于手写拍照的轻微运动模糊）
   /// 2. 迭代估计清晰图像：每次用模糊残差修正当前估计
-  /// 3. 3-5次迭代后收敛，显著提升模糊图片的清晰度
+  /// 3. 边缘感知：利用 Sobel 梯度图加权残差，边缘处增强更多
+  /// 4. 3-5次迭代后收敛，显著提升模糊图片的清晰度
   img.Image _iterativeDeblur(img.Image src, {int iterations = 4}) {
     final gray = img.grayscale(src);
     final w = gray.width, h = gray.height;
@@ -2162,7 +2174,26 @@ class RecognitionService {
       }
     }
 
-    // 迭代反投影
+    // v4.8.0: 预计算边缘强度图（Sobel 梯度幅值）
+    List<double> edgeMap = List.filled(w * h, 0);
+    double maxEdge = 0;
+    for (int y = 1; y < h - 1; y++) {
+      for (int x = 1; x < w - 1; x++) {
+        final gx = _sobelX(gray, x, y).toDouble();
+        final gy = _sobelY(gray, x, y).toDouble();
+        final magnitude = math.sqrt(gx * gx + gy * gy);
+        edgeMap[y * w + x] = magnitude;
+        if (magnitude > maxEdge) maxEdge = magnitude;
+      }
+    }
+    // 归一化到 0~1
+    if (maxEdge > 0) {
+      for (int i = 0; i < w * h; i++) {
+        edgeMap[i] /= maxEdge;
+      }
+    }
+
+    // 迭代反投影（边缘感知）
     for (int iter = 0; iter < iterations; iter++) {
       // 对当前估计做模糊（模拟模糊过程）
       final blurred = _gaussianBlurFloat(current, w, h, sigma: 1.0 + iter * 0.3);
@@ -2173,10 +2204,13 @@ class RecognitionService {
         residual[i] = gray.getPixel(i % w, i ~/ w).r.toDouble() - blurred[i];
       }
 
-      // 将残差反馈到当前估计（反投影）
-      final feedbackGain = 0.5 / (1 + iter * 0.15); // 逐次衰减增益
+      // v4.8.0: 边缘感知反投影 — 边缘处增益更高，平滑处增益更低
+      final baseGain = 0.5 / (1 + iter * 0.15);
       for (int i = 0; i < w * h; i++) {
-        current[i] = (current[i] + residual[i] * feedbackGain).clamp(0, 255);
+        // 边缘强度加权：边缘处增益 1.5x，平滑处增益 0.6x
+        final edgeWeight = 0.6 + 0.9 * edgeMap[i]; // 0.6 ~ 1.5
+        final gain = baseGain * edgeWeight;
+        current[i] = (current[i] + residual[i] * gain).clamp(0, 255);
       }
     }
 
@@ -2597,6 +2631,71 @@ class RecognitionService {
     return result;
   }
 
+  /// Sauvola 自适应二值化（v4.8.0）
+  ///
+  /// 经典文档图像二值化算法，对手写体效果显著优于 Niblack/Otsu。
+  /// 公式：T(x,y) = mean * (1 + k * (std/R - 1))
+  /// 其中 mean/std 为局部邻域的均值和标准差，R=128（8bit 动态范围）。
+  ///
+  /// 优势：
+  /// - 同时考虑局部均值和方差，对光照不均匀更鲁棒
+  /// - 对比度低的区域自动降低阈值，保留更多笔画细节
+  /// - 对纸面阴影、折痕有很好的抑制效果
+  img.Image _sauvolaBinarize(img.Image src, {int blockSize = 25, double k = 0.2, double R = 128.0}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    final half = blockSize ~/ 2;
+
+    // 积分图加速：同时计算 sum 和 sum²
+    final integral = List.generate(h, (_) => List.filled(w, 0.0));
+    final integralSq = List.generate(h, (_) => List.filled(w, 0.0));
+    for (int y = 0; y < h; y++) {
+      double rowSum = 0;
+      double rowSumSq = 0;
+      for (int x = 0; x < w; x++) {
+        final v = gray.getPixel(x, y).r.toDouble();
+        rowSum += v;
+        rowSumSq += v * v;
+        integral[y][x] = rowSum + (y > 0 ? integral[y - 1][x] : 0);
+        integralSq[y][x] = rowSumSq + (y > 0 ? integralSq[y - 1][x] : 0);
+      }
+    }
+
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final x1 = (x - half).clamp(0, w - 1);
+        final y1 = (y - half).clamp(0, h - 1);
+        final x2 = (x + half).clamp(0, w - 1);
+        final y2 = (y + half).clamp(0, h - 1);
+        final count = (x2 - x1 + 1) * (y2 - y1 + 1);
+
+        // 计算局部均值
+        double areaSum = integral[y2][x2];
+        if (x1 > 0) areaSum -= integral[y2][x1 - 1];
+        if (y1 > 0) areaSum -= integral[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) areaSum += integral[y1 - 1][x1 - 1];
+        final mean = areaSum / count;
+
+        // 计算局部标准差
+        double areaSumSq = integralSq[y2][x2];
+        if (x1 > 0) areaSumSq -= integralSq[y2][x1 - 1];
+        if (y1 > 0) areaSumSq -= integralSq[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) areaSumSq += integralSq[y1 - 1][x1 - 1];
+        final variance = (areaSumSq / count) - (mean * mean);
+        final std = variance > 0 ? math.sqrt(variance) : 0.0;
+
+        // Sauvola 阈值
+        final threshold = mean * (1.0 + k * (std / R - 1.0));
+
+        final brightness = gray.getPixel(x, y).r.toDouble();
+        final v = brightness < threshold ? 0 : 255;
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
   /// CLAHE（自适应直方图均衡化）
   ///
   /// 将图像分为 8×8 瓦片，对每个瓦片独立做直方图均衡化（clip limit 3.0），
@@ -2828,9 +2927,10 @@ class RecognitionService {
 
   /// v4.4.0: 多候选综合评分 — 票数 + 置信度 + 字频 + 策略多样性 + 多尺度一致性
   /// v4.5.0: 新增 n-gram 上下文得分
+  /// v4.8.0: 优化权重分配 — 提升票数权重，增加单策略惩罚
   ///
   /// 当 TopN 投票产生多个候选时，用此函数综合排序，而非仅按票数排序。
-  /// 评分公式：score = votes*0.30 + confidence*0.18 + frequency*0.12 + diversity*0.12 + multiScale*0.12 + context*0.16
+  /// 评分公式：score = votes*0.35 + confidence*0.15 + frequency*0.10 + diversity*0.15 + multiScale*0.10 + context*0.15
   static double _computeCandidateScore({
     required String candidate,
     required int votes,
@@ -2839,28 +2939,36 @@ class RecognitionService {
     required Map<String, Set<String>> resultStrategies,
     required Map<String, Set<int>> resultSizes,
   }) {
-    // 1. 归一化票数 (0.0~1.0)
+    // 1. 归一化票数 (0.0~1.0) — 最可靠的信号，权重最高
     final normalizedVotes = totalVotes > 0 ? votes / totalVotes : 0.0;
 
     // 2. 置信度 (0.0~1.0)
     final confidence = confidenceMap[candidate] ?? 0.7;
 
-    // 3. 字频分数 (0.0~1.0) — 高频字得分高
+    // 3. 字频分数 (0.0~1.0) — 高频字得分高，更细粒度的分级
     final freqRank = DictionaryService.instance.getFrequency(candidate);
     double freqScore = 0.5; // 默认中等
-    if (freqRank >= 0 && freqRank < 100) {
-      freqScore = 1.0;
-    } else if (freqRank >= 100 && freqRank < 500) {
-      freqScore = 0.8;
-    } else if (freqRank >= 500 && freqRank < 1500) {
+    if (freqRank >= 0 && freqRank < 50) {
+      freqScore = 1.0;  // Top 50 高频字
+    } else if (freqRank >= 50 && freqRank < 200) {
+      freqScore = 0.9;
+    } else if (freqRank >= 200 && freqRank < 500) {
+      freqScore = 0.75;
+    } else if (freqRank >= 500 && freqRank < 1000) {
       freqScore = 0.6;
-    } else if (freqRank >= 1500) {
-      freqScore = 0.4;
+    } else if (freqRank >= 1000 && freqRank < 2000) {
+      freqScore = 0.45;
+    } else if (freqRank >= 2000) {
+      freqScore = 0.3;
     }
 
     // 4. 策略多样性 (0.0~1.0) — 越多不同策略投票，得分越高
+    //    单策略投票有轻微惩罚（可能是噪声）
     final strategyCount = resultStrategies[candidate]?.length ?? 0;
-    final diversityScore = (strategyCount / 5.0).clamp(0.0, 1.0);
+    double diversityScore = (strategyCount / 5.0).clamp(0.0, 1.0);
+    if (strategyCount <= 1 && totalVotes > 2) {
+      diversityScore *= 0.7; // 单策略且总票数多时，轻微惩罚
+    }
 
     // 5. 多尺度一致性 (0.0~1.0) — 多个放大尺寸识别到相同结果
     final sizeCount = resultSizes[candidate]?.length ?? 0;
@@ -2872,13 +2980,13 @@ class RecognitionService {
       prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
     );
 
-    // 加权综合评分（v4.5.0: 上下文占 16%）
-    final score = normalizedVotes * 0.30 +
-        confidence * 0.18 +
-        freqScore * 0.12 +
-        diversityScore * 0.12 +
-        multiScaleScore * 0.12 +
-        contextScore * 0.16;
+    // v4.8.0: 加权综合评分 — 票数权重提升至 35%，上下文降至 15%
+    final score = normalizedVotes * 0.35 +
+        confidence * 0.15 +
+        freqScore * 0.10 +
+        diversityScore * 0.15 +
+        multiScaleScore * 0.10 +
+        contextScore * 0.15;
 
     return score;
   }
@@ -3127,6 +3235,18 @@ class RecognitionService {
           final deblurred = _iterativeDeblur(src, iterations: 3);
           return ImageQualityService.instance.enhanceContrastAdaptive(deblurred);
         },
+        // v4.8.0: Sauvola 自适应二值化（经典文档二值化，对手写体效果优于 Otsu/Niblack）
+        'Sauvola二值化': (src) => _sauvolaBinarize(src, blockSize: 25, k: 0.2),
+        // v4.8.0: Sauvola + 去噪组合
+        '去噪+Sauvola': (src) {
+          final denoised = _strokeAwareDenoise(src);
+          return _sauvolaBinarize(denoised, blockSize: 25, k: 0.2);
+        },
+        // v4.8.0: 伽马校正 + Sauvola（先亮度归一化再二值化）
+        '伽马+Sauvola': (src) {
+          final gamma = _adaptiveGammaCorrection(src);
+          return _sauvolaBinarize(gamma, blockSize: 25, k: 0.2);
+        },
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -3138,13 +3258,13 @@ class RecognitionService {
       // 根据特征添加相关策略
       if (features.contrast < 0.4) {
         // 低对比度：加对比度增强类策略
-        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', 'CLAHE自适应', '自适应直方图均衡', '背景归一化']) {
+        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', 'CLAHE自适应', '自适应直方图均衡', '背景归一化', 'Sauvola二值化', '伽马+Sauvola']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
       if (features.noise > 0.5) {
         // 高噪声：加降噪类策略（v4.5.0: 新增笔画感知去噪）
-        for (final k in ['灰度+去噪', '灰度+去噪+锐化', '高斯模糊去噪+锐化', '笔画感知去噪']) {
+        for (final k in ['灰度+去噪', '灰度+去噪+锐化', '高斯模糊去噪+锐化', '笔画感知去噪', '去噪+Sauvola']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
@@ -3241,13 +3361,14 @@ class RecognitionService {
                 ? confidenceMap[result]!
                 : conf;
             debugPrint('ML Kit 识别: ✓ 第${attempt}次识别到 "$result" (累计票数: ${voteMap[result]}, 策略=$label, 权重=$voteWeight)');
-            // v4.2.0: 自适应提前终止 — 根据总策略数动态调整阈值
-            // 小图（策略少）用低阈值，大图（策略多）用高阈值，避免过早终止
+            // v4.8.0: 改进提前终止 — 要求最低尝试次数 + 多策略确认
             final totalAttempts = upscaleTargets.length * filteredPreprocessors.length;
-            final earlyThreshold = totalAttempts <= 6 ? 2 : (totalAttempts <= 12 ? 3 : 4);
-            if (voteMap[result]! >= earlyThreshold) {
+            final earlyThreshold = totalAttempts <= 6 ? 3 : (totalAttempts <= 12 ? 4 : 5);
+            final minAttemptsBeforeEarly = 4; // 至少尝试 4 次才允许提前终止
+            final hasMultiStrategy = (resultStrategies[result]?.length ?? 0) >= 2;
+            if (attempt >= minAttemptsBeforeEarly && voteMap[result]! >= earlyThreshold && hasMultiStrategy) {
               earlyTerminated = true;
-              debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票 (阈值=$earlyThreshold)');
+              debugPrint('ML Kit 识别: 提前终止，$result 已获 ${voteMap[result]} 票 (阈值=$earlyThreshold, 多策略确认)');
               break;
             }
           } else {
@@ -3257,10 +3378,12 @@ class RecognitionService {
             debugPrint('ML Kit 识别: ✗ 第${attempt}次未识别到文字');
           }
         }
-        // 如果已经提前终止（票数过半），跳出外层循环
+        // v4.8.0: 外层循环提前终止 — 要求更高票数 + 多策略确认
         if (voteMap.isNotEmpty) {
           final maxVotes = voteMap.values.reduce((a, b) => a > b ? a : b);
-          if (maxVotes >= 3) break; // v2.8.0: 降低阈值
+          final topCandidate = voteMap.entries.reduce((a, b) => a.value >= b.value ? a : b);
+          final topStrategies = resultStrategies[topCandidate.key]?.length ?? 0;
+          if (maxVotes >= 4 && topStrategies >= 2) break; // v4.8.0: 提高阈值，要求多策略
         }
       }
 
@@ -4108,6 +4231,51 @@ class RecognitionService {
   /// 例如：{"己": {"已": 5}} 表示 "己" 被误识别为 "已" 5 次
   static final Map<String, Map<String, int>> _errorPatterns = {};
 
+  /// v4.8.0: 预置常见手写体混淆对（高频误识别模式）
+  /// 这些是手写体中经常互相混淆的字对，基于 OCR 频率统计
+  static const Map<String, Map<String, int>> _builtinErrorPatterns = {
+    // 形近字混淆
+    '已': {'己': 5}, '己': {'已': 5},
+    '末': {'未': 5}, '未': {'末': 5},
+    '土': {'士': 5}, '士': {'土': 5},
+    '天': {'夫': 4}, '夫': {'天': 4},
+    '大': {'太': 4}, '太': {'大': 4},
+    '日': {'曰': 5}, '曰': {'日': 5},
+    '入': {'人': 4}, '人': {'入': 4},
+    '刀': {'力': 4}, '力': {'刀': 4},
+    '八': {'入': 3}, '几': {'九': 3}, '九': {'几': 3},
+    '干': {'千': 4}, '千': {'干': 4},
+    '王': {'玉': 3}, '玉': {'王': 3},
+    '甲': {'由': 4}, '由': {'甲': 4},
+    '田': {'由': 3}, '申': {'甲': 3},
+    '贝': {'见': 3}, '见': {'贝': 3},
+    '午': {'牛': 4}, '牛': {'午': 4},
+    '鸟': {'乌': 3}, '乌': {'鸟': 3},
+    '折': {'拆': 3}, '拆': {'折': 3},
+    '拔': {'拨': 3}, '拨': {'拔': 3},
+    '辨': {'辩': 4}, '辩': {'辨': 4}, '辫': {'辨': 3},
+    '晴': {'睛': 3}, '睛': {'晴': 3},
+    '清': {'请': 3}, '请': {'清': 3},
+    '很': {'狠': 3}, '狠': {'很': 3},
+    '抱': {'跑': 3}, '跑': {'抱': 3},
+    '体': {'休': 3}, '休': {'体': 3},
+    '令': {'今': 3}, '今': {'令': 3},
+    '候': {'侯': 3}, '侯': {'候': 3},
+    // 笔画缺失/多余
+    '口': {'日': 3}, '日': {'口': 3},
+    '目': {'日': 3}, '月': {'日': 3},
+    '白': {'自': 3}, '自': {'白': 3},
+    '百': {'白': 3}, '万': {'方': 3},
+    '问': {'间': 3}, '间': {'问': 3},
+    '们': {'门': 3}, '门': {'们': 3},
+    // 常见手写体误识别
+    '的': {'白': 2}, '是': {'足': 2},
+    '了': {'子': 2}, '子': {'了': 2},
+    '在': {'左': 2}, '左': {'在': 2},
+    '有': {'右': 2}, '右': {'有': 2},
+    '这': {'过': 2}, '过': {'这': 2},
+  };
+
   /// 错误模式持久化 key
   static const String _prefKeyErrorPatterns = 'ocr_error_patterns';
 
@@ -4124,6 +4292,13 @@ class RecognitionService {
   static Future<void> _ensureErrorPatternsLoaded() async {
     if (_errorPatternsLoaded) return;
     _errorPatternsLoaded = true;
+
+    // v4.8.0: 先加载预置混淆对
+    for (final entry in _builtinErrorPatterns.entries) {
+      _errorPatterns[entry.key] = Map<String, int>.from(entry.value);
+    }
+    debugPrint('错误模式: 已加载 ${_builtinErrorPatterns.length} 组预置混淆对');
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final json = prefs.getString(_prefKeyErrorPatterns);
@@ -4132,12 +4307,13 @@ class RecognitionService {
         for (final entry in map.entries) {
           final wrong = entry.key;
           final corrections = entry.value as Map<String, dynamic>;
+          // 合并用户学习的模式（覆盖预置的）
           _errorPatterns[wrong] = {};
           for (final c in corrections.entries) {
             _errorPatterns[wrong]![c.key] = c.value as int;
           }
         }
-        debugPrint('错误模式: 已加载 ${_errorPatterns.length} 组错误映射');
+        debugPrint('错误模式: 已加载 ${_errorPatterns.length} 组错误映射（含用户学习）');
       }
     } catch (e) {
       debugPrint('错误模式: 加载失败 $e');
