@@ -925,6 +925,56 @@ class RecognitionService {
       }
     }
 
+    // ═══ v5.3.0: 多尺度二次确认 ═══
+    // 对低置信度结果，尝试 1.5x 放大后重新识别。
+    // 如果放大后结果一致，说明识别可靠，提升置信度；
+    // 如果不一致，保留原结果但标记为低置信度。
+    if (result != null && !useCloud) {
+      final currentConf = _confidenceCache[cacheKey] ?? _lastLocalConfidence;
+      if (currentConf < 0.70 && currentConf > 0.0) {
+        debugPrint('多尺度确认: 置信度 ${(currentConf * 100).toStringAsFixed(0)}% < 70%，尝试放大重识别');
+        try {
+          final decoded = img.decodeImage(imageBytes);
+          if (decoded != null) {
+            final maxDim = decoded.width > decoded.height ? decoded.width : decoded.height;
+            if (maxDim < 400) {
+              // 1.5x 放大后重新识别
+              final scaled = img.copyResize(
+                decoded,
+                width: (decoded.width * 1.5).round(),
+                height: (decoded.height * 1.5).round(),
+                interpolation: img.Interpolation.cubic,
+              );
+              final scaledBytes = Uint8List.fromList(img.encodePng(scaled));
+              final rescaledResult = await _recognizeLocal(scaledBytes);
+              if (rescaledResult != null) {
+                if (rescaledResult == result) {
+                  // 放大后结果一致 → 提升置信度
+                  final boostAmount = (0.70 - currentConf).clamp(0.0, 0.10);
+                  final newConf = (currentConf + boostAmount).clamp(0.0, 0.85);
+                  _confidenceCache[cacheKey] = newConf;
+                  debugPrint('多尺度确认: 放大后结果一致 \"$result\"，置信度 ${(currentConf * 100).toStringAsFixed(0)}% → ${(newConf * 100).toStringAsFixed(0)}%');
+                  _addDebugLog('recognition', '多尺度确认一致', data: {
+                    'result': result,
+                    'originalConf': currentConf,
+                    'boostedConf': newConf,
+                  });
+                } else {
+                  debugPrint('多尺度确认: 放大后结果不一致 原="$result" 放大="$rescaledResult"，保留原结果');
+                  _addDebugLog('recognition', '多尺度确认不一致', data: {
+                    'original': result,
+                    'rescaled': rescaledResult,
+                  });
+                }
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('多尺度确认异常: $e');
+        }
+      }
+    }
+
     // 写入缓存，超出上限时使用 LRU 策略淘汰最久未访问的条目
     // 内存优化：同时检查条目数和内存占用
     if (_recognitionCache.length >= _maxCacheSize ||
@@ -1036,6 +1086,24 @@ class RecognitionService {
           });
           debugPrint('识别: 笔画辅助 "$result" → "$strokeResult"');
           result = strokeResult;
+        }
+      }
+
+      // ── 第4.5步：修正学习检查（v5.3.0，代价低，查表）──
+      // 利用用户历史修正记录，对低置信度结果进行修正
+      if (result != null && confidence < 0.85) {
+        final correctionResult = await CorrectionLearningService.instance.findCorrection(
+          recognizedChar: result,
+          confidence: confidence,
+        );
+        if (correctionResult != null && correctionResult != result) {
+          _addDebugLog('recognition', '修正学习纠正', data: {
+            'original': result,
+            'corrected': correctionResult,
+            'confidence': confidence,
+          });
+          debugPrint('识别: 修正学习 "$result" → "$correctionResult"');
+          result = correctionResult;
         }
       }
 

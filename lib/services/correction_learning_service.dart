@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -93,12 +94,13 @@ class CorrectionLearningService {
         '(置信度=${(confidence * 100).toStringAsFixed(0)}%)');
   }
 
-  /// 根据识别结果查找修正建议
+  /// v5.3.0: 增强修正建议查找
   ///
-  /// 匹配条件：
-  /// 1. 原始识别结果相同
-  /// 2. 置信度相近（±20%）
+  /// 匹配条件（v5.3.0 增强）：
+  /// 1. 原始识别结果相同（直接匹配）或出现在 topCandidates 中（候选匹配）
+  /// 2. 置信度相近（±25%）
   /// 3. 图片尺寸相近（同级别）
+  /// 4. 时间衰减：近期修正权重更高（30天半衰期）
   ///
   /// 返回修正后的字符，无匹配时返回 null
   Future<String?> findCorrection({
@@ -114,7 +116,12 @@ class CorrectionLearningService {
     final candidates = <_MatchResult>[];
 
     for (final record in _records) {
-      if (record.originalResult != recognizedChar) continue;
+      // v5.3.0: 支持两种匹配模式
+      // 模式A: 原始识别结果直接匹配
+      // 模式B: recognizedChar 出现在 topCandidates 中（候选匹配）
+      final isDirectMatch = record.originalResult == recognizedChar;
+      final isCandidateMatch = record.topCandidates.contains(recognizedChar);
+      if (!isDirectMatch && !isCandidateMatch) continue;
 
       // 置信度相似度（越接近越好）
       final confDiff = (record.confidence - confidence).abs();
@@ -133,8 +140,14 @@ class CorrectionLearningService {
         sizeScore = 1.0 - ((wDiff + hDiff) / 2).clamp(0.0, 1.0);
       }
 
-      // 综合匹配分（置信度相似度 60% + 尺寸相似度 40%）
-      final score = (1.0 - confDiff) * 0.6 + sizeScore * 0.4;
+      // v5.3.0: 时间衰减（30天半衰期）
+      final daysSinceCorrection = DateTime.now().difference(record.timestamp).inDays;
+      final timeDecay = math.pow(0.5, daysSinceCorrection / 30.0).toDouble();
+
+      // 综合匹配分（置信度相似度 50% + 尺寸相似度 30% + 时间衰减 20%）
+      // 直接匹配比候选匹配得分更高
+      final matchBonus = isDirectMatch ? 1.0 : 0.8;
+      final score = ((1.0 - confDiff) * 0.5 + sizeScore * 0.3 + timeDecay * 0.2) * matchBonus;
       candidates.add(_MatchResult(record, score));
     }
 
@@ -143,7 +156,7 @@ class CorrectionLearningService {
     // 按匹配分降序
     candidates.sort((a, b) => b.score.compareTo(a.score));
 
-    // 取最佳匹配，但需要至少 2 次相同修正才采纳（避免单次噪声）
+    // 取最佳匹配
     final best = candidates.first.record;
     final sameCorrectionCount = _records
         .where((r) =>
@@ -151,7 +164,12 @@ class CorrectionLearningService {
             r.correctedChar == best.correctedChar)
         .length;
 
-    if (sameCorrectionCount >= 2 || best.confidence < 0.5) {
+    // v5.3.0: 放宽采纳条件
+    // 原条件：≥2次相同修正 或 confidence < 0.5
+    // 新增条件：单次修正但原始置信度高(>0.8，说明用户对结果很确定才修正)
+    if (sameCorrectionCount >= 2 ||
+        best.confidence < 0.5 ||
+        (sameCorrectionCount >= 1 && best.confidence >= 0.8)) {
       debugPrint('修正学习: 匹配 "$recognizedChar" → "${best.correctedChar}" '
           '(出现$sameCorrectionCount次, 匹配分=${candidates.first.score.toStringAsFixed(2)})');
       return best.correctedChar;

@@ -219,12 +219,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WhatsNewDialog.checkAndShow(
       context,
       version: currentVersion,
-      subtitle: '识别率深度优化，向 99% 目标推进',
+      subtitle: '识别率持续优化，修正学习+多尺度确认',
       items: const [
-        WhatsNewItem(icon: '🔤', title: '形近字智能消歧', description: '33组形近字（己/已/巳、未/末等）自动根据上下文选择正确字'),
-        WhatsNewItem(icon: '⚡', title: '评分权重优化', description: 'ML Kit置信度权重提升，简单字多策略确认奖励，结果更准确'),
-        WhatsNewItem(icon: '🔄', title: '旋转重试增强', description: '阈值提升至65%，覆盖更多中等置信度误识别场景'),
-        WhatsNewItem(icon: '🎨', title: '自适应二值化', description: '根据图片对比度自动调整参数，淡笔画和深墨迹都能准确识别'),
+        WhatsNewItem(icon: '🔍', title: '多尺度二次确认', description: '低置信度结果自动放大重识别，一致则提升置信度，识别更可靠'),
+        WhatsNewItem(icon: '🧠', title: '修正学习增强', description: '支持候选匹配+时间衰减，近期修正优先，学习效果更好'),
+        WhatsNewItem(icon: '🔗', title: '修正学习集成', description: '修正记录自动应用于识别后处理，历史修正持续发挥作用'),
+        WhatsNewItem(icon: '📈', title: '评分权重优化', description: '置信度权重进一步提升，ML Kit信号更受信任'),
       ],
     );
   }
