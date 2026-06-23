@@ -776,6 +776,19 @@ class RecognitionService {
         }
       }
 
+      // ── v4.4.0: 错误模式纠正 — 已知高频误识别模式自动纠正 ──
+      if (result != null) {
+        final errorCorrected = await _applyErrorPatternCorrection(result);
+        if (errorCorrected != null && errorCorrected != result) {
+          _addDebugLog('recognition', '错误模式纠正', data: {
+            'original': result,
+            'corrected': errorCorrected,
+          });
+          debugPrint('识别: 错误模式纠正 "$result" → "$errorCorrected"');
+          result = errorCorrected;
+        }
+      }
+
       // 记录用户识别的字符，更新用户常用字缓存（异步，不阻塞返回）
       DictionaryService.instance.recordUsage(result);
 
@@ -3319,9 +3332,17 @@ class RecognitionService {
   /// 校正识别结果（用户手动修正误识别的字符）
   /// 将校正结果写入缓存，后续相同图片将返回校正后的结果
   /// 同时将纠正记录存入用户反馈学习系统，用于相似图片匹配
+  /// v4.4.0: 记录错误模式，用于后续自动纠正
   static void correctRecognition(Uint8List imageBytes, String correctedChar) {
     if (correctedChar.isEmpty) return;
     final cacheKey = _hashBytes(imageBytes);
+
+    // v4.4.0: 记录错误模式（旧结果 → 新结果）
+    final oldResult = _recognitionCache[cacheKey];
+    if (oldResult != null && oldResult != correctedChar) {
+      _recordErrorPattern(oldResult, correctedChar);
+    }
+
     _recognitionCache[cacheKey] = correctedChar;
     _confidenceCache[cacheKey] = 1.0; // 用户校正结果置信度为 100%
     // 更新 LRU 顺序
@@ -3462,6 +3483,178 @@ class RecognitionService {
       'loaded': _strategyWeightsLoaded,
       'updateCount': _strategyUpdateCount,
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v4.4.0: 错误模式学习 — 记录常见误识别模式，建立纠正映射
+  // ═══════════════════════════════════════════════════════════
+
+  /// 错误模式映射（错误结果 → 正确结果 → 出现次数）
+  /// 例如：{"己": {"已": 5}} 表示 "己" 被误识别为 "已" 5 次
+  static final Map<String, Map<String, int>> _errorPatterns = {};
+
+  /// 错误模式持久化 key
+  static const String _prefKeyErrorPatterns = 'ocr_error_patterns';
+
+  /// 是否已加载错误模式
+  static bool _errorPatternsLoaded = false;
+
+  /// 错误模式学习阈值：出现次数 >= threshold 才启用自动纠正
+  static const int _errorPatternThreshold = 2;
+
+  /// 最大错误模式数
+  static const int _maxErrorPatterns = 500;
+
+  /// 确保错误模式已加载
+  static Future<void> _ensureErrorPatternsLoaded() async {
+    if (_errorPatternsLoaded) return;
+    _errorPatternsLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_prefKeyErrorPatterns);
+      if (json != null && json.isNotEmpty) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        for (final entry in map.entries) {
+          final wrong = entry.key;
+          final corrections = entry.value as Map<String, dynamic>;
+          _errorPatterns[wrong] = {};
+          for (final c in corrections.entries) {
+            _errorPatterns[wrong]![c.key] = c.value as int;
+          }
+        }
+        debugPrint('错误模式: 已加载 ${_errorPatterns.length} 组错误映射');
+      }
+    } catch (e) {
+      debugPrint('错误模式: 加载失败 $e');
+    }
+  }
+
+  /// 保存错误模式到持久化存储
+  static Future<void> _saveErrorPatterns() async {
+    if (_errorPatterns.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, dynamic>{};
+      for (final entry in _errorPatterns.entries) {
+        map[entry.key] = Map<String, dynamic>.from(entry.value);
+      }
+      await prefs.setString(_prefKeyErrorPatterns, jsonEncode(map));
+      debugPrint('错误模式: 已保存 ${_errorPatterns.length} 组错误映射');
+    } catch (e) {
+      debugPrint('错误模式: 保存失败 $e');
+    }
+  }
+
+  /// 记录错误模式（当用户纠正识别结果时调用）
+  ///
+  /// [wrongResult] 识别错误的结果
+  /// [correctResult] 用户纠正后的正确结果
+  static void _recordErrorPattern(String wrongResult, String correctResult) {
+    if (wrongResult == correctResult) return;
+
+    _errorPatterns.putIfAbsent(wrongResult, () => {});
+    _errorPatterns[wrongResult]![correctResult] =
+        (_errorPatterns[wrongResult]![correctResult] ?? 0) + 1;
+
+    // 限制总条目数
+    int totalEntries = 0;
+    for (final v in _errorPatterns.values) {
+      totalEntries += v.length;
+    }
+    if (totalEntries > _maxErrorPatterns) {
+      // 移除出现次数最少的条目
+      String? minWrong;
+      String? minCorrect;
+      int minCount = 999999;
+      for (final entry in _errorPatterns.entries) {
+        for (final c in entry.value.entries) {
+          if (c.value < minCount) {
+            minCount = c.value;
+            minWrong = entry.key;
+            minCorrect = c.key;
+          }
+        }
+      }
+      if (minWrong != null && minCorrect != null) {
+        _errorPatterns[minWrong]!.remove(minCorrect);
+        if (_errorPatterns[minWrong]!.isEmpty) {
+          _errorPatterns.remove(minWrong);
+        }
+      }
+    }
+
+    debugPrint('错误模式: 记录 "$wrongResult" → "$correctResult" '
+        '(累计 ${_errorPatterns[wrongResult]![correctResult]} 次)');
+
+    // 异步保存（不阻塞）
+    _saveErrorPatterns();
+  }
+
+  /// 应用错误模式纠正 — 如果识别结果有已知的高频误识别模式，自动纠正
+  ///
+  /// 返回纠正后的结果，如果没有匹配的错误模式则返回原结果
+  static Future<String?> _applyErrorPatternCorrection(String result) async {
+    await _ensureErrorPatternsLoaded();
+
+    final corrections = _errorPatterns[result];
+    if (corrections == null || corrections.isEmpty) return result;
+
+    // 找到出现次数最多的纠正映射
+    String? bestCorrection;
+    int bestCount = 0;
+    for (final entry in corrections.entries) {
+      if (entry.value > bestCount && entry.value >= _errorPatternThreshold) {
+        bestCount = entry.value;
+        bestCorrection = entry.key;
+      }
+    }
+
+    if (bestCorrection != null) {
+      debugPrint('错误模式纠正: "$result" → "$bestCorrection" (出现 $bestCount 次)');
+      return bestCorrection;
+    }
+
+    return result;
+  }
+
+  /// 获取错误模式统计（供 UI 展示）
+  static Future<Map<String, dynamic>> getErrorPatternStats() async {
+    await _ensureErrorPatternsLoaded();
+
+    int totalPatterns = 0;
+    int totalCorrections = 0;
+    final topPatterns = <Map<String, dynamic>>[];
+
+    for (final entry in _errorPatterns.entries) {
+      for (final c in entry.value.entries) {
+        totalPatterns++;
+        totalCorrections += c.value;
+        topPatterns.add({
+          'wrong': entry.key,
+          'correct': c.key,
+          'count': c.value,
+        });
+      }
+    }
+
+    // 按出现次数降序排列
+    topPatterns.sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+
+    return {
+      'totalPatterns': totalPatterns,
+      'totalCorrections': totalCorrections,
+      'topPatterns': topPatterns.take(20).toList(),
+      'threshold': _errorPatternThreshold,
+    };
+  }
+
+  /// 清空错误模式数据
+  static Future<void> clearErrorPatterns() async {
+    _errorPatterns.clear();
+    _errorPatternsLoaded = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefKeyErrorPatterns);
+    _addDebugLog('system', '错误模式数据已清空');
   }
 
   // ═══════════════════════════════════════════════════════════
