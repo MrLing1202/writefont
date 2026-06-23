@@ -27,6 +27,7 @@ import 'template_generator_screen.dart';
 import 'font_compare_screen.dart';
 import 'writing_tips_screen.dart';
 import '../services/storage_service.dart';
+import '../services/generation_service.dart';
 import '../services/recognition_service.dart';
 import '../services/image_processor.dart';
 import '../services/google_fonts_exporter.dart';
@@ -141,6 +142,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // 分类统计
   Map<String, int> _categoryStats = {};
 
+  // 正在生成的项目
+  FontProject? _generatingProject;
+  final _generationService = GenerationService();
+
   // ═══ 业务指标状态 ═══
   /// 关键指标数据
   final Map<String, dynamic> _businessMetrics = {};
@@ -168,6 +173,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadPersonalizationSettings();
     _generatePersonalizedRecommendations();
     _loadBusinessMetrics();
+
+    // 监听生成进度变化，实时更新 UI
+    _generationService.progressNotifier.addListener(_onGenerationProgressChanged);
+    _generationService.isGeneratingNotifier.addListener(_onGenerationProgressChanged);
     _quickActionAnimController = AnimationController(
       duration: const Duration(milliseconds: 150),
       vsync: this,
@@ -187,6 +196,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showWhatsNewIfNeeded();
     });
+  }
+
+  /// 生成进度变化时更新 UI
+  void _onGenerationProgressChanged() {
+    if (mounted) {
+      setState(() {
+        // 如果生成完成，刷新项目列表
+        if (!_generationService.isGenerating) {
+          _loadProjectData();
+        }
+      });
+    }
   }
 
   void _showWhatsNewIfNeeded() async {
@@ -210,6 +231,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     NotificationService.instance.removeListener(_onNotificationChanged);
+    _generationService.progressNotifier.removeListener(_onGenerationProgressChanged);
+    _generationService.isGeneratingNotifier.removeListener(_onGenerationProgressChanged);
     _quickActionAnimController.dispose();
     _doubleTapAnimController.dispose();
     super.dispose();
@@ -1972,12 +1995,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         // 计算分类统计
         final categoryStats = CategoryService.instance.getCategoryStats(projects);
 
+        // 加载正在生成的项目
+        final generatingProject = await _generationService.getGeneratingProject();
+
         setState(() {
           _savedProjectCount = projects.length;
           _totalCharCount = charCount;
           _lastActivityTime = lastTime;
           _recentProjects = projects.take(2).toList();
           _categoryStats = categoryStats;
+          _generatingProject = generatingProject;
         });
       }
     } catch (e) {
@@ -2413,6 +2440,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   if (_showVisualizations && _savedProjectCount > 0) const SizedBox(height: 24),
 
+                  // ── 正在生成的项目 ──
+                  if (_generatingProject != null) ...[
+                    WFAnimations.fadeInSlide(
+                      _buildGeneratingProjectCard(context),
+                      delay: const Duration(milliseconds: 700),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
                   // ── 最近项目快捷入口 ──
                   if (_showRecentProjects && _recentProjects.isNotEmpty) ...[
                     WFAnimations.fadeInSlide(
@@ -2640,6 +2676,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: Text(
               count.toString(),
               style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建正在生成的项目卡片
+  Widget _buildGeneratingProjectCard(BuildContext context) {
+    final project = _generatingProject!;
+    final glyphCount = project.glyphs.length;
+    final totalChars = project.data?['generationTotal'] as int? ?? glyphCount;
+    final progress = totalChars > 0 ? glyphCount / totalChars : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: WFColors.bgCardColor(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: WFColors.primary.withValues(alpha: 0.5),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(WFColors.primary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '正在生成字体',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: WFColors.textPrimaryColor(context),
+                  ),
+                ),
+              ),
+              Text(
+                '$glyphCount/$totalChars',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: WFColors.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: WFColors.textLightColor(context).withValues(alpha: 0.2),
+              valueColor: AlwaysStoppedAnimation<Color>(WFColors.primary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${(progress * 100).toInt()}% 完成',
+            style: TextStyle(
+              fontSize: 12,
+              color: WFColors.textSecondaryColor(context),
             ),
           ),
         ],
