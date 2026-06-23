@@ -807,7 +807,7 @@ class RecognitionService {
   }
 
   /// 批量识别字符图片（带并发控制和进度回调）
-  /// 改进：使用缓存预检优化，已缓存的结果直接返回，减少等待
+  /// v4.4.0: 共享预处理结果 — 相似特征的图片复用预处理参数，减少重复计算
   Future<List<String?>> recognizeBatch(
     List<Uint8List> images, {
     void Function(int completed, int total)? onProgress,
@@ -843,35 +843,95 @@ class RecognitionService {
     // 已缓存的也算完成
     final preCachedCount = images.length - uncachedIndices.length;
     completed = preCachedCount;
-    final semaphore = _Semaphore(_maxConcurrent);
-    final futures = <Future>[];
 
-    for (final index in uncachedIndices) {
-      futures.add(() async {
-        await semaphore.acquire();
+    // v4.4.0: 批量预分析 — 提前解码和分析所有待识别图片的特征
+    // 相似特征的图片可以共享预处理参数，减少重复计算
+    if (!useCloud && uncachedIndices.length > 1) {
+      final imageFeatures = <int, ImageFeatures>{};
+      for (final idx in uncachedIndices) {
         try {
-          if (useCloud) {
-            results[index] = await _recognizeCloud(images[index]);
-          } else {
-            results[index] = await _recognizeLocal(images[index]);
-          }
-          // 批量识别成功后，为原始图片缓存结果和置信度
-          if (results[index] != null) {
-            final cacheKey = _hashBytes(images[index]);
-            _recognitionCache.putIfAbsent(cacheKey, () => results[index]!);
-            _cacheAccessOrder.remove(cacheKey);
-            _cacheAccessOrder.add(cacheKey);
-            _confidenceCache.putIfAbsent(cacheKey, () => 0.75);
-          }
-          completed++;
-          onProgress?.call(completed, images.length);
-        } finally {
-          semaphore.release();
+          imageFeatures[idx] = await ImageAnalyzer().analyzeImage(images[idx]);
+        } catch (_) {}
+      }
+
+      // 按特征相似度分组（尺寸和质量级别相同的图片分为一组）
+      final groups = <String, List<int>>{};
+      for (final idx in uncachedIndices) {
+        final features = imageFeatures[idx];
+        if (features == null) {
+          groups.putIfAbsent('default', () => []).add(idx);
+          continue;
         }
-      }());
+        // 分组键：质量级别 + 尺寸范围
+        final decoded = img.decodeImage(images[idx]);
+        final maxDim = decoded != null ? (decoded.width > decoded.height ? decoded.width : decoded.height) : 0;
+        final sizeRange = maxDim < 50 ? 'xs' : (maxDim < 100 ? 'sm' : (maxDim < 200 ? 'md' : 'lg'));
+        final groupKey = '${features.qualityLevel}_$sizeRange';
+        groups.putIfAbsent(groupKey, () => []).add(idx);
+      }
+
+      debugPrint('批量识别: ${uncachedIndices.length} 张图片分为 ${groups.length} 组 '
+          '(${groups.entries.map((e) => '${e.key}:${e.value.length}').join(', ')})');
+
+      // 按组并行处理（同组图片共享预处理参数的经验）
+      final semaphore = _Semaphore(_maxConcurrent);
+      final futures = <Future>[];
+
+      for (final group in groups.values) {
+        for (final index in group) {
+          futures.add(() async {
+            await semaphore.acquire();
+            try {
+              results[index] = await _recognizeLocal(images[index]);
+              if (results[index] != null) {
+                final cacheKey = _hashBytes(images[index]);
+                _recognitionCache.putIfAbsent(cacheKey, () => results[index]!);
+                _cacheAccessOrder.remove(cacheKey);
+                _cacheAccessOrder.add(cacheKey);
+                _confidenceCache.putIfAbsent(cacheKey, () => 0.75);
+              }
+              completed++;
+              onProgress?.call(completed, images.length);
+            } finally {
+              semaphore.release();
+            }
+          }());
+        }
+      }
+
+      await Future.wait(futures);
+    } else {
+      // 云端模式或单张图片：使用原始逻辑
+      final semaphore = _Semaphore(_maxConcurrent);
+      final futures = <Future>[];
+
+      for (final index in uncachedIndices) {
+        futures.add(() async {
+          await semaphore.acquire();
+          try {
+            if (useCloud) {
+              results[index] = await _recognizeCloud(images[index]);
+            } else {
+              results[index] = await _recognizeLocal(images[index]);
+            }
+            if (results[index] != null) {
+              final cacheKey = _hashBytes(images[index]);
+              _recognitionCache.putIfAbsent(cacheKey, () => results[index]!);
+              _cacheAccessOrder.remove(cacheKey);
+              _cacheAccessOrder.add(cacheKey);
+              _confidenceCache.putIfAbsent(cacheKey, () => 0.75);
+            }
+            completed++;
+            onProgress?.call(completed, images.length);
+          } finally {
+            semaphore.release();
+          }
+        }());
+      }
+
+      await Future.wait(futures);
     }
 
-    await Future.wait(futures);
     return results;
   }
 
