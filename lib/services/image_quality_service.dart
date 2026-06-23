@@ -52,8 +52,8 @@ class ImageQualityService {
     // v4.4.0: 8. 笔画连续性（检测断笔/飞白）
     final strokeContinuity = _assessStrokeContinuity(gray);
 
-    // 综合评分（加权平均）
-    // 对比度 20%，清晰度 25%，噪声 15%，笔画 15%，亮度 10%，背景 10%，连续性 5%
+    // v4.8.0: 优化权重分配 — 针对手写体特征调整
+    // 对比度 18%，清晰度 25%，噪声 15%，笔画 20%，亮度 5%，背景 10%，连续性 7%
     final contrastScore = _normalizeContrast(contrast);
     final sharpnessScore = _normalizeSharpness(sharpness);
     final noiseScore = 1.0 - noiseLevel; // 噪声越低越好
@@ -61,13 +61,19 @@ class ImageQualityService {
     final backgroundScore = backgroundUniformity;
     final continuityScore = strokeContinuity;
 
-    final overall = contrastScore * 0.20 +
+    // v4.8.0: 倾斜惩罚 — 倾斜超过5度时降低综合分
+    double skewPenalty = 0.0;
+    if (skewAngle.abs() > 5.0) {
+      skewPenalty = ((skewAngle.abs() - 5.0) / 10.0).clamp(0.0, 0.15);
+    }
+
+    final overall = (contrastScore * 0.18 +
         sharpnessScore * 0.25 +
         noiseScore * 0.15 +
-        strokeScore * 0.15 +
-        brightnessScore * 0.10 +
+        strokeScore * 0.20 +
+        brightnessScore * 0.05 +
         backgroundScore * 0.10 +
-        continuityScore * 0.05;
+        continuityScore * 0.07 - skewPenalty).clamp(0.0, 1.0);
 
     debugPrint('图像质量评估: 综合=${(overall * 100).toStringAsFixed(0)}% '
         '对比度=${(contrastScore * 100).toStringAsFixed(0)}% '
