@@ -57,6 +57,9 @@ class _AutoGenerateScreenState extends State<AutoGenerateScreen>
   // 取消标志
   bool _cancelled = false;
 
+  // 生成服务
+  final GenerationService _generationService = GenerationService();
+
   // 动画
   AnimationController? _animController;
 
