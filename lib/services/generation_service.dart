@@ -19,6 +19,7 @@ class GenerationService {
   double _progress = 0.0;
   String _status = '';
   String? _currentProjectId;
+  int _totalChars = 0;
   Completer<bool>? _generationCompleter;
 
   // UI 可观察的状态
@@ -30,6 +31,7 @@ class GenerationService {
   double get progress => _progress;
   String get status => _status;
   String? get currentProjectId => _currentProjectId;
+  int get totalChars => _totalChars;
 
   /// 初始化：从存储中恢复生成状态
   Future<void> init() async {
@@ -60,6 +62,7 @@ class GenerationService {
     _isGenerating = true;
     _progress = 0.0;
     _status = '开始生成...';
+    _totalChars = finalAssignments.length;
     isGeneratingNotifier.value = true;
     progressNotifier.value = 0.0;
     statusNotifier.value = _status;

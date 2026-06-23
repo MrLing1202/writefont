@@ -23,7 +23,7 @@ Future<FontProject?> generateFontFromCells(
   Map<int, String> remainingAssignments = finalAssignments;
 
   if (existingProjectId != null) {
-    final existing = await StorageService.getProject(existingProjectId);
+    final existing = await StorageService.loadProject(existingProjectId);
     if (existing != null) {
       project = existing;
       // 过滤掉已生成的字符

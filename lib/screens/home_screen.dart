@@ -2687,8 +2687,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildGeneratingProjectCard(BuildContext context) {
     final project = _generatingProject!;
     final glyphCount = project.glyphs.length;
-    final totalChars = project.data?['generationTotal'] as int? ?? glyphCount;
-    final progress = totalChars > 0 ? glyphCount / totalChars : 0.0;
+    final totalChars = _generationService.totalChars > 0
+        ? _generationService.totalChars
+        : glyphCount;
+    final progress = _generationService.isGenerating
+        ? _generationService.progress
+        : (totalChars > 0 ? glyphCount / totalChars : 0.0);
 
     return Container(
       padding: const EdgeInsets.all(16),
