@@ -238,10 +238,13 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                                 // v4.6.0: 候选字选择回调
                                 setState(() {
                                   charAssignments[index] = selected;
-                                  cellResults[index] = cellResults[index]?.copyWith(
-                                    character: selected,
-                                    confidence: ConfidenceLevel.medium,
-                                  );
+                                  final current = cellResults[index];
+                                  if (current != null) {
+                                    cellResults[index] = current.copyWith(
+                                      character: selected,
+                                      confidence: ConfidenceLevel.medium,
+                                    );
+                                  }
                                 });
                               },
                             );

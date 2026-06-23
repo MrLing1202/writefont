@@ -110,7 +110,7 @@ class GenerationService {
       await _clearGeneratingProjectId();
     }
 
-    return _generationCompleter?.future ?? false;
+    return _generationCompleter?.future ?? Future.value(false);
   }
 
   /// 取消当前生成
