@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import '../../models/project.dart';
 import '../../services/image_processor.dart';
 import '../../services/storage_service.dart';
@@ -101,9 +102,19 @@ Future<FontProject?> generateFontFromCells(
       glyph.advanceWidth = glyph.calculateAdvanceWidth();
       project.glyphs[char] = glyph;
 
-      // 增量保存：每生成一个字符就保存项目
+      // 增量保存：每3个字符保存一次（最后一个字符也保存）
       completed++;
-      await StorageService.saveProject(project);
+      final isLast = completed >= total;
+      final shouldSave = completed % 3 == 0 || isLast;
+      if (shouldSave) {
+        try {
+          await StorageService.saveProject(project);
+        } catch (e) {
+          debugPrint('[字体生成] 保存项目失败: $e');
+        }
+        // 定期清理轮廓缓存，释放内存
+        ImageProcessor.clearContourCache();
+      }
       onProgress(completed / total, '正在生成字体 $completed/$total...');
     } catch (e) {
       // 同步提取也失败时记录错误，但仍继续处理其他字符

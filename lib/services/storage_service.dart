@@ -887,9 +887,13 @@ class StorageService {
       await _writeStringWithChecksum(jsonFile, jsonString);
     }
 
-    // 保存源图片
+    // 保存源图片（仅在文件不存在时保存，避免重复写入）
     for (int i = 0; i < project.sourceImages.length; i++) {
-      await saveSourceImage(project.id, project.sourceImages[i], i);
+      final projDir = await _projectsDir;
+      final imgFile = File(p.join(projDir.path, project.id, 'images', 'source_$i.png'));
+      if (!await imgFile.exists()) {
+        await saveSourceImage(project.id, project.sourceImages[i], i);
+      }
     }
 
     // 网络优化：更新缓存（保存后缓存失效）

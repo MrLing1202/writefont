@@ -321,7 +321,7 @@ List<List<Map<String, dynamic>>> _computeContours(Map<String, dynamic> params) {
 class ImageProcessor {
   // ── 轮廓提取结果缓存（避免重复计算相同图片的轮廓） ──
   static final Map<int, List<Contour>> _contourCache = {};
-  static const int _maxContourCacheSize = 50;
+  static const int _maxContourCacheSize = 20;
 
   /// 根据图像特征智能选择预处理策略（v2.8.0）
   List<String> selectStrategies(ImageFeatures features) {
