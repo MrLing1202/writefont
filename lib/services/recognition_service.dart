@@ -3955,6 +3955,38 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 倾斜图特殊处理 — 使用更强的倾斜校正策略
+      if (imageFeatures.slantAngle > 0.6) {
+        debugPrint('ML Kit 识别: 倾斜图特殊处理 (slant=${imageFeatures.slantAngle.toStringAsFixed(2)})');
+        final slantStrategies = [
+          ('强倾斜校正+CLAHE', (img.Image src) {
+            final corrected = _skewCorrection(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(corrected);
+          }),
+          ('强倾斜校正+Sauvola', (img.Image src) {
+            final corrected = _skewCorrection(src);
+            return _sauvolaBinarizeAdaptive(corrected, features: imageFeatures);
+          }),
+          ('强倾斜校正+USM', (img.Image src) {
+            final corrected = _skewCorrection(src);
+            return _unsharpMaskSharpen(corrected, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in slantStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 倾斜图策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
