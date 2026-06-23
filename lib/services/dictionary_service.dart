@@ -2196,6 +2196,45 @@ class DictionaryService {
     '甚至', '两个', '第二', '部分', '各种', '每天', '每年', '每月',
     '每周', '今天', '明天', '昨天', '上午', '下午', '晚上', '中午',
     '早上', '今年', '去年', '明年', '前年',
+    // v4.3.0: 3-4字常用短语（用于上下文语义纠错）
+    '我们', '他们', '自己', '可以', '没有', '不是', '什么', '这个', '那个',
+    '因为', '所以', '如果', '但是', '可是', '还是', '就是', '都是', '不会',
+    '不能', '不要', '知道', '已经', '可能', '应该', '需要', '喜欢', '认为',
+    '觉得', '希望', '决定', '准备', '开始', '继续', '完成', '发现', '发生',
+    '出现', '表示', '成为', '进行', '实现', '使用', '利用', '具有', '取得',
+    '获得', '受到', '产生', '引起', '导致', '使得', '能够', '必须', '应该',
+    // 3字短语
+    '有没有', '是不是', '能不能', '会不会', '可不可以', '为什么', '怎么样',
+    '什么样', '什么时候', '什么地方', '多少', '几个', '一些', '一点',
+    '不一样', '不需要', '不可能', '不得不', '不得不', '不在乎', '不像话',
+    '不得了', '了不起', '来不及', '来得及', '对不起', '看起来', '看上去',
+    '想起来', '说不定', '说不上', '说不清', '差不多', '差得远',
+    '事实上', '实际上', '基本上', '差不多', '大部分', '小部分',
+    '一方面', '另一方面', '也就是说', '换句话说', '不仅仅是',
+    '不仅仅', '不但不', '不但还', '既然是', '之所以', '是因为',
+    '之所以', '难道说', '要不然', '要不是', '恨不得', '巴不得',
+    '说不定', '说到底', '到底是', '到底有', '到底没',
+    // 4字短语/成语
+    '一心一意', '三心二意', '四面八方', '五颜六色', '七上八下',
+    '千变万化', '千山万水', '千方百计', '千家万户', '千军万马',
+    '千言万语', '千真万确', '千辛万苦', '千奇百怪', '千姿百态',
+    '千丝万缕', '千头万绪', '千差万别', '千锤百炼', '千篇一律',
+    '各种各样', '各式各样', '多姿多彩', '多才多艺', '无忧无虑',
+    '无法无天', '无边无际', '无穷无尽', '无影无踪', '无微不至',
+    '自言自语', '自以为是', '自由自在', '自始至终', '自力更生',
+    '不知不觉', '不慌不忙', '不约而同', '不可思议', '不可一世',
+    '不以为然', '不由自主', '不言而喻', '不甘示弱', '不屈不挠',
+    '大公无私', '大同小异', '大惊小怪', '大显身手', '大开眼界',
+    '天长地久', '天翻地覆', '天经地义', '天衣无缝', '天南地北',
+    '东张西望', '东奔西走', '东拉西扯', '东拼西凑', '南辕北辙',
+    '前因后果', '前赴后继', '空前绝后', '思前想后', '承前启后',
+    '左思右想', '左邻右舍', '左右为难', '左右逢源', '旁若无人',
+    '风和日丽', '风平浪静', '风起云涌', '风调雨顺', '风雨同舟',
+    '花言巧语', '花天酒地', '花花世界', '鸟语花香', '走马观花',
+    '画龙点睛', '画蛇添足', '纸上谈兵', '指手画脚', '胸有成竹',
+    '守株待兔', '掩耳盗铃', '亡羊补牢', '对牛弹琴', '刻舟求剑',
+    '实事求是', '与时俱进', '科学发展', '社会和谐', '人民幸福',
+    '中华民族', '伟大复兴', '中国梦', '社会主义', '改革开放',
   };
 
   // ═══════════════════════════════════════════
@@ -2300,17 +2339,18 @@ class DictionaryService {
     return char;
   }
 
-  /// 同音字上下文纠错
+  /// 同音字上下文纠错（v4.3.0: 扩展到3-4字短语）
   ///
-  /// 当置信度 < 0.85 时，检查识别结果的同音字是否能与前后字符组成更合理的词。
-  /// 例如：识别为"相"，前一字"想"，后一字"念" → "想念"是词，"相念"不是 → 不替换
-  /// 但：识别为"相"，后一字"信" → "相信"是词 → 保留"相"
+  /// 当置信度 < 0.85 时，检查识别结果的同音字是否能与前后字符组成更合理的词/短语。
+  /// 支持2字词、3字短语、4字短语三个级别的上下文匹配。
   ///
   /// [result] 原始识别结果
   /// [prevChar] 前一个字符（可选）
   /// [nextChar] 后一个字符（可选）
+  /// [prev2Char] 前两个字符（可选，用于3-4字短语匹配）
+  /// [next2Char] 后两个字符（可选，用于3-4字短语匹配）
   /// [confidence] 识别置信度
-  String correctWithHomophone(String result, {String? prevChar, String? nextChar, double confidence = 1.0}) {
+  String correctWithHomophone(String result, {String? prevChar, String? nextChar, String? prev2Char, String? next2Char, double confidence = 1.0}) {
     if (result.isEmpty) return result;
 
     // 高置信度时不做同音字纠错
@@ -2322,36 +2362,65 @@ class DictionaryService {
     final homophones = _homophones[result];
     if (homophones == null || homophones.isEmpty) return result;
 
-    // 检查当前字符与上下文是否已能组成词
-    bool currentFitsContext = false;
-    if (nextChar != null && nextChar.isNotEmpty) {
-      currentFitsContext = _commonWords.contains('$result$nextChar');
-    }
-    if (!currentFitsContext && prevChar != null && prevChar.isNotEmpty) {
-      currentFitsContext = _commonWords.contains('$prevChar$result');
-    }
+    // 检查当前字符与上下文是否已能组成词/短语
+    bool currentFitsContext = _checkContext(result, prevChar, nextChar, prev2Char, next2Char);
 
     // 如果当前字符已经能组成词，不做替换
     if (currentFitsContext) return result;
 
-    // 尝试每个同音字，找到能与上下文组成词的
+    // 尝试每个同音字，找到能与上下文组成词/短语的
     for (final candidate in homophones) {
       if (candidate == result) continue;
 
-      // 检查候选字 + 下一字是否为词
-      if (nextChar != null && nextChar.isNotEmpty && _commonWords.contains('$candidate$nextChar')) {
-        debugPrint('同音字纠错: "$result" → "$candidate" (后文词组: "$candidate$nextChar", 置信度=${(confidence * 100).toStringAsFixed(0)}%)');
-        return candidate;
-      }
-
-      // 检查前一字 + 候选字是否为词
-      if (prevChar != null && prevChar.isNotEmpty && _commonWords.contains('$prevChar$candidate')) {
-        debugPrint('同音字纠错: "$result" → "$candidate" (前文词组: "$prevChar$candidate", 置信度=${(confidence * 100).toStringAsFixed(0)}%)');
+      if (_checkContext(candidate, prevChar, nextChar, prev2Char, next2Char)) {
+        debugPrint('同音字纠错: "$result" → "$candidate" (上下文匹配, 置信度=${(confidence * 100).toStringAsFixed(0)}%)');
         return candidate;
       }
     }
 
     return result;
+  }
+
+  /// 检查候选字是否能与上下文组成有效词/短语（v4.3.0: 支持2-4字）
+  bool _checkContext(String candidate, String? prevChar, String? nextChar, String? prev2Char, String? next2Char) {
+    // 2字词匹配
+    if (nextChar != null && nextChar.isNotEmpty && _commonWords.contains('$candidate$nextChar')) {
+      return true;
+    }
+    if (prevChar != null && prevChar.isNotEmpty && _commonWords.contains('$prevChar$candidate')) {
+      return true;
+    }
+    // 3字短语匹配：前一字+候选+后一字
+    if (prevChar != null && prevChar.isNotEmpty && nextChar != null && nextChar.isNotEmpty) {
+      if (_commonWords.contains('$prevChar$candidate$nextChar')) {
+        return true;
+      }
+    }
+    // 3字短语匹配：前两字+候选
+    if (prev2Char != null && prev2Char.length >= 2) {
+      if (_commonWords.contains('$prev2Char$candidate')) {
+        return true;
+      }
+    }
+    // 3字短语匹配：候选+后两字
+    if (next2Char != null && next2Char.length >= 2) {
+      if (_commonWords.contains('$candidate$next2Char')) {
+        return true;
+      }
+    }
+    // 4字短语匹配：前两字+候选+后一字
+    if (prev2Char != null && prev2Char.length >= 2 && nextChar != null && nextChar.isNotEmpty) {
+      if (_commonWords.contains('$prev2Char$candidate$nextChar')) {
+        return true;
+      }
+    }
+    // 4字短语匹配：前一字+候选+后两字
+    if (prevChar != null && prevChar.isNotEmpty && next2Char != null && next2Char.length >= 2) {
+      if (_commonWords.contains('$prevChar$candidate$next2Char')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 记录用户识别过的字符（更新用户常用字缓存）

@@ -292,10 +292,15 @@ mixin ProcessingLogic on TickerProviderStateMixin<ProcessingScreen> {
               : 0.55;
       final prevChar = i > 0 ? charAssignments[i - 1] : null;
       final nextChar = (i < cells.length - 1) ? charAssignments[i + 1] : null;
+      // v4.3.0: 扩展上下文到3-4字短语
+      final prev2Char = i > 1 ? '${charAssignments[i - 2]}${charAssignments[i - 1]}' : null;
+      final next2Char = (i < cells.length - 2) ? '${charAssignments[i + 1]}${charAssignments[i + 2]}' : null;
       final corrected = DictionaryService.instance.correctWithHomophone(
         current,
         prevChar: prevChar,
         nextChar: nextChar,
+        prev2Char: prev2Char,
+        next2Char: next2Char,
         confidence: confidence,
       );
       if (corrected != current) {

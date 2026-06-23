@@ -239,10 +239,15 @@ class _BatchImportScreenState extends State<BatchImportScreen>
       if (current == null || current.isEmpty) continue;
       final prevChar = j > 0 ? result.recognitions[j - 1] : null;
       final nextChar = (j < cells.length - 1) ? result.recognitions[j + 1] : null;
+      // v4.3.0: 扩展上下文到3-4字短语
+      final prev2Char = j > 1 ? '${result.recognitions[j - 2]}${result.recognitions[j - 1]}' : null;
+      final next2Char = (j < cells.length - 2) ? '${result.recognitions[j + 1]}${result.recognitions[j + 2]}' : null;
       final corrected = DictionaryService.instance.correctWithHomophone(
         current,
         prevChar: prevChar,
         nextChar: nextChar,
+        prev2Char: prev2Char,
+        next2Char: next2Char,
         confidence: 0.75, // 批量导入默认中等置信度
       );
       if (corrected != current) {
