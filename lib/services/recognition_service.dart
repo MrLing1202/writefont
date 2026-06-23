@@ -152,11 +152,30 @@ class RecognitionService {
   }
 
   /// 根据图像特征生成特征签名
+  /// v4.8.0: 新增风格维度 — S(regular/cursive/light/heavy/mixed)
   static String _buildFeatureSignature(ImageFeatures features) {
     final c = _discretizeFeature(features.contrast);
     final b = _discretizeFeature(features.blur);
     final t = _discretizeFeature(features.lineThickness);
-    return 'C${c}_B${b}_T$t';
+    // 风格缩写
+    String s;
+    switch (features.style) {
+      case HandwritingStyle.cursive:
+        s = 'CU';
+        break;
+      case HandwritingStyle.light:
+        s = 'LI';
+        break;
+      case HandwritingStyle.heavy:
+        s = 'HE';
+        break;
+      case HandwritingStyle.mixed:
+        s = 'MX';
+        break;
+      default:
+        s = 'RE'; // regular
+    }
+    return 'C${c}_B${b}_T${t}_$s';
   }
 
   /// 加载策略组合性能数据
@@ -3292,6 +3311,78 @@ class RecognitionService {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
+
+      // ═══ v4.8.0: 手写风格自适应 — 根据检测到的风格加权策略 ═══
+      final style = features.style;
+      debugPrint('手写风格自适应: 检测到 ${features.styleName} 风格 '
+          '(笔画粗细=${features.lineThickness.toStringAsFixed(2)}, '
+          '连笔=${features.connection.toStringAsFixed(2)}, '
+          '变异度=${features.strokeVariability.toStringAsFixed(2)})');
+
+      switch (style) {
+        case HandwritingStyle.cursive:
+          // 行书/草书：连笔多，需增强分离和骨架化
+          for (final k in [
+            '形态学骨架化', '局部阈值二值化', '倾斜校正',
+            '灰度+自适应二值化', '灰度+对比度+二值化',
+            'Sauvola二值化', '伽马+Sauvola',
+          ]) {
+            if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+          }
+          break;
+        case HandwritingStyle.light:
+          // 轻笔：笔画细弱，需增强增粗和对比度
+          for (final k in [
+            '细笔画增强', '笔画粗细自适应', '断笔修复',
+            'USM笔画锐化', 'USM强锐化', 'USM锐化+CLAHE',
+            '手写体笔画增强', '笔画归一化',
+            '多尺度形态学', '伽马+Sauvola',
+          ]) {
+            if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+          }
+          break;
+        case HandwritingStyle.heavy:
+          // 重笔：笔画粗重，需增强细化和边缘
+          for (final k in [
+            '形态学骨架化', '开运算去噪', '笔画粗细自适应',
+            '多尺度边缘增强', '边缘增强+锐化',
+            'Sauvola二值化', '灰度+对比度+二值化',
+          ]) {
+            if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+          }
+          break;
+        case HandwritingStyle.mixed:
+          // 混合风格：均衡尝试多种策略
+          for (final k in [
+            '笔画粗细自适应', '笔画感知去噪',
+            '自适应伽马校正', '伽马+CLAHE',
+            'Sauvola二值化', '去噪+Sauvola',
+          ]) {
+            if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+          }
+          break;
+        case HandwritingStyle.regular:
+        default:
+          // 楷书：标准处理，无额外策略
+          break;
+      }
+
+      // 倾斜角度大时额外添加倾斜校正
+      if (features.slantAngle > 0.5) {
+        if (preprocessors.containsKey('倾斜校正')) {
+          filteredPreprocessors['倾斜校正'] = preprocessors['倾斜校正']!;
+        }
+        debugPrint('手写风格自适应: 检测到严重倾斜 (slant=${features.slantAngle.toStringAsFixed(2)})，添加倾斜校正');
+      }
+
+      // 边缘模糊时额外添加锐化策略
+      if (features.edgeSharpness < 0.3) {
+        for (final k in ['USM笔画锐化', 'USM强锐化', '多尺度边缘增强']) {
+          if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
+        }
+        debugPrint('手写风格自适应: 边缘模糊 (sharpness=${features.edgeSharpness.toStringAsFixed(2)})，添加锐化策略');
+      }
+
       // 确保至少有5个策略
       if (filteredPreprocessors.length < 5) {
         for (final k in ['灰度+自适应二值化', '灰度+去噪+自适应二值化', '手写体增强+对比度', '倾斜校正']) {
@@ -3312,7 +3403,9 @@ class RecognitionService {
         }
       }
 
-      debugPrint('ML Kit 识别: 智能策略选择 ${orderedPreprocessors.length}/${preprocessors.length} 种 (对比度=${features.contrast.toStringAsFixed(2)}, 噪声=${features.noise.toStringAsFixed(2)}, 模糊=${features.blur.toStringAsFixed(2)})');
+      debugPrint('ML Kit 识别: 智能策略选择 ${orderedPreprocessors.length}/${preprocessors.length} 种 '
+          '(风格=${features.styleName}, 对比度=${features.contrast.toStringAsFixed(2)}, '
+          '噪声=${features.noise.toStringAsFixed(2)}, 模糊=${features.blur.toStringAsFixed(2)})');
 
       int attempt = 0;
 
@@ -4240,7 +4333,7 @@ class RecognitionService {
     '土': {'士': 5}, '士': {'土': 5},
     '天': {'夫': 4}, '夫': {'天': 4},
     '大': {'太': 4}, '太': {'大': 4},
-    '日': {'曰': 5}, '曰': {'日': 5},
+    '日': {'曰': 5, '口': 3}, '曰': {'日': 5},
     '入': {'人': 4}, '人': {'入': 4},
     '刀': {'力': 4}, '力': {'刀': 4},
     '八': {'入': 3}, '几': {'九': 3}, '九': {'几': 3},
@@ -4262,7 +4355,7 @@ class RecognitionService {
     '令': {'今': 3}, '今': {'令': 3},
     '候': {'侯': 3}, '侯': {'候': 3},
     // 笔画缺失/多余
-    '口': {'日': 3}, '日': {'口': 3},
+    '口': {'日': 3},
     '目': {'日': 3}, '月': {'日': 3},
     '白': {'自': 3}, '自': {'白': 3},
     '百': {'白': 3}, '万': {'方': 3},
