@@ -4083,6 +4083,70 @@ class RecognitionService {
         }
       }
 
+      // v5.8.0: 边缘锐度低图特殊处理 — 使用更强的锐化策略
+      if (imageFeatures.edgeSharpness < 0.3) {
+        debugPrint('ML Kit 识别: 边缘锐度低图特殊处理 (sharpness=${imageFeatures.edgeSharpness.toStringAsFixed(2)})');
+        final sharpnessStrategies = [
+          ('强锐化+CLAHE', (img.Image src) {
+            final sharpened = _unsharpMaskSharpen(src, amount: 2.0);
+            return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+          }),
+          ('强锐化+Sauvola', (img.Image src) {
+            final sharpened = _unsharpMaskSharpen(src, amount: 2.0);
+            return _sauvolaBinarizeAdaptive(sharpened, features: imageFeatures);
+          }),
+          ('强锐化+USM', (img.Image src) {
+            final sharpened = _unsharpMaskSharpen(src, amount: 2.0);
+            return _unsharpMaskSharpen(sharpened, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in sharpnessStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 边缘锐度策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
+      // v5.8.0: 边缘锐度高图特殊处理 — 使用更强的平滑策略
+      if (imageFeatures.edgeSharpness > 0.8) {
+        debugPrint('ML Kit 识别: 边缘锐度高图特殊处理 (sharpness=${imageFeatures.edgeSharpness.toStringAsFixed(2)})');
+        final smoothStrategies = [
+          ('强平滑+CLAHE', (img.Image src) {
+            final smoothed = _gaussianBlurSharpen(src);
+            return ImageQualityService.instance.enhanceContrastAdaptive(smoothed);
+          }),
+          ('强平滑+Sauvola', (img.Image src) {
+            final smoothed = _gaussianBlurSharpen(src);
+            return _sauvolaBinarizeAdaptive(smoothed, features: imageFeatures);
+          }),
+          ('强平滑+USM', (img.Image src) {
+            final smoothed = _gaussianBlurSharpen(src);
+            return _unsharpMaskSharpen(smoothed, amount: 1.5);
+          }),
+        ];
+        for (final (label, fn) in smoothStrategies) {
+          final processed = fn(enhanced);
+          final raw = await _recognizeFromImage(processed);
+          final r = _validateResult(raw);
+          if (r != null) {
+            voteMap[r] = (voteMap[r] ?? 0) + 1;
+            resultStrategies.putIfAbsent(r, () => <String>{});
+            resultStrategies[r]!.add(label);
+            strategyVotes.putIfAbsent(r, () => {});
+            strategyVotes[r]![label] = (strategyVotes[r]![label] ?? 0) + 1;
+            debugPrint('ML Kit 识别: ✓ 边缘锐度高策略 "$label" 识别到 "$r"');
+          }
+        }
+      }
+
       // v3.6.0: 快速通道 — 额外跑策略，4个一致直接返回
       // v5.8.0: 扩展快速通道至 8 个策略（+自适应对比度+USM +伽马+Sauvola+USM）
       if (voteMap.isNotEmpty && maxDim >= 50) {
