@@ -131,6 +131,175 @@ class RecognitionService {
   static int _strategyUpdateCount = 0; // 更新计数，每10次持久化一次
   static DateTime _lastStrategyDecay = DateTime.now(); // 上次衰减时间
 
+  // ═══════════════════════════════════════════════════════════
+  // v4.6.0: 策略组合性能追踪 — 根据图像特征自动选择最优策略子集
+  // ═══════════════════════════════════════════════════════════
+
+  /// 策略组合性能映射（特征签名 → 策略名 → 成功率 0.0~1.0）
+  /// 特征签名由对比度/模糊度/笔画粗细三个维度的离散化值组成
+  /// 例如 "C1_B2_T1" 表示 低对比度/中模糊/细笔画
+  static final Map<String, Map<String, double>> _strategyPerformanceMap = {};
+  static const String _prefKeyStrategyPerformance = 'ocr_strategy_performance';
+  static bool _strategyPerformanceLoaded = false;
+  static int _strategyPerfUpdateCount = 0;
+
+  /// 将连续特征值离散化为 1~3 级
+  static int _discretizeFeature(double value) {
+    if (value < 0.33) return 1;
+    if (value < 0.66) return 2;
+    return 3;
+  }
+
+  /// 根据图像特征生成特征签名
+  static String _buildFeatureSignature(ImageFeatures features) {
+    final c = _discretizeFeature(features.contrast);
+    final b = _discretizeFeature(features.blur);
+    final t = _discretizeFeature(features.lineThickness);
+    return 'C${c}_B${b}_T$t';
+  }
+
+  /// 加载策略组合性能数据
+  static Future<void> _loadStrategyPerformance() async {
+    if (_strategyPerformanceLoaded) return;
+    _strategyPerformanceLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_prefKeyStrategyPerformance);
+      if (json != null && json.isNotEmpty) {
+        final map = jsonDecode(json) as Map<String, dynamic>;
+        for (final entry in map.entries) {
+          final innerMap = entry.value as Map<String, dynamic>;
+          _strategyPerformanceMap[entry.key] = {};
+          for (final s in innerMap.entries) {
+            _strategyPerformanceMap[entry.key]![s.key] = (s.value as num).toDouble();
+          }
+        }
+        debugPrint('策略组合性能: 已加载 ${_strategyPerformanceMap.length} 个特征签名');
+      }
+    } catch (e) {
+      debugPrint('策略组合性能: 加载失败 $e');
+    }
+  }
+
+  /// 保存策略组合性能数据
+  static Future<void> _saveStrategyPerformance() async {
+    if (_strategyPerformanceMap.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, dynamic>{};
+      for (final entry in _strategyPerformanceMap.entries) {
+        map[entry.key] = Map<String, dynamic>.from(entry.value);
+      }
+      await prefs.setString(_prefKeyStrategyPerformance, jsonEncode(map));
+      debugPrint('策略组合性能: 已保存 ${_strategyPerformanceMap.length} 个特征签名');
+    } catch (e) {
+      debugPrint('策略组合性能: 保存失败 $e');
+    }
+  }
+
+  /// 根据图像特征签名选择最优策略子集
+  /// 返回按历史性能降序排列的策略名列表
+  static List<String> _selectOptimalStrategies(
+    ImageFeatures features,
+    Map<String, img.Image Function(img.Image)> allPreprocessors,
+  ) {
+    final signature = _buildFeatureSignature(features);
+    final perfData = _strategyPerformanceMap[signature];
+
+    if (perfData == null || perfData.isEmpty) {
+      // 无历史数据，返回全部策略
+      return allPreprocessors.keys.toList();
+    }
+
+    // 按历史性能排序，选择 top-N 策略（至少 5 个，最多 12 个）
+    final sorted = perfData.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final selected = <String>[];
+    // 性能 > 0.3 的策略优先选入
+    for (final entry in sorted) {
+      if (entry.value > 0.3 && allPreprocessors.containsKey(entry.key)) {
+        selected.add(entry.key);
+      }
+    }
+    // 确保至少有 5 个策略
+    for (final key in allPreprocessors.keys) {
+      if (!selected.contains(key)) {
+        selected.add(key);
+      }
+      if (selected.length >= 12) break;
+    }
+
+    debugPrint('策略组合优化: 特征=$signature, 选择 ${selected.length} 个策略 '
+        '(top3: ${selected.take(3).join(", ")})');
+    return selected;
+  }
+
+  /// 异步更新策略组合性能统计
+  static Future<void> _updateStrategyPerformanceAsync(
+    ImageFeatures features,
+    Map<String, Set<String>> resultStrategies,
+    String winnerKey,
+  ) async {
+    try {
+      await _loadStrategyPerformance();
+      final signature = _buildFeatureSignature(features);
+      _strategyPerformanceMap.putIfAbsent(signature, () => {});
+
+      final perfMap = _strategyPerformanceMap[signature]!;
+
+      // 胜出策略 +1 成功率（指数移动平均）
+      final winnerStrats = resultStrategies[winnerKey] ?? {};
+      for (final strat in winnerStrats) {
+        final old = perfMap[strat] ?? 0.5;
+        perfMap[strat] = (old * 0.8 + 0.2).clamp(0.0, 1.0);
+      }
+
+      // 非胜出策略 -0.05（轻微惩罚）
+      for (final entry in resultStrategies.entries) {
+        if (entry.key != winnerKey) {
+          for (final strat in entry.value) {
+            final old = perfMap[strat] ?? 0.5;
+            perfMap[strat] = (old * 0.95).clamp(0.0, 1.0);
+          }
+        }
+      }
+
+      // 限制每个特征签名最多跟踪 50 个策略
+      if (perfMap.length > 50) {
+        final sorted = perfMap.entries.toList()
+          ..sort((a, b) => a.value.compareTo(b.value));
+        perfMap.remove(sorted.first.key);
+      }
+
+      // 每 5 次更新持久化一次（使用独立计数器，避免与策略权重持久化冲突）
+      _strategyPerfUpdateCount++;
+      if (_strategyPerfUpdateCount >= 5) {
+        _strategyPerfUpdateCount = 0;
+        await _saveStrategyPerformance();
+      }
+    } catch (e) {
+      debugPrint('策略组合性能更新失败: $e');
+    }
+  }
+
+  /// 获取策略组合性能统计（供 UI 展示）
+  static Map<String, dynamic> getStrategyPerformanceStats() {
+    final stats = <String, dynamic>{};
+    for (final entry in _strategyPerformanceMap.entries) {
+      final sorted = entry.value.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      stats[entry.key] = {
+        'strategyCount': entry.value.length,
+        'topStrategies': sorted.take(5).map((e) => '${e.key}:${(e.value * 100).toStringAsFixed(0)}%').toList(),
+      };
+    }
+    return {
+      'featureSignatures': _strategyPerformanceMap.length,
+      'details': stats,
+    };
+  }
+
   // 原子计数器，用于临时文件名防碰撞
   static int _fileCounter = 0;
 
@@ -2899,7 +3068,18 @@ class RecognitionService {
           if (filteredPreprocessors.length >= 5) break;
         }
       }
-      debugPrint('ML Kit 识别: 智能策略选择 ${filteredPreprocessors.length}/${preprocessors.length} 种 (对比度=${features.contrast.toStringAsFixed(2)}, 噪声=${features.noise.toStringAsFixed(2)}, 模糊=${features.blur.toStringAsFixed(2)})');
+
+      // v4.6.0: 策略组合优化 — 根据历史性能排序策略
+      await _loadStrategyPerformance();
+      final optimalOrder = _selectOptimalStrategies(imageFeatures, filteredPreprocessors);
+      final orderedPreprocessors = <String, img.Image Function(img.Image)>{};
+      for (final key in optimalOrder) {
+        if (filteredPreprocessors.containsKey(key)) {
+          orderedPreprocessors[key] = filteredPreprocessors[key]!;
+        }
+      }
+
+      debugPrint('ML Kit 识别: 智能策略选择 ${orderedPreprocessors.length}/${preprocessors.length} 种 (对比度=${features.contrast.toStringAsFixed(2)}, 噪声=${features.noise.toStringAsFixed(2)}, 模糊=${features.blur.toStringAsFixed(2)})');
 
       int attempt = 0;
 
@@ -2916,7 +3096,7 @@ class RecognitionService {
           debugPrint('ML Kit 识别: 放大到 ${base.width}x${base.height}');
         }
 
-        for (final entry in filteredPreprocessors.entries) {
+        for (final entry in orderedPreprocessors.entries) {
           attempt++;
           final label = entry.key;
           final preprocessor = entry.value;
@@ -3262,6 +3442,9 @@ class RecognitionService {
             }
           }
         }
+
+        // v4.6.0: 异步更新策略组合性能统计（不阻塞返回）
+        _updateStrategyPerformanceAsync(imageFeatures, resultStrategies, winner.key);
 
         return winner.key;
       }
