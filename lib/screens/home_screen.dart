@@ -194,22 +194,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _doubleTapScale = Tween<double>(begin: 1.0, end: 1.0).animate(
       CurvedAnimation(parent: _doubleTapAnimController, curve: Curves.easeOutBack),
     );
-    // v2.7.0: 首次启动新版本时显示更新提示
+    // 首次启动新版本时显示更新提示
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showWhatsNewIfNeeded();
     });
   }
 
-  void _showWhatsNewIfNeeded() {
+  void _showWhatsNewIfNeeded() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final currentVersion = 'v${packageInfo.version}';
+    if (!mounted) return;
     WhatsNewDialog.checkAndShow(
       context,
-      version: 'v2.7.0',
-      subtitle: '用起来就不一样了',
+      version: currentVersion,
+      subtitle: '识别更准，体验更佳',
       items: const [
-        WhatsNewItem(icon: '🔍', title: '识别引擎全面升级', description: '覆盖更多手写场景，识别更准更快'),
-        WhatsNewItem(icon: '📊', title: '识别过程全程可见', description: '实时显示策略尝试进度和用时'),
-        WhatsNewItem(icon: '🎯', title: '投票详情一目了然', description: '点击查看每个字是怎么选出来的'),
-        WhatsNewItem(icon: '🎨', title: '界面全面优化', description: '更清晰的操作流程和视觉反馈'),
+        WhatsNewItem(icon: '✒️', title: '笔画特征提取', description: '精准分析笔画形态与走向'),
+        WhatsNewItem(icon: '📖', title: 'n-gram 语言模型', description: '结合上下文语义提升识别准确率'),
+        WhatsNewItem(icon: '🎯', title: '置信度校准优化', description: '识别结果评分更精确可靠'),
+        WhatsNewItem(icon: '🖼️', title: '图像增强预处理', description: '自动优化手写图片质量'),
+        WhatsNewItem(icon: '🔧', title: '后处理管道优化', description: '识别结果后处理全面升级'),
       ],
     );
   }
