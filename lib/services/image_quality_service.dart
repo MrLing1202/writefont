@@ -24,6 +24,7 @@ class ImageQualityService {
   /// 评估图像质量，返回 0.0（极差）~ 1.0（优秀）的综合分数
   ///
   /// 同时返回详细的评估指标 [QualityReport]，供增强策略使用。
+  /// v4.4.0: 新增亮度分布、背景均匀性、笔画连续性指标
   QualityReport assessQuality(img.Image image) {
     final gray = img.grayscale(image);
 
@@ -42,22 +43,40 @@ class ImageQualityService {
     // 5. 倾斜角度
     final skewAngle = _detectSkewAngle(gray);
 
+    // v4.4.0: 6. 亮度分布（检测过曝/欠曝）
+    final brightnessDist = _assessBrightnessDistribution(gray);
+
+    // v4.4.0: 7. 背景均匀性（检测阴影/折痕/光照不均）
+    final backgroundUniformity = _assessBackgroundUniformity(gray);
+
+    // v4.4.0: 8. 笔画连续性（检测断笔/飞白）
+    final strokeContinuity = _assessStrokeContinuity(gray);
+
     // 综合评分（加权平均）
-    // 对比度 25%，清晰度 30%，噪声 20%，笔画 25%
+    // 对比度 20%，清晰度 25%，噪声 15%，笔画 15%，亮度 10%，背景 10%，连续性 5%
     final contrastScore = _normalizeContrast(contrast);
     final sharpnessScore = _normalizeSharpness(sharpness);
     final noiseScore = 1.0 - noiseLevel; // 噪声越低越好
+    final brightnessScore = brightnessDist;
+    final backgroundScore = backgroundUniformity;
+    final continuityScore = strokeContinuity;
 
-    final overall = contrastScore * 0.25 +
-        sharpnessScore * 0.30 +
-        noiseScore * 0.20 +
-        strokeScore * 0.25;
+    final overall = contrastScore * 0.20 +
+        sharpnessScore * 0.25 +
+        noiseScore * 0.15 +
+        strokeScore * 0.15 +
+        brightnessScore * 0.10 +
+        backgroundScore * 0.10 +
+        continuityScore * 0.05;
 
     debugPrint('图像质量评估: 综合=${(overall * 100).toStringAsFixed(0)}% '
         '对比度=${(contrastScore * 100).toStringAsFixed(0)}% '
         '清晰度=${(sharpnessScore * 100).toStringAsFixed(0)}% '
         '噪声=${(noiseScore * 100).toStringAsFixed(0)}% '
         '笔画=${(strokeScore * 100).toStringAsFixed(0)}% '
+        '亮度=${(brightnessScore * 100).toStringAsFixed(0)}% '
+        '背景=${(backgroundScore * 100).toStringAsFixed(0)}% '
+        '连续性=${(continuityScore * 100).toStringAsFixed(0)}% '
         '倾斜=${skewAngle.toStringAsFixed(1)}°');
 
     return QualityReport(
@@ -70,6 +89,9 @@ class ImageQualityService {
       noiseScore: noiseScore,
       strokeScore: strokeScore,
       skewAngle: skewAngle,
+      brightnessScore: brightnessScore,
+      backgroundScore: backgroundScore,
+      continuityScore: continuityScore,
     );
   }
 
@@ -78,6 +100,7 @@ class ImageQualityService {
   /// [image] 原始图像
   /// [report] 质量评估报告
   /// 返回增强后的图像
+  /// v4.4.0: 利用亮度分布、背景均匀性、笔画连续性指标优化策略选择
   img.Image enhanceForRecognition(img.Image image, QualityReport report) {
     img.Image result = image;
     final actions = <String>[];
@@ -86,6 +109,12 @@ class ImageQualityService {
     if (report.contrastScore < 0.5) {
       result = clahe(result, clipLimit: report.contrastScore < 0.3 ? 3.0 : 2.5);
       actions.add('CLAHE对比度自适应增强');
+    }
+
+    // v4.4.0: 背景不均匀 → 背景归一化（优先于其他增强）
+    if (report.isBackgroundUneven) {
+      result = _normalizeBackground(result);
+      actions.add('背景归一化');
     }
 
     // 模糊 → 锐化 + 去噪
@@ -112,6 +141,12 @@ class ImageQualityService {
       actions.add('腐蚀细化笔画');
     }
 
+    // v4.4.0: 笔画断裂严重 → 形态学闭运算修复
+    if (report.isStrokeBroken) {
+      result = _morphologicalClose(result, radius: 1);
+      actions.add('闭运算修复断笔');
+    }
+
     // 倾斜 → 校正
     if (report.skewAngle.abs() >= 2.0) {
       result = img.copyRotate(result, angle: -report.skewAngle);
@@ -124,6 +159,59 @@ class ImageQualityService {
       debugPrint('图像质量良好，跳过增强');
     }
 
+    return result;
+  }
+
+  /// 形态学闭运算（先膨胀后腐蚀，修复断笔）
+  img.Image _morphologicalClose(img.Image src, {int radius = 1}) {
+    final dilated = _morphologicalDilate(src, radius: radius);
+    return _morphologicalErode(dilated, radius: radius);
+  }
+
+  /// 背景归一化（Retinex 思路）— 消除阴影和光照不均
+  img.Image _normalizeBackground(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+
+    // 3×3 中值滤波估算背景
+    final bg = List.generate(h, (_) => List.filled(w, 0));
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final values = <int>[];
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dx = -1; dx <= 1; dx++) {
+            final nx = (x + dx).clamp(0, w - 1);
+            final ny = (y + dy).clamp(0, h - 1);
+            values.add(gray.getPixel(nx, ny).r.toInt());
+          }
+        }
+        values.sort();
+        bg[y][x] = values[4];
+      }
+    }
+
+    // Retinex: original / background * 128
+    double minVal = 255, maxVal = 0;
+    final raw = List.generate(h, (_) => List.filled(w, 0.0));
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final orig = gray.getPixel(x, y).r.toDouble();
+        final background = bg[y][x].toDouble().clamp(1.0, 255.0);
+        final ratio = orig / background * 128.0;
+        raw[y][x] = ratio;
+        if (ratio < minVal) minVal = ratio;
+        if (ratio > maxVal) maxVal = ratio;
+      }
+    }
+
+    final range = (maxVal - minVal).clamp(1.0, 255.0);
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final v = ((raw[y][x] - minVal) / range * 255).round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
     return result;
   }
 
@@ -375,6 +463,160 @@ class ImageQualityService {
     // 倾斜不足 1 度时返回 0
     if (bestAngle.abs() < 1.0) return 0.0;
     return bestAngle;
+  }
+
+  /// v4.4.0: 亮度分布评估 — 检测过曝/欠曝
+  ///
+  /// 计算直方图的偏度（skewness）：
+  /// - 正偏度 = 暗部主导（欠曝），需提亮
+  /// - 负偏度 = 亮部主导（过曝），需压暗
+  /// - 接近 0 = 分布均匀
+  /// 返回 0.0~1.0 的分数（越接近 0.5 越好）
+  double _assessBrightnessDistribution(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    if (w == 0 || h == 0) return 0.5;
+
+    // 计算直方图
+    final hist = List.filled(256, 0);
+    int count = 0;
+    for (int y = 0; y < h; y += 2) {
+      for (int x = 0; x < w; x += 2) {
+        hist[gray.getPixel(x, y).r.toInt()]++;
+        count++;
+      }
+    }
+    if (count == 0) return 0.5;
+
+    // 均值
+    double sum = 0;
+    for (int i = 0; i < 256; i++) {
+      sum += i * hist[i];
+    }
+    final mean = sum / count;
+
+    // 标准差
+    double sumSq = 0;
+    for (int i = 0; i < 256; i++) {
+      sumSq += hist[i] * (i - mean) * (i - mean);
+    }
+    final stdDev = sqrt(sumSq / count);
+
+    // 偏度
+    double skewness = 0;
+    if (stdDev > 0) {
+      double sumCubed = 0;
+      for (int i = 0; i < 256; i++) {
+        sumCubed += hist[i] * (i - mean) * (i - mean) * (i - mean);
+      }
+      skewness = sumCubed / (count * stdDev * stdDev * stdDev);
+    }
+
+    // 评分：偏度绝对值越小越好
+    // |skewness| < 0.5 → 良好，|skewness| > 1.5 → 差
+    final score = (1.0 - (skewness.abs() / 2.0)).clamp(0.0, 1.0);
+
+    if (skewness.abs() > 0.5) {
+      debugPrint('亮度分布: 偏度=${skewness.toStringAsFixed(2)} '
+          '${skewness > 0 ? "暗部主导(欠曝)" : "亮部主导(过曝)"}');
+    }
+
+    return score;
+  }
+
+  /// v4.4.0: 背景均匀性评估 — 检测阴影、折痕、光照不均
+  ///
+  /// 将图像分为 4x4=16 个区块，计算每个区块的平均亮度，
+  /// 区块间亮度差异越大说明背景越不均匀。
+  /// 返回 0.0~1.0 的分数（越高越均匀）
+  double _assessBackgroundUniformity(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    if (w < 16 || h < 16) return 0.8; // 太小的图默认均匀
+
+    const gridSize = 4;
+    final blockW = w ~/ gridSize;
+    final blockH = h ~/ gridSize;
+
+    // 计算每个区块的平均亮度
+    final blockMeans = <double>[];
+    for (int by = 0; by < gridSize; by++) {
+      for (int bx = 0; bx < gridSize; bx++) {
+        double sum = 0;
+        int cnt = 0;
+        for (int y = by * blockH; y < (by + 1) * blockH && y < h; y++) {
+          for (int x = bx * blockW; x < (bx + 1) * blockW && x < w; x++) {
+            sum += gray.getPixel(x, y).r.toDouble();
+            cnt++;
+          }
+        }
+        blockMeans.add(cnt > 0 ? sum / cnt : 128);
+      }
+    }
+
+    // 计算区块间亮度方差
+    final overallMean = blockMeans.reduce((a, b) => a + b) / blockMeans.length;
+    double interBlockVariance = 0;
+    for (final m in blockMeans) {
+      interBlockVariance += (m - overallMean) * (m - overallMean);
+    }
+    interBlockVariance /= blockMeans.length;
+
+    // 归一化：方差 < 100 → 均匀，方差 > 1000 → 不均匀
+    final score = (1.0 - (interBlockVariance - 100) / 900).clamp(0.0, 1.0);
+
+    if (score < 0.5) {
+      debugPrint('背景均匀性: 方差=${interBlockVariance.toStringAsFixed(0)} — 光照不均匀');
+    }
+
+    return score;
+  }
+
+  /// v4.4.0: 笔画连续性评估 — 检测断笔、飞白
+  ///
+  /// 通过分析前景像素的连通性来评估笔画连续性：
+  /// 前景像素中孤立点（无相邻前景像素）的比例越高，断笔越严重。
+  /// 返回 0.0~1.0 的分数（越高连续性越好）
+  double _assessStrokeContinuity(img.Image gray) {
+    final w = gray.width, h = gray.height;
+    if (w < 10 || h < 10) return 0.8;
+
+    // 二值化
+    final binary = _adaptiveBinarize(gray, blockSize: 25, c: 8);
+
+    int foregroundCount = 0;
+    int isolatedCount = 0;
+
+    for (int y = 1; y < h - 1; y++) {
+      for (int x = 1; x < w - 1; x++) {
+        if (binary.getPixel(x, y).r.toInt() >= 128) continue; // 背景
+        foregroundCount++;
+
+        // 检查 4-邻域是否有前景像素
+        bool hasNeighbor = false;
+        for (final d in [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          final nx = x + d[0], ny = y + d[1];
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h &&
+              binary.getPixel(nx, ny).r.toInt() < 128) {
+            hasNeighbor = true;
+            break;
+          }
+        }
+        if (!hasNeighbor) isolatedCount++;
+      }
+    }
+
+    if (foregroundCount == 0) return 0.5;
+
+    // 孤立点比例
+    final isolatedRatio = isolatedCount / foregroundCount;
+
+    // 评分：孤立点比例 < 5% → 好，> 20% → 差
+    final score = (1.0 - (isolatedRatio - 0.05) / 0.15).clamp(0.0, 1.0);
+
+    if (score < 0.5) {
+      debugPrint('笔画连续性: 孤立点比例=${(isolatedRatio * 100).toStringAsFixed(1)}% — 断笔/飞白严重');
+    }
+
+    return score;
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -788,6 +1030,7 @@ class ImageQualityService {
 /// 图像质量评估报告
 ///
 /// 包含各维度的原始测量值和归一化评分（0.0~1.0）。
+/// v4.4.0: 新增亮度分布、背景均匀性、笔画连续性指标
 class QualityReport {
   /// 综合质量分数（0.0~1.0）
   final double overallScore;
@@ -816,6 +1059,15 @@ class QualityReport {
   /// 倾斜角度（度，负值表示左倾，正值表示右倾）
   final double skewAngle;
 
+  /// v4.4.0: 亮度分布评分（0.0~1.0，越高越均匀）
+  final double brightnessScore;
+
+  /// v4.4.0: 背景均匀性评分（0.0~1.0，越高越均匀）
+  final double backgroundScore;
+
+  /// v4.4.0: 笔画连续性评分（0.0~1.0，越高越连续）
+  final double continuityScore;
+
   const QualityReport({
     required this.overallScore,
     required this.contrast,
@@ -826,6 +1078,9 @@ class QualityReport {
     required this.noiseScore,
     required this.strokeScore,
     required this.skewAngle,
+    this.brightnessScore = 0.8,
+    this.backgroundScore = 0.8,
+    this.continuityScore = 0.8,
   });
 
   /// 是否需要增强（综合评分低于 0.6）
@@ -849,6 +1104,15 @@ class QualityReport {
   /// 是否倾斜
   bool get isSkewed => skewAngle.abs() >= 2.0;
 
+  /// v4.4.0: 是否亮度异常（过曝/欠曝）
+  bool get isBrightnessAbnormal => brightnessScore < 0.5;
+
+  /// v4.4.0: 是否背景不均匀
+  bool get isBackgroundUneven => backgroundScore < 0.5;
+
+  /// v4.4.0: 是否笔画断裂严重
+  bool get isStrokeBroken => continuityScore < 0.4;
+
   @override
   String toString() => 'QualityReport('
       'overall=${(overallScore * 100).toStringAsFixed(0)}%, '
@@ -856,5 +1120,8 @@ class QualityReport {
       'sharpness=${(sharpnessScore * 100).toStringAsFixed(0)}%, '
       'noise=${(noiseScore * 100).toStringAsFixed(0)}%, '
       'stroke=${(strokeScore * 100).toStringAsFixed(0)}%, '
+      'brightness=${(brightnessScore * 100).toStringAsFixed(0)}%, '
+      'background=${(backgroundScore * 100).toStringAsFixed(0)}%, '
+      'continuity=${(continuityScore * 100).toStringAsFixed(0)}%, '
       'skew=${skewAngle.toStringAsFixed(1)}°)';
 }
