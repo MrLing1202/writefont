@@ -3229,6 +3229,67 @@ class RecognitionService {
     return result;
   }
 
+  /// v5.7.0: 局部对比度增强 — 基于积分图的快速局部归一化
+  ///
+  /// 将图像分为重叠的局部区域，对每个区域独立进行均值-标准差归一化。
+  /// 比 CLAHE 更快，同时有效处理光照不均的场景。
+  ///
+  /// [blockSize] 局部区域大小（默认 31）
+  /// [targetMean] 归一化目标均值（默认 128）
+  /// [targetStd] 归一化目标标准差（默认 60）
+  img.Image _localContrastEnhance(img.Image src, {int blockSize = 31, double targetMean = 128.0, double targetStd = 60.0}) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    if (blockSize.isEven) blockSize++;
+    final half = blockSize ~/ 2;
+
+    // 积分图加速
+    final integral = List.generate(h, (_) => List.filled(w, 0.0));
+    final integralSq = List.generate(h, (_) => List.filled(w, 0.0));
+    for (int y = 0; y < h; y++) {
+      double rowSum = 0, rowSumSq = 0;
+      for (int x = 0; x < w; x++) {
+        final v = gray.getPixel(x, y).r.toDouble();
+        rowSum += v;
+        rowSumSq += v * v;
+        integral[y][x] = rowSum + (y > 0 ? integral[y - 1][x] : 0);
+        integralSq[y][x] = rowSumSq + (y > 0 ? integralSq[y - 1][x] : 0);
+      }
+    }
+
+    final result = img.Image(width: w, height: h);
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final x1 = (x - half).clamp(0, w - 1);
+        final y1 = (y - half).clamp(0, h - 1);
+        final x2 = (x + half).clamp(0, w - 1);
+        final y2 = (y + half).clamp(0, h - 1);
+        final count = (x2 - x1 + 1) * (y2 - y1 + 1);
+
+        double areaSum = integral[y2][x2];
+        if (x1 > 0) areaSum -= integral[y2][x1 - 1];
+        if (y1 > 0) areaSum -= integral[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) areaSum += integral[y1 - 1][x1 - 1];
+
+        double areaSumSq = integralSq[y2][x2];
+        if (x1 > 0) areaSumSq -= integralSq[y2][x1 - 1];
+        if (y1 > 0) areaSumSq -= integralSq[y1 - 1][x2];
+        if (x1 > 0 && y1 > 0) areaSumSq += integralSq[y1 - 1][x1 - 1];
+
+        final mean = areaSum / count;
+        final variance = (areaSumSq / count) - (mean * mean);
+        final std = variance > 0 ? math.sqrt(variance) : 1.0;
+
+        // 局部归一化：(pixel - mean) / std * targetStd + targetMean
+        final pixel = gray.getPixel(x, y).r.toDouble();
+        final normalized = ((pixel - mean) / (std + 1.0)) * targetStd + targetMean;
+        final v = normalized.round().clamp(0, 255);
+        result.setPixelRgba(x, y, v, v, v, 255);
+      }
+    }
+    return result;
+  }
+
   /// 背景归一化（Retinex 思路）
   ///
   /// 用 3×3 中值滤波估算背景亮度，逐像素除以背景估计值后重映射到 0-255。
@@ -3780,6 +3841,13 @@ class RecognitionService {
           final gradient = _morphologicalGradient(src, radius: 1);
           return ImageQualityService.instance.enhanceContrastAdaptive(gradient);
         },
+        // v5.7.0: 局部对比度增强 — 基于积分图的快速局部归一化，处理光照不均
+        '局部对比度增强': (src) => _localContrastEnhance(src),
+        // v5.7.0: 局部对比度+Sauvola — 先归一化再二值化
+        '局部对比度+Sauvola': (src) {
+          final enhanced = _localContrastEnhance(src);
+          return _sauvolaBinarizeAdaptive(enhanced, features: imageFeatures);
+        },
       };
 
       // v2.9.0: 根据图像特征智能过滤策略（只跑相关的，不盲目跑全部）
@@ -3791,7 +3859,7 @@ class RecognitionService {
       // 根据特征添加相关策略
       if (features.contrast < 0.4) {
         // 低对比度：加对比度增强类策略
-        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', 'CLAHE自适应', '自适应直方图均衡', '背景归一化', 'Sauvola二值化', '伽马+Sauvola']) {
+        for (final k in ['灰度+对比度+二值化', '自适应对比度增强', 'CLAHE自适应', '自适应直方图均衡', '背景归一化', 'Sauvola二值化', '伽马+Sauvola', '局部对比度增强', '局部对比度+Sauvola']) {
           if (preprocessors.containsKey(k)) filteredPreprocessors[k] = preprocessors[k]!;
         }
       }
