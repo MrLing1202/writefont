@@ -3732,6 +3732,13 @@ class RecognitionService {
         }
       }
 
+      // v5.9.0: 特征特定策略的 ML Kit 调用计数 — 限制总调用次数避免过度延迟
+      int featureBlockCalls = 0;
+      const int maxFeatureBlockCalls = 60; // 最多 60 次 ML Kit 调用
+
+      // v5.9.0: 预处理结果缓存 — 避免同一预处理在不同特征块中重复计算
+      final preprocessCache = <String, img.Image>{};
+
       // v5.8.0: 极小图特殊处理 — 使用更激进的放大和增强策略
       if (maxDim < 30 && maxDim >= 10) {
         debugPrint('ML Kit 识别: 极小图特殊处理 (${maxDim}px)');
@@ -3749,6 +3756,8 @@ class RecognitionService {
           ('极小图Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
         ];
         for (final (label, fn) in aggressiveStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(aggressiveUpscaled);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3781,6 +3790,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3813,6 +3824,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in lowContrastStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3845,6 +3858,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in blurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3877,6 +3892,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in thickStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3909,6 +3926,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in thinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3941,6 +3960,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in cursiveStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -3973,6 +3994,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in slantStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4005,6 +4028,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in variabilityStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4037,6 +4062,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in densityStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4069,6 +4096,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in lowDensityStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4101,6 +4130,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in sharpnessStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4133,6 +4164,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in smoothStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4155,6 +4188,8 @@ class RecognitionService {
           ('高质量Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
         ];
         for (final (label, fn) in highQualityStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4180,6 +4215,8 @@ class RecognitionService {
           ('低质量笔画保留', (img.Image src) => _strokePreservingEnhance(src)),
         ];
         for (final (label, fn) in lowQualityStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4214,6 +4251,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in mixedStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4239,6 +4278,8 @@ class RecognitionService {
           ('行书局部阈值', (img.Image src) => _localThresholdBinarize(src)),
         ];
         for (final (label, fn) in cursiveStyleStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4264,6 +4305,8 @@ class RecognitionService {
           ('轻笔断笔修复', (img.Image src) => _morphologicalClose(img.grayscale(src), radius: 1)),
         ];
         for (final (label, fn) in lightStyleStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4289,6 +4332,8 @@ class RecognitionService {
           ('重笔开运算去噪', (img.Image src) => _morphologicalOpen(img.grayscale(src), radius: 1)),
         ];
         for (final (label, fn) in heavyStyleStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4312,6 +4357,8 @@ class RecognitionService {
           ('楷书Sauvola', (img.Image src) => _sauvolaBinarizeAdaptive(src, features: imageFeatures)),
         ];
         for (final (label, fn) in regularStyleStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4353,6 +4400,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in multiScaleStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4381,6 +4430,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in invertedStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4409,6 +4460,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in bgNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4437,6 +4490,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in edgeStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4465,6 +4520,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in histEqStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4493,6 +4550,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gradientStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4521,6 +4580,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in localContrastStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4549,6 +4610,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in deblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4577,6 +4640,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in multiScaleMorphStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4605,6 +4670,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in strokeDenoiseStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4633,6 +4700,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gaussStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4661,6 +4730,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in localThreshStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4689,6 +4760,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in strokeAdaptiveStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4717,6 +4790,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in brokenStrokeStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4745,6 +4820,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in thinStrokeStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4773,6 +4850,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in openOpStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4801,6 +4880,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in multiScaleEdgeStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4829,6 +4910,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gammaStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4859,6 +4942,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gammaSauvolaStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4889,6 +4974,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4917,6 +5004,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gradientClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4947,6 +5036,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in localContrastSauvolaStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -4977,6 +5068,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in deblurSharpStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5005,6 +5098,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in deblurClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5033,6 +5128,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in usmClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5063,6 +5160,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in edgeSharpStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5091,6 +5190,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in morphClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5119,6 +5220,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5147,6 +5250,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gaussSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5175,6 +5280,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in localThreshClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5203,6 +5310,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in strokeAdaptClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5231,6 +5340,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in repairClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5259,6 +5370,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in thinStrokeClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5287,6 +5400,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in openClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5315,6 +5430,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in multiScaleEdgeClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5343,6 +5460,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gammaClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5373,6 +5492,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in contrastCloseStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5401,6 +5522,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in strokePreserveClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5429,6 +5552,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in multiThreshClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5459,6 +5584,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in contrastUsmClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5489,6 +5616,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in gammaSauvolaUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5519,6 +5648,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5549,6 +5680,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in normSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5579,6 +5712,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in slantSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5609,6 +5744,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in separateSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5639,6 +5776,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in thickenSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5669,6 +5808,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in thinSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5699,6 +5840,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in repairSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5729,6 +5872,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5759,6 +5904,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5789,6 +5936,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5819,6 +5968,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5849,6 +6000,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5879,6 +6032,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5909,6 +6064,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5939,6 +6096,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5969,6 +6128,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -5999,6 +6160,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6029,6 +6192,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6059,6 +6224,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6089,6 +6256,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6119,6 +6288,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6149,6 +6320,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6179,6 +6352,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6209,6 +6384,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6239,6 +6416,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6269,6 +6448,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6299,6 +6480,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6329,6 +6512,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6359,6 +6544,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6389,6 +6576,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6419,6 +6608,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6451,6 +6642,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6483,6 +6676,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6515,6 +6710,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6547,6 +6744,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6579,6 +6778,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6611,6 +6812,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6643,6 +6846,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6675,6 +6880,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6707,6 +6914,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6739,6 +6948,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6771,6 +6982,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6803,6 +7016,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6835,6 +7050,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6867,6 +7084,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6899,6 +7118,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6931,6 +7152,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6963,6 +7186,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -6995,6 +7220,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7027,6 +7254,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7059,6 +7288,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7091,6 +7322,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7123,6 +7356,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7155,6 +7390,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7181,6 +7418,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7208,6 +7447,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7235,6 +7476,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7262,6 +7505,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7289,6 +7534,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7316,6 +7563,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7343,6 +7592,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7370,6 +7621,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7397,6 +7650,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7424,6 +7679,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7451,6 +7708,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7478,6 +7737,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7505,6 +7766,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7532,6 +7795,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7559,6 +7824,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7586,6 +7853,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7613,6 +7882,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7640,6 +7911,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7667,6 +7940,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7694,6 +7969,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7721,6 +7998,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7748,6 +8027,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7775,6 +8056,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7802,6 +8085,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7829,6 +8114,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7857,6 +8144,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7885,6 +8174,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7913,6 +8204,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7941,6 +8234,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7969,6 +8264,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -7997,6 +8294,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8025,6 +8324,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8053,6 +8354,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8081,6 +8384,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8109,6 +8414,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8137,6 +8444,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8165,6 +8474,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8193,6 +8504,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8221,6 +8534,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8249,6 +8564,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8277,6 +8594,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8305,6 +8624,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8333,6 +8654,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8361,6 +8684,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8389,6 +8714,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8417,6 +8744,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8445,6 +8774,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8473,6 +8804,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8501,6 +8834,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8530,6 +8865,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8559,6 +8896,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8588,6 +8927,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8617,6 +8958,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8646,6 +8989,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8675,6 +9020,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8704,6 +9051,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8733,6 +9082,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8762,6 +9113,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8791,6 +9144,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8820,6 +9175,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8849,6 +9206,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8878,6 +9237,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8907,6 +9268,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8936,6 +9299,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8965,6 +9330,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -8994,6 +9361,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9023,6 +9392,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9052,6 +9423,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9081,6 +9454,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9110,6 +9485,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9139,6 +9516,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9168,6 +9547,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9197,6 +9578,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9227,6 +9610,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9257,6 +9642,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9287,6 +9674,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9317,6 +9706,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurThickenNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9347,6 +9738,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9377,6 +9770,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9407,6 +9802,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9437,6 +9834,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9467,6 +9866,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9497,6 +9898,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9527,6 +9930,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9557,6 +9962,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9587,6 +9994,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9617,6 +10026,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9647,6 +10058,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9677,6 +10090,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9707,6 +10122,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9737,6 +10154,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9767,6 +10186,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9797,6 +10218,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9827,6 +10250,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9857,6 +10282,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9887,6 +10314,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9917,6 +10346,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9948,6 +10379,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -9979,6 +10412,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10010,6 +10445,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10041,6 +10478,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurThickenNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10072,6 +10511,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10103,6 +10544,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10134,6 +10577,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10165,6 +10610,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10196,6 +10643,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10227,6 +10676,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10258,6 +10709,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10289,6 +10742,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10320,6 +10775,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10351,6 +10808,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10382,6 +10841,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10413,6 +10874,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10444,6 +10907,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10475,6 +10940,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10506,6 +10973,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10537,6 +11006,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10568,6 +11039,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10599,6 +11072,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10630,6 +11105,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10661,6 +11138,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10693,6 +11172,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10725,6 +11206,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10757,6 +11240,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurThinNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10789,6 +11274,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurThickenNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10821,6 +11308,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10853,6 +11342,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10885,6 +11376,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10917,6 +11410,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10949,6 +11444,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -10981,6 +11478,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11013,6 +11512,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11045,6 +11546,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11077,6 +11580,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11109,6 +11614,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11141,6 +11648,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11173,6 +11682,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11205,6 +11716,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11237,6 +11750,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11269,6 +11784,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11301,6 +11818,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11333,6 +11852,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11365,6 +11886,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11397,6 +11920,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11429,6 +11954,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11462,6 +11989,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11495,6 +12024,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurThickenThinNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11528,6 +12059,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurThinNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11561,6 +12094,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurThickenNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11594,6 +12129,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11627,6 +12164,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11660,6 +12199,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11693,6 +12234,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11726,6 +12269,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11759,6 +12304,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11792,6 +12339,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11825,6 +12374,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11858,6 +12409,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11891,6 +12444,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11924,6 +12479,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11957,6 +12514,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -11990,6 +12549,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12023,6 +12584,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12056,6 +12619,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12089,6 +12654,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12122,6 +12689,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12155,6 +12724,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12188,6 +12759,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12221,6 +12794,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGaussSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12255,6 +12830,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseNormSharpClaheUsmDeblurRepairThickenThinNormRepairThickenStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12289,6 +12866,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseRepairSharpClaheUsmDeblurThickenThinNormRepairThickenThinStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12323,6 +12902,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThickenSharpClaheUsmDeblurThinNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12357,6 +12938,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseThinSharpClaheUsmDeblurThickenNormRepairThickenThinNormStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12391,6 +12974,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSeparateSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12425,6 +13010,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSlantSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12459,6 +13046,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseEdgeSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12493,6 +13082,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGammaSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12527,6 +13118,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalContrastSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12561,6 +13154,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseBgNormSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12595,6 +13190,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseHistEqSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12629,6 +13226,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseGradientSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12663,6 +13262,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMorphSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12697,6 +13298,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokeAdaptSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12731,6 +13334,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseOpenSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12765,6 +13370,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseCloseSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12799,6 +13406,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseMultiThreshSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12833,6 +13442,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseStrokePreserveSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12867,6 +13478,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseSauvolaSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12901,6 +13514,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseLocalThreshSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12935,6 +13550,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseInvertSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -12969,6 +13586,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDirEdgeSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -13003,6 +13622,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in denoiseDeblurSharpClaheUsmDeblurNormRepairThickenThinNormRepairStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
@@ -13038,6 +13659,8 @@ class RecognitionService {
           }),
         ];
         for (final (label, fn) in quickStrategies) {
+          if (featureBlockCalls >= maxFeatureBlockCalls) break;
+          featureBlockCalls++;
           final processed = fn(enhanced);
           final raw = await _recognizeFromImage(processed);
           final r = _validateResult(raw);
