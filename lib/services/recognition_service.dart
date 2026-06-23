@@ -1107,6 +1107,52 @@ class RecognitionService {
         }
       }
 
+      // ── 第5步：笔画结构验证（v5.4.0，代价中等）──
+      // 对最终结果进行笔画特征验证。如果识别结果的笔画特征与图片差异过大，
+      // 尝试从形近字和同音字中选择笔画特征更匹配的字符。
+      if (result != null && confidence < 0.90) {
+        final verifiedResult = await _verifyWithStrokeFeatures(
+          imageBytes, result, confidence,
+        );
+        if (verifiedResult != null && verifiedResult != result) {
+          _addDebugLog('recognition', '笔画结构验证', data: {
+            'original': result,
+            'verified': verifiedResult,
+            'confidence': confidence,
+          });
+          debugPrint('识别: 笔画验证 "$result" → "$verifiedResult"');
+          result = verifiedResult;
+        }
+      }
+
+      // ── 第5.5步：图像质量置信度校准（v5.4.0）──
+      // 根据图像质量指标微调置信度，让低质量图片的置信度更保守，高质量图片更自信。
+      if (result != null) {
+        try {
+          final decoded = img.decodeImage(imageBytes);
+          if (decoded != null) {
+            final qualityReport = ImageQualityService.instance.assessQuality(decoded);
+            final qualityScore = qualityReport.overallScore;
+            final oldConf = _confidenceCache[cacheKey] ?? confidence;
+            if (qualityScore > 0.80) {
+              // 高质量图片：轻微提升置信度
+              final newConf = (oldConf + 0.03).clamp(0.0, 0.98);
+              _confidenceCache[cacheKey] = newConf;
+              debugPrint('图像质量校准: 质量=${(qualityScore * 100).toStringAsFixed(0)}% '
+                  '置信度 ${(oldConf * 100).toStringAsFixed(0)}% → ${(newConf * 100).toStringAsFixed(0)}%');
+            } else if (qualityScore < 0.40) {
+              // 低质量图片：降低置信度
+              final newConf = (oldConf - 0.05).clamp(0.0, 1.0);
+              _confidenceCache[cacheKey] = newConf;
+              debugPrint('图像质量校准: 质量=${(qualityScore * 100).toStringAsFixed(0)}% '
+                  '置信度 ${(oldConf * 100).toStringAsFixed(0)}% → ${(newConf * 100).toStringAsFixed(0)}%');
+            }
+          }
+        } catch (e) {
+          debugPrint('图像质量校准异常: $e');
+        }
+      }
+
       // 记录用户识别的字符，更新用户常用字缓存（异步，不阻塞返回）
       DictionaryService.instance.recordUsage(result);
 
@@ -4966,7 +5012,7 @@ class RecognitionService {
     '未末': ['未', '末'],
     '土士': ['土', '士'],
     '天夫': ['天', '夫'],
-    '干千': ['干', '千'],
+    '干千于': ['干', '千', '于'],
     '人入': ['人', '入'],
     '刀力': ['刀', '力'],
     '大太': ['大', '太'],
@@ -4994,6 +5040,17 @@ class RecognitionService {
     '那哪': ['那', '哪'],
     '他她它': ['他', '她', '它'],
     '有又': ['有', '又'],
+    '电龟': ['电', '龟'],
+    '日曰': ['日', '曰'],
+    '水永': ['水', '永'],
+    '手毛': ['手', '毛'],
+    '心必': ['心', '必'],
+    '禾木': ['禾', '木'],
+    '科料': ['科', '料'],
+    '话活': ['话', '活'],
+    '起越': ['起', '越'],
+    '阳阴': ['阳', '阴'],
+    '风凤': ['风', '凤'],
   };
 
   /// 形近字消歧 — 当识别结果属于形近字组时，利用上下文选择最可能的字
@@ -5033,6 +5090,177 @@ class RecognitionService {
     }
 
     return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // v5.4.0: 笔画结构验证 — 识别结果的最后一道防线
+  // ═══════════════════════════════════════════════════════════
+
+  /// 笔画结构验证 — 对最终识别结果进行字形特征验证
+  ///
+  /// 提取输入图片的笔画特征，与识别结果的标准笔画特征对比。
+  /// 当相似度极低（<25%）时，说明识别结果的字形与手写图片严重不匹配，
+  /// 从形近字和同音字中搜索笔画特征更匹配的替代字符。
+  ///
+  /// 与 Step 4 的 assistRecognition 不同：
+  /// - assistRecognition 只在低置信度时运行，且只看形近字
+  /// - 这里对所有中低置信度结果运行，搜索范围包括形近字 + 同音字
+  /// - 使用更严格的验证阈值（25%），只有严重不匹配才触发替换
+  Future<String?> _verifyWithStrokeFeatures(
+    Uint8List imageBytes,
+    String currentResult,
+    double confidence,
+  ) async {
+    try {
+      final feature = StrokeAnalyzer.instance.getStrokeSignatureFromBytes(imageBytes);
+      if (feature == null) return null;
+
+      final standard = StrokeAnalyzer.instance.getStandardFeature(currentResult);
+      if (standard == null) return null;
+
+      final similarity = feature.similarityTo(standard);
+
+      // 相似度足够高，结果可信
+      if (similarity >= 0.25) return null;
+
+      // 相似度极低，尝试从候选中找更好的
+      debugPrint('笔画验证: "$currentResult" 相似度 ${(similarity * 100).toStringAsFixed(0)}% < 25%，尝试替代');
+      _addDebugLog('recognition', '笔画验证触发', data: {
+        'result': currentResult,
+        'similarity': similarity,
+      });
+
+      // 收集候选：形近字 + 同音字
+      final candidates = _getVerificationCandidates(currentResult);
+      if (candidates.isEmpty) return null;
+
+      // 用笔画特征从候选中选择最佳
+      final best = StrokeAnalyzer.instance.selectBestCandidate(candidates, feature);
+      if (best != null && best != currentResult) {
+        final bestStandard = StrokeAnalyzer.instance.getStandardFeature(best);
+        if (bestStandard != null) {
+          final bestSimilarity = feature.similarityTo(bestStandard);
+          // 只有当替代字符的相似度显著高于原结果时才替换
+          if (bestSimilarity > similarity + 0.15) {
+            debugPrint('笔画验证: "$currentResult" → "$best" '
+                '(相似度 ${(similarity * 100).toStringAsFixed(0)}% → ${(bestSimilarity * 100).toStringAsFixed(0)}%)');
+            _addDebugLog('recognition', '笔画验证纠正', data: {
+              'original': currentResult,
+              'verified': best,
+              'originalSimilarity': similarity,
+              'verifiedSimilarity': bestSimilarity,
+            });
+            return best;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('笔画验证异常: $e');
+    }
+    return null;
+  }
+
+  /// 获取笔画验证的候选字符列表（形近字 + 同音字）
+  List<String> _getVerificationCandidates(String char) {
+    final candidates = <String>{};
+
+    // 1. 从形近字组中获取
+    for (final entry in _confusableGroups.entries) {
+      if (entry.value.contains(char)) {
+        candidates.addAll(entry.value);
+        break;
+      }
+    }
+
+    // 2. 从 StrokeAnalyzer 的形近字映射中获取
+    const strokeConfusableMap = <String, List<String>>{
+      '己': ['已', '巳'],
+      '已': ['己', '巳'],
+      '巳': ['己', '已'],
+      '未': ['末'],
+      '末': ['未'],
+      '太': ['大', '犬'],
+      '大': ['太', '犬'],
+      '犬': ['太', '大'],
+      '土': ['士'],
+      '士': ['土'],
+      '天': ['夫'],
+      '夫': ['天'],
+      '日': ['曰'],
+      '曰': ['日'],
+      '田': ['由', '甲'],
+      '由': ['田', '甲'],
+      '甲': ['田', '由'],
+      '右': ['古', '石'],
+      '古': ['右', '石'],
+      '石': ['古', '右'],
+      '字': ['学'],
+      '学': ['字'],
+      '明': ['朋'],
+      '朋': ['明'],
+      '水': ['永'],
+      '永': ['水'],
+      '手': ['毛'],
+      '毛': ['手'],
+      '心': ['必'],
+      '必': ['心'],
+      '禾': ['木'],
+      '木': ['禾'],
+      '科': ['料'],
+      '料': ['科'],
+      '话': ['活'],
+      '活': ['话'],
+      '起': ['越'],
+      '越': ['起'],
+      '阳': ['阴'],
+      '阴': ['阳'],
+      '风': ['凤'],
+      '凤': ['风'],
+      '买': ['卖'],
+      '卖': ['买'],
+      '入': ['人', '八'],
+      '人': ['入', '八'],
+      '八': ['入', '人'],
+      '刀': ['力'],
+      '力': ['刀'],
+      '午': ['牛'],
+      '牛': ['午'],
+      '干': ['千', '于'],
+      '千': ['干', '于'],
+      '于': ['干', '千'],
+      '王': ['玉'],
+      '玉': ['王'],
+      '白': ['自'],
+      '自': ['白'],
+      '电': ['龟'],
+      '龟': ['电'],
+      '贝': ['见'],
+      '见': ['贝'],
+      '问': ['间'],
+      '间': ['问'],
+      '鸟': ['乌'],
+      '乌': ['鸟'],
+      '令': ['今'],
+      '今': ['令'],
+    };
+    final strokeConfusable = strokeConfusableMap[char];
+    if (strokeConfusable != null) {
+      candidates.addAll(strokeConfusable);
+    }
+
+    // 3. 从同音字中获取（通过字典服务的 correctWithHomophone 间接获取）
+    // 这里直接用 n-gram 上下文评分来评估同音字
+    final homophones = DictionaryService.instance.correctWithHomophone(
+      char,
+      prevChar: _lastRecognizedChars.isNotEmpty ? _lastRecognizedChars.last : null,
+      confidence: 1.0,
+    );
+    if (homophones != char) {
+      candidates.add(homophones);
+    }
+
+    candidates.remove(char); // 移除自身
+    return candidates.toList();
   }
 
   /// 获取错误模式统计（供 UI 展示）
