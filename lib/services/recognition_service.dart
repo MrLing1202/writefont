@@ -14629,6 +14629,36 @@ class RecognitionService {
         var winner = sorted.first;
         debugPrint('ML Kit 识别: 综合评分排序 — ${sorted.take(3).map((e) => '"${e.key}" score=${(candidateScores[e.key]! * 100).toStringAsFixed(0)}% votes=${e.value}').join(', ')}');
 
+        // ── v6.2.0: 修正学习驱动的候选重排序 ──
+        // 当综合评分排序完成后，查询修正学习服务，检查当前 winner 是否有历史修正记录。
+        // 如果 winner 有被修正到其他候选字的记录，且该候选字在当前列表中，
+        // 则用修正学习数据辅助决策，优先选择修正目标。
+        // 这是闭环优化的关键：用户纠正过的错误不会重复出现。
+        try {
+          final correctionResult = await CorrectionLearningService.instance.findCorrection(
+            recognizedChar: winner.key,
+            confidence: confidenceMap[winner.key] ?? 0.7,
+            imageWidth: decoded.width,
+            imageHeight: decoded.height,
+          );
+          if (correctionResult != null && voteMap.containsKey(correctionResult)) {
+            // 修正目标在候选列表中 — 检查是否应该替换 winner
+            final correctionVotes = voteMap[correctionResult] ?? 0;
+            final winnerVotes = winner.value;
+            // 条件：修正目标票数 >= winner票数的 60%（不能差距太大）
+            if (correctionVotes >= (winnerVotes * 0.6).round()) {
+              debugPrint('ML Kit 识别: 修正学习重排序 — "${winner.key}"(${winnerVotes}票) → "$correctionResult"(${correctionVotes}票) (历史修正记录)');
+              winner = MapEntry(correctionResult, correctionVotes);
+              // 修正学习生效时，置信度设为 0.75（中等偏上，不盲目信任但给予合理信心）
+              confidenceMap[correctionResult] = 0.75;
+            } else {
+              debugPrint('ML Kit 识别: 修正学习 — 目标"$correctionResult"(${correctionVotes}票)票数过低，不替换winner"${winner.key}"(${winnerVotes}票)');
+            }
+          }
+        } catch (e) {
+          debugPrint('ML Kit 识别: 修正学习查询异常（不影响主流程）: $e');
+        }
+
         // ── v4.8.0: 平局决胜 — 扩展到5种预处理，覆盖更多场景 ──
         if (sorted.length >= 2 && (winner.value - sorted[1].value) <= 1) {
           debugPrint('ML Kit 识别: 平局决胜触发 (top1="${winner.key}"=${winner.value}票, top2="${sorted[1].key}"=${sorted[1].value}票)');
@@ -14943,6 +14973,48 @@ class RecognitionService {
                   break;
                 }
               }
+            }
+          }
+        }
+
+        // v6.2.0: 自适应微旋转重试 — 中等置信度（65%-80%）时尝试精细角度校正
+        // 很多误识别发生在纸张轻微倾斜（1-8°）的场景，粗旋转（90/180/270°）无法覆盖。
+        // 精细微旋转（±3°/±6°）+ 最佳预处理策略组合，可以纠正轻微倾斜导致的误识别。
+        // 仅在形近字组成员或中等置信度时触发，避免对高置信度结果产生负面影响。
+        if (_lastLocalConfidence >= 0.65 && _lastLocalConfidence < 0.80 && maxDim >= 80 && !earlyTerminated) {
+          // 检查是否为形近字组成员（更值得微旋转重试）
+          bool needsMicroRotation = inConfusableGroup;
+          // 或者策略多样性较低（单一策略投票可能不可靠）
+          if (!needsMicroRotation && strategyCount <= 2) {
+            needsMicroRotation = true;
+          }
+          if (needsMicroRotation) {
+            debugPrint('ML Kit 识别: 中等置信度 ${(_lastLocalConfidence * 100).toStringAsFixed(0)}%，尝试微旋转重试');
+            // 使用最佳预处理策略（CLAHE增强后的灰度图）作为微旋转基础
+            final microBase = ImageQualityService.instance.enhanceContrastAdaptive(img.grayscale(enhanced));
+            int microRotationVotes = 0;
+            String? microRotationResult;
+            for (final angle in [-6, -3, 3, 6]) {
+              final rotated = img.copyRotate(microBase, angle: angle);
+              final raw = await _recognizeFromImage(rotated);
+              final r = _validateResult(raw);
+              if (r != null) {
+                debugPrint('ML Kit 识别: 微旋转${angle}°识别到 "$r"');
+                if (r != winner.key) {
+                  // 微旋转识别到不同结果 — 累计投票
+                  microRotationVotes++;
+                  microRotationResult = r;
+                } else {
+                  // 微旋转确认了当前 winner — 提升信心
+                  microRotationVotes--;
+                }
+              }
+            }
+            // 如果微旋转多数（≥3次）倾向于不同结果，且该结果在候选中，替换 winner
+            if (microRotationVotes >= 3 && microRotationResult != null && voteMap.containsKey(microRotationResult)) {
+              debugPrint('ML Kit 识别: 微旋转重试翻转结果为 "$microRotationResult" (${microRotationVotes}次倾向)');
+              winner = MapEntry(microRotationResult, voteMap[microRotationResult] ?? winner.value);
+              _lastLocalConfidence = (_lastLocalConfidence + 0.05).clamp(0.0, 1.0);
             }
           }
         }
