@@ -3687,6 +3687,160 @@ class RecognitionService {
     return score;
   }
 
+  /// v6.3.0: 提取图片的笔画方向分布 — [横, 竖, 撇, 捺, 点] 五个方向的归一化比例
+  ///
+  /// 使用 Sobel 算子计算梯度方向，统计各方向的像素占比。
+  /// 返回 5 个元素的 List<double>，总和为 1.0；如果图片为空返回 null。
+  static List<double>? _extractStrokeDirectionDistribution(img.Image image) {
+    final gray = img.grayscale(image);
+    final w = gray.width;
+    final h = gray.height;
+    if (w < 3 || h < 3) return null;
+
+    // 5 个方向的计数：[横(≈0°), 竖(≈90°), 撇(≈135°), 捺(≈45°), 点(无主导方向)]
+    final counts = [0.0, 0.0, 0.0, 0.0, 0.0];
+
+    for (int y = 1; y < h - 1; y++) {
+      for (int x = 1; x < w - 1; x++) {
+        // Sobel 梯度
+        final gx = -gray.getPixel(x - 1, y - 1).r.toInt() + gray.getPixel(x + 1, y - 1).r.toInt()
+            - 2 * gray.getPixel(x - 1, y).r.toInt() + 2 * gray.getPixel(x + 1, y).r.toInt()
+            - gray.getPixel(x - 1, y + 1).r.toInt() + gray.getPixel(x + 1, y + 1).r.toInt();
+        final gy = -gray.getPixel(x - 1, y - 1).r.toInt() - 2 * gray.getPixel(x, y - 1).r.toInt() - gray.getPixel(x + 1, y - 1).r.toInt()
+            + gray.getPixel(x - 1, y + 1).r.toInt() + 2 * gray.getPixel(x, y + 1).r.toInt() + gray.getPixel(x + 1, y + 1).r.toInt();
+
+        final magnitude = (gx * gx + gy * gy).toDouble();
+        if (magnitude < 100) continue; // 忽略低梯度区域（背景）
+
+        final angle = (math.atan2(gy.toDouble(), gx.toDouble()) * 180 / math.pi + 180) % 180; // 0~180°
+
+        if (angle < 22.5 || angle >= 157.5) {
+          counts[0]++; // 横
+        } else if (angle >= 67.5 && angle < 112.5) {
+          counts[1]++; // 竖
+        } else if (angle >= 112.5 && angle < 157.5) {
+          counts[2]++; // 撇（左下）
+        } else if (angle >= 22.5 && angle < 67.5) {
+          counts[3]++; // 捺（右下）
+        }
+      }
+    }
+
+    // 点：使用墨迹密度估算（孤立小区域）
+    final totalPixels = w * h;
+    int inkPixels = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (gray.getPixel(x, y).r < 128) inkPixels++;
+      }
+    }
+    final inkDensity = inkPixels / totalPixels;
+    // 如果墨迹密度很低但有墨迹，可能是点状笔画
+    if (inkDensity > 0.02 && inkDensity < 0.15) {
+      counts[4] = inkPixels * 0.3; // 点的权重较低
+    }
+
+    final total = counts.reduce((a, b) => a + b);
+    if (total < 1) return null;
+    return counts.map((c) => c / total).toList();
+  }
+
+  /// v6.3.0: 获取字符的标准笔画方向分布 — 基于 Unicode 笔画数据库的经验值
+  ///
+  /// 返回 5 个元素的 List<double>：[横, 竖, 撇, 捺, 点]，总和为 1.0。
+  /// 对于未收录的字符，返回 null。
+  static List<double>? _getExpectedStrokeDistribution(String char) {
+    // 常见字符的笔画方向分布经验值
+    // 基于笔画结构分析：横多→[高,0,0,0,0]，竖多→[0,高,0,0,0]，等等
+    const distributionMap = <String, List<double>>{
+      // 数字
+      '一': [1.0, 0.0, 0.0, 0.0, 0.0],
+      '二': [1.0, 0.0, 0.0, 0.0, 0.0],
+      '三': [1.0, 0.0, 0.0, 0.0, 0.0],
+      '十': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '七': [0.3, 0.0, 0.3, 0.0, 0.4],
+      '八': [0.0, 0.0, 0.5, 0.5, 0.0],
+      '九': [0.0, 0.0, 0.5, 0.0, 0.5],
+      // 常见简单字
+      '大': [0.0, 0.0, 0.5, 0.5, 0.0],
+      '太': [0.0, 0.0, 0.3, 0.3, 0.4],
+      '小': [0.0, 0.3, 0.0, 0.0, 0.7],
+      '上': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '下': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '左': [0.3, 0.0, 0.3, 0.0, 0.4],
+      '右': [0.3, 0.0, 0.0, 0.3, 0.4],
+      '人': [0.0, 0.0, 0.5, 0.5, 0.0],
+      '入': [0.0, 0.0, 0.5, 0.5, 0.0],
+      '刀': [0.0, 0.0, 0.5, 0.0, 0.5],
+      '力': [0.0, 0.0, 0.5, 0.0, 0.5],
+      '口': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '日': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '曰': [0.6, 0.4, 0.0, 0.0, 0.0],
+      '月': [0.4, 0.4, 0.0, 0.0, 0.2],
+      '田': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '由': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '甲': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '目': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '水': [0.0, 0.3, 0.3, 0.0, 0.4],
+      '火': [0.0, 0.0, 0.3, 0.3, 0.4],
+      '土': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '士': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '王': [0.6, 0.4, 0.0, 0.0, 0.0],
+      '玉': [0.5, 0.3, 0.0, 0.0, 0.2],
+      '手': [0.5, 0.3, 0.0, 0.0, 0.2],
+      '毛': [0.3, 0.0, 0.3, 0.0, 0.4],
+      '心': [0.0, 0.0, 0.0, 0.0, 1.0],
+      '必': [0.0, 0.0, 0.3, 0.0, 0.7],
+      '禾': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '木': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '本': [0.3, 0.4, 0.0, 0.0, 0.3],
+      '白': [0.4, 0.4, 0.0, 0.0, 0.2],
+      '自': [0.4, 0.4, 0.0, 0.0, 0.2],
+      '电': [0.4, 0.4, 0.0, 0.0, 0.2],
+      '龟': [0.3, 0.3, 0.0, 0.0, 0.4],
+      // 形近字对（重点区分）
+      '己': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '已': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '巳': [0.4, 0.4, 0.0, 0.0, 0.2],
+      '未': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '末': [0.4, 0.3, 0.0, 0.0, 0.3],
+      '天': [0.5, 0.0, 0.0, 0.5, 0.0],
+      '夫': [0.5, 0.0, 0.0, 0.5, 0.0],
+      '午': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '牛': [0.3, 0.4, 0.0, 0.0, 0.3],
+      '干': [0.5, 0.5, 0.0, 0.0, 0.0],
+      '千': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '于': [0.5, 0.0, 0.0, 0.5, 0.0],
+      '买': [0.3, 0.0, 0.3, 0.0, 0.4],
+      '卖': [0.3, 0.0, 0.3, 0.0, 0.4],
+      '风': [0.0, 0.0, 0.5, 0.5, 0.0],
+      '凤': [0.0, 0.0, 0.3, 0.3, 0.4],
+      '阳': [0.3, 0.4, 0.0, 0.0, 0.3],
+      '阴': [0.3, 0.4, 0.0, 0.0, 0.3],
+      '科': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '料': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '话': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '活': [0.3, 0.3, 0.0, 0.0, 0.4],
+      '字': [0.4, 0.3, 0.0, 0.0, 0.3],
+      '学': [0.3, 0.3, 0.0, 0.0, 0.4],
+    };
+    return distributionMap[char];
+  }
+
+  /// v6.3.0: 余弦相似度 — 用于比较两个方向分布的相似性
+  static double _cosineSimilarity(List<double> a, List<double> b) {
+    if (a.length != b.length) return 0.0;
+    double dot = 0, normA = 0, normB = 0;
+    for (int i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    final denom = math.sqrt(normA) * math.sqrt(normB);
+    if (denom == 0) return 0.0;
+    return dot / denom;
+  }
+
   /// v6.0.0: 并行策略执行 — 批量处理预处理+ML Kit识别，用信号量控制并发
   ///
   /// 将策略列表分批（每批最多 [batchSize] 个），批内并行执行，批间串行。
@@ -14659,6 +14813,78 @@ class RecognitionService {
           debugPrint('ML Kit 识别: 修正学习查询异常（不影响主流程）: $e');
         }
 
+        // ── v6.3.0: 候选聚焦重识别（Focused Runoff）──
+        // 当 Top-2 候选的综合评分差距小（<15%）时，用针对性预处理策略做聚焦重识别。
+        // 与平局决胜不同：平局决胜只在票数差≤1时触发，聚焦重识别在评分差<15%时触发。
+        // 策略选择：从形近字消歧映射中找到区分两个候选的最佳预处理。
+        if (sorted.length >= 2) {
+          final top1Score = candidateScores[winner.key] ?? 0;
+          final top2Score = candidateScores[sorted[1].key] ?? 0;
+          final scoreGap = top1Score - top2Score;
+          if (scoreGap.abs() < 0.15 && scoreGap.abs() > 0.0) {
+            debugPrint('聚焦重识别: Top-2评分差距 ${(scoreGap * 100).toStringAsFixed(1)}% < 15%，'
+                '尝试针对性重识别 "${winner.key}" vs "${sorted[1].key}"');
+            final candidateA = winner.key;
+            final candidateB = sorted[1].key;
+            int runoffA = 0;
+            int runoffB = 0;
+
+            // 选择针对性预处理策略：高对比度 + 二值化 + 锐化（最容易区分形近字）
+            final runoffStrategies = <(String, img.Image Function(img.Image))>[
+              ('聚焦CLAHE高对比', (img.Image src) {
+                return ImageQualityService.instance.enhanceContrastAdaptive(
+                  img.adjustColor(src, contrast: 2.0),
+                );
+              }),
+              ('聚焦Sauvola二值化', (img.Image src) {
+                return _sauvolaBinarizeAdaptive(src, features: imageFeatures);
+              }),
+              ('聚焦锐化+CLAHE', (img.Image src) {
+                final sharpened = _unsharpMaskSharpen(src, amount: 1.5);
+                return ImageQualityService.instance.enhanceContrastAdaptive(sharpened);
+              }),
+              ('聚焦Niblack', (img.Image src) {
+                return _niblackBinarize(src);
+              }),
+              ('聚焦骨架化', (img.Image src) {
+                return _skeletonize(img.grayscale(src));
+              }),
+            ];
+
+            for (final (label, fn) in runoffStrategies) {
+              final processed = fn(enhanced);
+              final raw = await _recognizeFromImage(processed);
+              final r = _validateResult(raw);
+              if (r == candidateA) {
+                runoffA++;
+                debugPrint('聚焦重识别: $label → "$candidateA"');
+              } else if (r == candidateB) {
+                runoffB++;
+                debugPrint('聚焦重识别: $label → "$candidateB"');
+              }
+            }
+
+            if (runoffA != runoffB) {
+              final newWinner = runoffA > runoffB ? candidateA : candidateB;
+              if (newWinner != winner.key) {
+                debugPrint('聚焦重识别: 翻转结果 "${winner.key}" → "$newWinner" '
+                    '($candidateA=$runoffA vs $candidateB=$runoffB)');
+                _addDebugLog('recognition', '聚焦重识别翻转', data: {
+                  'original': winner.key,
+                  'runoff': newWinner,
+                  'scoreA': runoffA,
+                  'scoreB': runoffB,
+                });
+              }
+              winner = MapEntry(newWinner, voteMap[newWinner] ?? winner.value);
+              // 聚焦重识别确认 → 置信度微提升
+              confidenceMap[winner.key] = ((confidenceMap[winner.key] ?? 0.7) + 0.03).clamp(0.0, 0.95);
+            } else {
+              debugPrint('聚焦重识别: 平局 ($runoffA vs $runoffB)，保持原结果');
+            }
+          }
+        }
+
         // ── v4.8.0: 平局决胜 — 扩展到5种预处理，覆盖更多场景 ──
         if (sorted.length >= 2 && (winner.value - sorted[1].value) <= 1) {
           debugPrint('ML Kit 识别: 平局决胜触发 (top1="${winner.key}"=${winner.value}票, top2="${sorted[1].key}"=${sorted[1].value}票)');
@@ -14893,6 +15119,42 @@ class RecognitionService {
         if (inConfusableGroup && calibratedConf < 0.85) {
           calibratedConf = (calibratedConf - 0.02).clamp(0.0, 1.0);
           debugPrint('ML Kit 识别: 置信度校准 — 形近字组成员 (-0.02)');
+        }
+
+        // ── v6.3.0: 笔画方向分布验证（Stroke Direction Distribution Verification）──
+        // 提取图片的笔画方向分布（横/竖/撇/捺/点），与识别结果的标准笔画方向分布对比。
+        // 如果分布严重不匹配（余弦相似度 < 0.3），说明结果可能错误。
+        if (decoded != null && winner.key.length == 1) {
+          try {
+            final imageDistrib = _extractStrokeDirectionDistribution(decoded);
+            final expectedDistrib = _getExpectedStrokeDistribution(winner.key);
+            if (imageDistrib != null && expectedDistrib != null) {
+              final dirSimilarity = _cosineSimilarity(imageDistrib, expectedDistrib);
+              if (dirSimilarity < 0.30) {
+                debugPrint('笔画方向验证: "${winner.key}" 方向分布相似度 ${(dirSimilarity * 100).toStringAsFixed(0)}% < 30%，检查替代');
+                // 尝试 runner-up
+                if (sorted.length >= 2) {
+                  final altChar = sorted[1].key;
+                  final altDistrib = _getExpectedStrokeDistribution(altChar);
+                  if (altDistrib != null) {
+                    final altSimilarity = _cosineSimilarity(imageDistrib, altDistrib);
+                    if (altSimilarity > dirSimilarity + 0.20) {
+                      debugPrint('笔画方向验证: "$altChar" 方向分布相似度 ${(altSimilarity * 100).toStringAsFixed(0)}% > ${(dirSimilarity * 100).toStringAsFixed(0)}% + 20%，替换');
+                      _addDebugLog('recognition', '笔画方向验证替换', data: {
+                        'original': winner.key,
+                        'replacement': altChar,
+                        'originalSimilarity': dirSimilarity,
+                        'replacementSimilarity': altSimilarity,
+                      });
+                      winner = MapEntry(altChar, voteMap[altChar] ?? sorted[1].value);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('笔画方向验证异常: $e');
+          }
         }
 
         _lastLocalConfidence = calibratedConf;
