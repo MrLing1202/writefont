@@ -136,6 +136,17 @@ class RecognitionService {
   static DateTime _lastStrategyDecay = DateTime.now(); // 上次衰减时间
 
   // ═══════════════════════════════════════════════════════════
+  // v6.4.0: 在线学习增强 — 用户修正驱动策略权重实时调整
+  // ═══════════════════════════════════════════════════════════
+
+  /// 最近一次识别的 {候选字 → 投票策略集合}，供 correctRecognition 回馈使用
+  static Map<String, Set<String>> _lastResultStrategies = {};
+  /// 最近一次识别的投票计数 {候选字 → 票数}
+  static Map<String, int> _lastVoteMap = {};
+  /// 最近一次识别的图像特征签名
+  static String _lastFeatureSignature = '';
+
+  // ═══════════════════════════════════════════════════════════
   // v4.6.0: 策略组合性能追踪 — 根据图像特征自动选择最优策略子集
   // ═══════════════════════════════════════════════════════════
 
@@ -3839,6 +3850,152 @@ class RecognitionService {
     final denom = math.sqrt(normA) * math.sqrt(normB);
     if (denom == 0) return 0.0;
     return dot / denom;
+  }
+
+  /// v6.4.0: 部首区域分析 — 将字符图片分为四象限，分析各区域笔画密度分布
+  ///
+  /// 形近字（如 己/已/巳、未/末、天/夫）往往差异仅在某个局部区域。
+  /// 通过分析图片的四象限笔画密度分布，可以有效区分这些形近字。
+  ///
+  /// 返回 4 元素的 List<double>：[左上, 右上, 左下, 右下]，值为 0.0~1.0 的墨迹密度。
+  static List<double>? _analyzeRadicalRegions(img.Image image) {
+    final gray = img.grayscale(image);
+    final w = gray.width;
+    final h = gray.height;
+    if (w < 4 || h < 4) return null;
+
+    final midX = w ~/ 2;
+    final midY = h ~/ 2;
+
+    // 各象限的墨迹像素计数和总像素
+    final regions = <double>[0, 0, 0, 0]; // 左上, 右上, 左下, 右下
+    final totals = <int>[midX * midY, (w - midX) * midY, midX * (h - midY), (w - midX) * (h - midY)];
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        if (gray.getPixel(x, y).r < 128) {
+          final regionIdx = (y < midY ? 0 : 2) + (x < midX ? 0 : 1);
+          regions[regionIdx]++;
+        }
+      }
+    }
+
+    // 归一化为密度 (0.0~1.0)
+    for (int i = 0; i < 4; i++) {
+      if (totals[i] > 0) regions[i] /= totals[i];
+    }
+
+    return regions;
+  }
+
+  /// v6.4.0: 获取字符的标准四象限笔画密度分布
+  ///
+  /// 基于汉字结构特征的经验值。返回 4 元素 List<double>：[左上, 右上, 左下, 右下]。
+  /// 未收录字符返回 null。
+  static List<double>? _getExpectedRegionDistribution(String char) {
+    // 形近字组的区域分布差异用于消歧
+    const regionMap = <String, List<double>>{
+      // 己/已/巳 — 差异在上部封闭程度
+      '己': [0.2, 0.3, 0.4, 0.5],  // 上部开放
+      '已': [0.3, 0.4, 0.4, 0.5],  // 上部半封闭
+      '巳': [0.4, 0.5, 0.4, 0.5],  // 上部封闭
+      // 未/末 — 差异在上横长度
+      '未': [0.3, 0.3, 0.5, 0.5],  // 上横短
+      '末': [0.4, 0.4, 0.5, 0.5],  // 上横长
+      // 土/士 — 差异在下横长度
+      '土': [0.3, 0.3, 0.5, 0.5],  // 下横长
+      '士': [0.4, 0.4, 0.3, 0.3],  // 下横短
+      // 天/夫 — 差异在是否有撇
+      '天': [0.4, 0.4, 0.4, 0.5],  // 撇较短
+      '夫': [0.4, 0.3, 0.5, 0.5],  // 撇较长
+      // 午/牛 — 差异在竖笔是否出头
+      '午': [0.4, 0.4, 0.3, 0.3],
+      '牛': [0.4, 0.4, 0.4, 0.4],
+      // 干/千/于
+      '干': [0.3, 0.3, 0.4, 0.4],
+      '千': [0.3, 0.3, 0.3, 0.3],
+      '于': [0.3, 0.4, 0.3, 0.4],
+      // 买/卖
+      '买': [0.3, 0.3, 0.4, 0.4],
+      '卖': [0.4, 0.4, 0.5, 0.5],
+      // 风/凤
+      '风': [0.3, 0.4, 0.3, 0.5],
+      '凤': [0.3, 0.4, 0.4, 0.5],
+      // 日/曰
+      '日': [0.4, 0.4, 0.4, 0.4],  // 窄
+      '曰': [0.5, 0.5, 0.5, 0.5],  // 宽
+      // 人/入
+      '人': [0.2, 0.3, 0.3, 0.5],
+      '入': [0.3, 0.2, 0.5, 0.3],
+      // 大/犬/太
+      '大': [0.2, 0.3, 0.4, 0.5],
+      '犬': [0.3, 0.3, 0.4, 0.5],
+      '太': [0.2, 0.3, 0.4, 0.5],
+      // 甲/由/田
+      '甲': [0.4, 0.4, 0.5, 0.5],  // 竖出下
+      '由': [0.5, 0.5, 0.4, 0.4],  // 竖出上
+      '田': [0.5, 0.5, 0.5, 0.5],  // 均匀
+      // 入/八
+      '八': [0.0, 0.2, 0.3, 0.5],
+      // 刀/力
+      '刀': [0.2, 0.3, 0.3, 0.5],
+      '力': [0.3, 0.2, 0.5, 0.3],
+    };
+    return regionMap[char];
+  }
+
+  /// v6.4.0: 用部首区域分析进行形近字消歧
+  ///
+  /// 当 Top-2 候选票数差距 <= 2 时触发。
+  /// 比较图片区域分布与候选字符的标准区域分布，选择更匹配的。
+  static Future<String?> _radicalRegionDisambiguation(
+    img.Image image,
+    String candidateA,
+    String candidateB,
+  ) async {
+    try {
+      final imageRegions = _analyzeRadicalRegions(image);
+      if (imageRegions == null) return null;
+
+      final expectedA = _getExpectedRegionDistribution(candidateA);
+      final expectedB = _getExpectedRegionDistribution(candidateB);
+
+      // 至少一个候选有标准分布才能做比较
+      if (expectedA == null && expectedB == null) return null;
+
+      // 计算图片与候选的欧氏距离（越小越匹配）
+      double distA = double.infinity;
+      double distB = double.infinity;
+
+      if (expectedA != null) {
+        double sum = 0;
+        for (int i = 0; i < 4; i++) {
+          sum += (imageRegions[i] - expectedA[i]) * (imageRegions[i] - expectedA[i]);
+        }
+        distA = math.sqrt(sum);
+      }
+      if (expectedB != null) {
+        double sum = 0;
+        for (int i = 0; i < 4; i++) {
+          sum += (imageRegions[i] - expectedB[i]) * (imageRegions[i] - expectedB[i]);
+        }
+        distB = math.sqrt(sum);
+      }
+
+      // 差距 > 0.1 才有足够区分度
+      final gap = (distA - distB).abs();
+      if (gap < 0.10) return null;
+
+      final winner = distA < distB ? candidateA : candidateB;
+      debugPrint('部首区域分析: "$candidateA" 区域距离=${distA.toStringAsFixed(3)}, '
+          '"$candidateB" 区域距离=${distB.toStringAsFixed(3)}, '
+          '差距=${gap.toStringAsFixed(3)} → 选择 "$winner"');
+
+      return winner;
+    } catch (e) {
+      debugPrint('部首区域分析异常: $e');
+      return null;
+    }
   }
 
   /// v6.0.0: 并行策略执行 — 批量处理预处理+ML Kit识别，用信号量控制并发
@@ -15157,7 +15314,40 @@ class RecognitionService {
           }
         }
 
+        // ── v6.4.0: 部首区域分析消歧（Radical Region Disambiguation）──
+        // 当 Top-2 候选票数接近（差距 ≤ 2）且两者都是单字时，将图片分为四象限
+        // 分析各区域笔画密度，与候选字的标准区域分布比较，选择更匹配的。
+        // 这对形近字（己/已/巳、未/末、天/夫等）特别有效。
+        if (decoded != null && sorted.length >= 2 && winner.key.length == 1 && sorted[1].key.length == 1) {
+          final voteGap = winner.value - sorted[1].value;
+          if (voteGap <= 2) {
+            try {
+              final regionWinner = await _radicalRegionDisambiguation(
+                decoded, winner.key, sorted[1].key,
+              );
+              if (regionWinner != null && regionWinner != winner.key) {
+                debugPrint('部首区域分析: 翻转结果 "${winner.key}" → "$regionWinner"');
+                _addDebugLog('recognition', '部首区域分析翻转', data: {
+                  'original': winner.key,
+                  'replacement': regionWinner,
+                  'voteGap': voteGap,
+                });
+                winner = MapEntry(regionWinner, voteMap[regionWinner] ?? sorted[1].value);
+                // 部首区域分析确认 → 置信度微提升
+                confidenceMap[winner.key] = ((confidenceMap[winner.key] ?? 0.7) + 0.02).clamp(0.0, 0.95);
+              }
+            } catch (e) {
+              debugPrint('部首区域分析异常: $e');
+            }
+          }
+        }
+
         _lastLocalConfidence = calibratedConf;
+
+        // v6.4.0: 保存最近识别的策略映射（供 correctRecognition 在线学习使用）
+        _lastResultStrategies = resultStrategies;
+        _lastVoteMap = Map<String, int>.from(voteMap);
+        _lastFeatureSignature = _buildFeatureSignature(imageFeatures);
 
         // ── 更新策略可靠性（v4.3.0: 持久化 + 时间衰减） ──
         await _ensureStrategyWeightsLoaded();
@@ -15917,6 +16107,49 @@ class RecognitionService {
     debugPrint('识别校正: hash=$cacheKey → "$correctedChar"');
     // 存入用户反馈学习系统（异步，不阻塞）
     UserFeedbackService.instance.feedback(imageBytes, correctedChar);
+
+    // ── v6.4.0: 在线学习增强 — 用户修正驱动策略权重实时调整 ──
+    // 当用户修正识别结果时，惩罚产生错误结果的策略，奖励产生正确结果的策略。
+    // 这使系统能从每次用户修正中学习，策略权重不再只靠识别时的"自投票"更新，
+    // 而是在用户确认错误后立即获得强信号。
+    if (oldResult != null && oldResult != correctedChar && _lastResultStrategies.isNotEmpty) {
+      debugPrint('在线学习: 用户修正 "$oldResult" → "$correctedChar"，更新策略权重');
+
+      // 1. 重惩罚：产生错误结果(oldResult)的策略 —25%（比自动惩罚 -10% 更强）
+      final wrongStrategies = _lastResultStrategies[oldResult] ?? {};
+      for (final strat in wrongStrategies) {
+        final old = _strategyReliability[strat] ?? 0.5;
+        _strategyReliability[strat] = (old * 0.75).clamp(0.0, 1.0);
+      }
+
+      // 2. 奖励：如果修正目标字符在候选列表中，奖励其投票策略 +30%
+      final correctStrategies = _lastResultStrategies[correctedChar] ?? {};
+      if (correctStrategies.isNotEmpty) {
+        for (final strat in correctStrategies) {
+          final old = _strategyReliability[strat] ?? 0.5;
+          _strategyReliability[strat] = (old * 0.7 + 0.3).clamp(0.0, 1.0);
+        }
+      }
+
+      // 3. 更新策略组合性能：修正后将正确字符的特征签名性能提升
+      if (_lastFeatureSignature.isNotEmpty) {
+        _strategyPerformanceMap.putIfAbsent(_lastFeatureSignature, () => {});
+        final perfMap = _strategyPerformanceMap[_lastFeatureSignature]!;
+        for (final strat in wrongStrategies) {
+          perfMap[strat] = ((perfMap[strat] ?? 0.5) * 0.85).clamp(0.0, 1.0);
+        }
+        for (final strat in correctStrategies) {
+          perfMap[strat] = ((perfMap[strat] ?? 0.5) * 0.7 + 0.3).clamp(0.0, 1.0);
+        }
+      }
+
+      // 4. 即时持久化（用户修正数据宝贵，不等到10次）
+      _saveStrategyWeights();
+      _saveStrategyPerformance();
+
+      debugPrint('在线学习: 惩罚 ${wrongStrategies.length} 个错误策略, '
+          '奖励 ${correctStrategies.length} 个正确策略');
+    }
   }
 
   /// 读取已选择的模型
